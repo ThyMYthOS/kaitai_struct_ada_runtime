@@ -40,13 +40,15 @@ for rts in "${@:-light-stm32f4}"; do
       echo "-- parsing designs, instructions per record"
       for group in "term kaitai_term term_classic" "contents kaitai_contents contents_classic" \
          "substream kaitai_substream substream_classic" \
-         "nested nested_local nested_outer_only nested_direct"; do
+         "nested nested_local nested_outer_only nested_direct" \
+         "fields fields1_local fields1_direct fields2_local fields2_direct fields3_local fields3_direct fields4_local fields4_direct fields8_local fields8_direct calls_both_local calls_inner_local calls_direct" \
+         "process kaitai_xor_one xor_one_classic kaitai_xor_many xor_many_classic_mod xor_many_classic_counter kaitai_rotate rotate_classic"; do
          set -- $(simulate "bin/$rts/$mode/target_none_${group%% *}")
          base=$1
          for variant in ${group#* }; do
             set -- $(simulate "bin/$rts/$mode/target_$variant")
             awk -v name=$variant -v total="$1" -v base="$base" -v n=$RECORDS -v sum="$2" \
-               'BEGIN { printf "%-18s%10.1f   %s\n", name, (total - base) / n, sum }'
+               'BEGIN { printf "%-26s%10.1f   %s\n", name, (total - base) / n, sum }'
          done
       done
       echo "-- overflow protection, instructions per 15-byte record with two expressions"

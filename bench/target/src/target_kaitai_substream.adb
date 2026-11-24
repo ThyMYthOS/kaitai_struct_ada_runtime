@@ -8,7 +8,7 @@ procedure Target_Kaitai_Substream is
       Used : Length;
    begin
       Target_Data.Fill_Substream (Used);
-      return Stream_Runs.Run_Substream_Kaitai (Target_Data.Substream_Buffer (1 .. Used));
+      return Stream_Runs.Run_Substream_Kaitai (Target_Data.Work_Buffer (1 .. Used));
    end Parse;
 
    procedure Run is new Target_Harness (Parse);

@@ -87,4 +87,56 @@ package Stream_Runs is
    function Run_Nested_Direct (Data : Bytes) return U64
    with No_Inline;
 
+   --  Where the local copy of the stream starts to pay off: a record of N
+   --  fields of u1, read by one parser that is called once per record,
+   --  either on a local copy of the stream or through the parameter
+   function Run_Fields1_Local (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Fields1_Direct (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Fields2_Local (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Fields2_Direct (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Fields3_Local (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Fields3_Direct (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Fields4_Local (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Fields4_Direct (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Fields8_Local (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Fields8_Direct (Data : Bytes) return U64
+   with No_Inline;
+
+   --  A parser that reads no field itself but calls a nested parser four
+   --  times; the nested parser reads two u1.  Both copy the stream, only the
+   --  nested one does, or neither does.
+   function Run_Calls_Both_Local (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Calls_Inner_Local (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Calls_Direct (Data : Bytes) return U64
+   with No_Inline;
+
+   --  Records of 64 bytes, each processed as a whole into a target array of
+   --  64 bytes that lives in the package, by the library and by a plain
+   --  loop; the checksum covers four bytes of the target
+   function Run_Xor_One_Kaitai (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Xor_One_Classic (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Xor_Many_Kaitai (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Xor_Many_Classic_Mod (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Xor_Many_Classic_Counter (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Rotate_Kaitai (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Rotate_Classic (Data : Bytes) return U64
+   with No_Inline;
+
 end Stream_Runs;

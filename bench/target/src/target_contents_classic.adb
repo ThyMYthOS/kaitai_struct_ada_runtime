@@ -8,7 +8,7 @@ procedure Target_Contents_Classic is
       Used : Length;
    begin
       Target_Data.Fill_Contents (Used);
-      return Stream_Runs.Run_Contents_Classic (Target_Data.Contents_Buffer (1 .. Used));
+      return Stream_Runs.Run_Contents_Classic (Target_Data.Work_Buffer (1 .. Used));
    end Parse;
 
    procedure Run is new Target_Harness (Parse);

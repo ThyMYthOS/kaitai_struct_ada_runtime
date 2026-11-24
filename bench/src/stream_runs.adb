@@ -1,6 +1,7 @@
 with Bench_Data;
 with Bit_Variants;
 with Kaitai.Decoding;
+with Kaitai.Processing;
 with Kaitai.Streams;
 
 package body Stream_Runs is
@@ -693,5 +694,624 @@ package body Stream_Runs is
       end loop;
       return Sum;
    end Run_Nested_Direct;
+
+   ---------------------------------------------------------------------
+   --  Local copy against direct access, by number of fields
+   ---------------------------------------------------------------------
+
+   procedure Parse_Fields1_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Fields1_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64) is
+      use Kaitai.Streams;
+      L : Stream := S;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, L, V);
+      A := U64 (V);
+      Acc := A;
+      S := L;
+   end Parse_Fields1_Local;
+
+   function Run_Fields1_Local (Data : Bytes) return U64 is
+      S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Fields1_Local (Data, S, Acc);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Fields1_Local;
+
+   procedure Parse_Fields1_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Fields1_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64) is
+      use Kaitai.Streams;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, S, V);
+      A := U64 (V);
+      Acc := A;
+   end Parse_Fields1_Direct;
+
+   function Run_Fields1_Direct (Data : Bytes) return U64 is
+      S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Fields1_Direct (Data, S, Acc);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Fields1_Direct;
+
+   procedure Parse_Fields2_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Fields2_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64) is
+      use Kaitai.Streams;
+      L : Stream := S;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, L, V);
+      A := U64 (V);
+      Read_U1 (Data, L, V);
+      A := A * 31 + U64 (V);
+      Acc := A;
+      S := L;
+   end Parse_Fields2_Local;
+
+   function Run_Fields2_Local (Data : Bytes) return U64 is
+      S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Fields2_Local (Data, S, Acc);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Fields2_Local;
+
+   procedure Parse_Fields2_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Fields2_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64) is
+      use Kaitai.Streams;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, S, V);
+      A := U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Acc := A;
+   end Parse_Fields2_Direct;
+
+   function Run_Fields2_Direct (Data : Bytes) return U64 is
+      S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Fields2_Direct (Data, S, Acc);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Fields2_Direct;
+
+   procedure Parse_Fields3_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Fields3_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64) is
+      use Kaitai.Streams;
+      L : Stream := S;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, L, V);
+      A := U64 (V);
+      Read_U1 (Data, L, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, L, V);
+      A := A * 31 + U64 (V);
+      Acc := A;
+      S := L;
+   end Parse_Fields3_Local;
+
+   function Run_Fields3_Local (Data : Bytes) return U64 is
+      S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Fields3_Local (Data, S, Acc);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Fields3_Local;
+
+   procedure Parse_Fields3_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Fields3_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64) is
+      use Kaitai.Streams;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, S, V);
+      A := U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Acc := A;
+   end Parse_Fields3_Direct;
+
+   function Run_Fields3_Direct (Data : Bytes) return U64 is
+      S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Fields3_Direct (Data, S, Acc);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Fields3_Direct;
+
+   procedure Parse_Fields4_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Fields4_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64) is
+      use Kaitai.Streams;
+      L : Stream := S;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, L, V);
+      A := U64 (V);
+      Read_U1 (Data, L, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, L, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, L, V);
+      A := A * 31 + U64 (V);
+      Acc := A;
+      S := L;
+   end Parse_Fields4_Local;
+
+   function Run_Fields4_Local (Data : Bytes) return U64 is
+      S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Fields4_Local (Data, S, Acc);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Fields4_Local;
+
+   procedure Parse_Fields4_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Fields4_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64) is
+      use Kaitai.Streams;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, S, V);
+      A := U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Acc := A;
+   end Parse_Fields4_Direct;
+
+   function Run_Fields4_Direct (Data : Bytes) return U64 is
+      S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Fields4_Direct (Data, S, Acc);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Fields4_Direct;
+
+   procedure Parse_Fields8_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Fields8_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64) is
+      use Kaitai.Streams;
+      L : Stream := S;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, L, V);
+      A := U64 (V);
+      Read_U1 (Data, L, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, L, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, L, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, L, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, L, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, L, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, L, V);
+      A := A * 31 + U64 (V);
+      Acc := A;
+      S := L;
+   end Parse_Fields8_Local;
+
+   function Run_Fields8_Local (Data : Bytes) return U64 is
+      S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Fields8_Local (Data, S, Acc);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Fields8_Local;
+
+   procedure Parse_Fields8_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Fields8_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64) is
+      use Kaitai.Streams;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, S, V);
+      A := U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Acc := A;
+   end Parse_Fields8_Direct;
+
+   function Run_Fields8_Direct (Data : Bytes) return U64 is
+      S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Fields8_Direct (Data, S, Acc);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Fields8_Direct;
+
+   ---------------------------------------------------------------------
+   --  Calls of nested parsers
+   ---------------------------------------------------------------------
+
+   --  The nested type: two u1
+   procedure Parse_Pair_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U8; B : out U8)
+   with No_Inline;
+
+   procedure Parse_Pair_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U8; B : out U8) is
+      use Kaitai.Streams;
+      L : Stream := S;
+   begin
+      Read_U1 (Data, L, A);
+      Read_U1 (Data, L, B);
+      S := L;
+   end Parse_Pair_Local;
+
+   procedure Parse_Pair_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U8; B : out U8)
+   with No_Inline;
+
+   procedure Parse_Pair_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U8; B : out U8) is
+      use Kaitai.Streams;
+   begin
+      Read_U1 (Data, S, A);
+      Read_U1 (Data, S, B);
+   end Parse_Pair_Direct;
+
+   procedure Parse_Calls_Both_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Calls_Both_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64) is
+      use Kaitai.Streams;
+      L : Stream := S;
+      A : U8;
+      B : U8;
+   begin
+      Parse_Pair_Local (Data, L, A, B);
+      Acc := U64 (A) * 31 + U64 (B);
+      Parse_Pair_Local (Data, L, A, B);
+      Acc := Acc * 31 + U64 (A) * 31 + U64 (B);
+      Parse_Pair_Local (Data, L, A, B);
+      Acc := Acc * 31 + U64 (A) * 31 + U64 (B);
+      Parse_Pair_Local (Data, L, A, B);
+      Acc := Acc * 31 + U64 (A) * 31 + U64 (B);
+      S := L;
+   end Parse_Calls_Both_Local;
+
+   procedure Parse_Calls_Inner_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Calls_Inner_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64) is
+      A : U8;
+      B : U8;
+   begin
+      Parse_Pair_Local (Data, S, A, B);
+      Acc := U64 (A) * 31 + U64 (B);
+      Parse_Pair_Local (Data, S, A, B);
+      Acc := Acc * 31 + U64 (A) * 31 + U64 (B);
+      Parse_Pair_Local (Data, S, A, B);
+      Acc := Acc * 31 + U64 (A) * 31 + U64 (B);
+      Parse_Pair_Local (Data, S, A, B);
+      Acc := Acc * 31 + U64 (A) * 31 + U64 (B);
+   end Parse_Calls_Inner_Local;
+
+   procedure Parse_Calls_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Calls_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; Acc : out U64) is
+      A : U8;
+      B : U8;
+   begin
+      Parse_Pair_Direct (Data, S, A, B);
+      Acc := U64 (A) * 31 + U64 (B);
+      Parse_Pair_Direct (Data, S, A, B);
+      Acc := Acc * 31 + U64 (A) * 31 + U64 (B);
+      Parse_Pair_Direct (Data, S, A, B);
+      Acc := Acc * 31 + U64 (A) * 31 + U64 (B);
+      Parse_Pair_Direct (Data, S, A, B);
+      Acc := Acc * 31 + U64 (A) * 31 + U64 (B);
+   end Parse_Calls_Direct;
+
+   function Run_Calls_Both_Local (Data : Bytes) return U64 is
+      S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Calls_Both_Local (Data, S, Acc);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Calls_Both_Local;
+
+   function Run_Calls_Inner_Local (Data : Bytes) return U64 is
+      S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Calls_Inner_Local (Data, S, Acc);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Calls_Inner_Local;
+
+   function Run_Calls_Direct (Data : Bytes) return U64 is
+      S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Calls_Direct (Data, S, Acc);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Calls_Direct;
+
+   ---------------------------------------------------------------------
+   --  Processing
+   ---------------------------------------------------------------------
+
+   Process_Size : constant := Bench_Data.Process_Record_Size;
+
+   --  Where every record is processed to
+   Process_Target : Bytes (1 .. Process_Size) := [others => 0];
+
+   function Process_Mix (Sum : U64) return U64
+   is (Sum
+       * 31
+       + U64 (Process_Target (1))
+       + U64 (Process_Target (22))
+       + U64 (Process_Target (43))
+       + U64 (Process_Target (Process_Size)))
+   with Inline_Always;
+
+   procedure Parse_Xor_One_Kaitai (Data : Bytes; First : Length; Target : in out Bytes)
+   with No_Inline;
+
+   procedure Parse_Xor_One_Kaitai (Data : Bytes; First : Length; Target : in out Bytes) is
+   begin
+      Kaitai.Processing.Xor_One (Data (First .. First + Process_Size - 1), 16#5A#, Target);
+   end Parse_Xor_One_Kaitai;
+
+   procedure Parse_Xor_One_Classic (Data : Bytes; First : Length; Target : in out Bytes)
+   with No_Inline;
+
+   procedure Parse_Xor_One_Classic (Data : Bytes; First : Length; Target : in out Bytes) is
+   begin
+      for I in Length range 0 .. Process_Size - 1 loop
+         Target (Target'First + I) := Data (First + I) xor 16#5A#;
+      end loop;
+   end Parse_Xor_One_Classic;
+
+   procedure Parse_Xor_Many_Kaitai (Data : Bytes; First : Length; Target : in out Bytes)
+   with No_Inline;
+
+   procedure Parse_Xor_Many_Kaitai (Data : Bytes; First : Length; Target : in out Bytes) is
+   begin
+      Kaitai.Processing.Xor_Many (Data (First .. First + Process_Size - 1), Bench_Data.Xor_Key, Target);
+   end Parse_Xor_Many_Kaitai;
+
+   procedure Parse_Xor_Many_Classic_Mod (Data : Bytes; First : Length; Target : in out Bytes)
+   with No_Inline;
+
+   procedure Parse_Xor_Many_Classic_Mod (Data : Bytes; First : Length; Target : in out Bytes) is
+      Key : Bytes renames Bench_Data.Xor_Key;
+   begin
+      for I in Length range 0 .. Process_Size - 1 loop
+         Target (Target'First + I) := Data (First + I) xor Key (Key'First + I mod Key'Length);
+      end loop;
+   end Parse_Xor_Many_Classic_Mod;
+
+   procedure Parse_Xor_Many_Classic_Counter (Data : Bytes; First : Length; Target : in out Bytes)
+   with No_Inline;
+
+   procedure Parse_Xor_Many_Classic_Counter (Data : Bytes; First : Length; Target : in out Bytes) is
+      Key : Bytes renames Bench_Data.Xor_Key;
+      K   : Length := Key'First;
+   begin
+      for I in Length range 0 .. Process_Size - 1 loop
+         Target (Target'First + I) := Data (First + I) xor Key (K);
+         K := K + 1;
+         if K > Key'Last then
+            K := Key'First;
+         end if;
+      end loop;
+   end Parse_Xor_Many_Classic_Counter;
+
+   procedure Parse_Rotate_Kaitai (Data : Bytes; First : Length; Target : in out Bytes)
+   with No_Inline;
+
+   procedure Parse_Rotate_Kaitai (Data : Bytes; First : Length; Target : in out Bytes) is
+   begin
+      Kaitai.Processing.Rotate_Left (Data (First .. First + Process_Size - 1), 3, Target);
+   end Parse_Rotate_Kaitai;
+
+   procedure Parse_Rotate_Classic (Data : Bytes; First : Length; Target : in out Bytes)
+   with No_Inline;
+
+   procedure Parse_Rotate_Classic (Data : Bytes; First : Length; Target : in out Bytes) is
+   begin
+      for I in Length range 0 .. Process_Size - 1 loop
+         Target (Target'First + I) := Rotate_Left (Data (First + I), 3);
+      end loop;
+   end Parse_Rotate_Classic;
+
+   function Run_Xor_One_Kaitai (Data : Bytes) return U64 is
+      First : Length := Data'First;
+      Sum   : U64 := 0;
+   begin
+      while Data'Last - First >= Process_Size - 1 loop
+         Parse_Xor_One_Kaitai (Data, First, Process_Target);
+         Sum := Process_Mix (Sum);
+         First := First + Process_Size;
+      end loop;
+      return Sum;
+   end Run_Xor_One_Kaitai;
+
+   function Run_Xor_One_Classic (Data : Bytes) return U64 is
+      First : Length := Data'First;
+      Sum   : U64 := 0;
+   begin
+      while Data'Last - First >= Process_Size - 1 loop
+         Parse_Xor_One_Classic (Data, First, Process_Target);
+         Sum := Process_Mix (Sum);
+         First := First + Process_Size;
+      end loop;
+      return Sum;
+   end Run_Xor_One_Classic;
+
+   function Run_Xor_Many_Kaitai (Data : Bytes) return U64 is
+      First : Length := Data'First;
+      Sum   : U64 := 0;
+   begin
+      while Data'Last - First >= Process_Size - 1 loop
+         Parse_Xor_Many_Kaitai (Data, First, Process_Target);
+         Sum := Process_Mix (Sum);
+         First := First + Process_Size;
+      end loop;
+      return Sum;
+   end Run_Xor_Many_Kaitai;
+
+   function Run_Xor_Many_Classic_Mod (Data : Bytes) return U64 is
+      First : Length := Data'First;
+      Sum   : U64 := 0;
+   begin
+      while Data'Last - First >= Process_Size - 1 loop
+         Parse_Xor_Many_Classic_Mod (Data, First, Process_Target);
+         Sum := Process_Mix (Sum);
+         First := First + Process_Size;
+      end loop;
+      return Sum;
+   end Run_Xor_Many_Classic_Mod;
+
+   function Run_Xor_Many_Classic_Counter (Data : Bytes) return U64 is
+      First : Length := Data'First;
+      Sum   : U64 := 0;
+   begin
+      while Data'Last - First >= Process_Size - 1 loop
+         Parse_Xor_Many_Classic_Counter (Data, First, Process_Target);
+         Sum := Process_Mix (Sum);
+         First := First + Process_Size;
+      end loop;
+      return Sum;
+   end Run_Xor_Many_Classic_Counter;
+
+   function Run_Rotate_Kaitai (Data : Bytes) return U64 is
+      First : Length := Data'First;
+      Sum   : U64 := 0;
+   begin
+      while Data'Last - First >= Process_Size - 1 loop
+         Parse_Rotate_Kaitai (Data, First, Process_Target);
+         Sum := Process_Mix (Sum);
+         First := First + Process_Size;
+      end loop;
+      return Sum;
+   end Run_Rotate_Kaitai;
+
+   function Run_Rotate_Classic (Data : Bytes) return U64 is
+      First : Length := Data'First;
+      Sum   : U64 := 0;
+   begin
+      while Data'Last - First >= Process_Size - 1 loop
+         Parse_Rotate_Classic (Data, First, Process_Target);
+         Sum := Process_Mix (Sum);
+         First := First + Process_Size;
+      end loop;
+      return Sum;
+   end Run_Rotate_Classic;
 
 end Stream_Runs;

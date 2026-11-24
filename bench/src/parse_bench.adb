@@ -2,10 +2,11 @@
 --
 --  Holds operations of the library against hand-written code that does the
 --  same job on the buffer directly: zero-terminated strings, "contents",
---  substreams, and the local copy of the stream in small nested types.  It
---  prints the median time per record in nanoseconds and a checksum.
---  Variants of one group read the same data and must agree on the checksum;
---  if they do not, the program says so and fails.
+--  substreams, processing of whole records, and the local copy of the stream
+--  in nested types and in records of few or many fields.  It prints the
+--  median time per record in nanoseconds and a checksum.  Variants of one
+--  group read the same data and must agree on the checksum; if they do not,
+--  the program says so and fails.
 --
 --  The optional variant argument restricts the run to one variant; "none"
 --  only generates the input.  It is meant for counting instructions with
@@ -35,33 +36,106 @@ procedure Parse_Bench is
       Substream_Classic_V,
       Nested_Local_V,
       Nested_Outer_Only_V,
-      Nested_Direct_V);
+      Nested_Direct_V,
+      Fields1_Local_V,
+      Fields1_Direct_V,
+      Fields2_Local_V,
+      Fields2_Direct_V,
+      Fields3_Local_V,
+      Fields3_Direct_V,
+      Fields4_Local_V,
+      Fields4_Direct_V,
+      Fields8_Local_V,
+      Fields8_Direct_V,
+      Calls_Both_Local_V,
+      Calls_Inner_Local_V,
+      Calls_Direct_V,
+      Kaitai_Xor_One_V,
+      Xor_One_Classic_V,
+      Kaitai_Xor_Many_V,
+      Xor_Many_Classic_Mod_V,
+      Xor_Many_Classic_Counter_V,
+      Kaitai_Rotate_V,
+      Rotate_Classic_V);
 
-   type Group is (Term_G, Contents_G, Substream_G, Nested_G);
+   type Group is
+     (Term_G,
+      Contents_G,
+      Substream_G,
+      Nested_G,
+      Fields1_G,
+      Fields2_G,
+      Fields3_G,
+      Fields4_G,
+      Fields8_G,
+      Calls_G,
+      Xor_One_G,
+      Xor_Many_G,
+      Rotate_G);
 
    Groups : constant array (Variant) of Group :=
-     [Kaitai_Term_V       => Term_G,
-      Term_Classic_V      => Term_G,
-      Kaitai_Contents_V   => Contents_G,
-      Contents_Classic_V  => Contents_G,
-      Kaitai_Substream_V  => Substream_G,
-      Substream_Classic_V => Substream_G,
-      Nested_Local_V      => Nested_G,
-      Nested_Outer_Only_V => Nested_G,
-      Nested_Direct_V     => Nested_G];
+     [Kaitai_Term_V              => Term_G,
+      Term_Classic_V             => Term_G,
+      Kaitai_Contents_V          => Contents_G,
+      Contents_Classic_V         => Contents_G,
+      Kaitai_Substream_V         => Substream_G,
+      Substream_Classic_V        => Substream_G,
+      Nested_Local_V             => Nested_G,
+      Nested_Outer_Only_V        => Nested_G,
+      Nested_Direct_V            => Nested_G,
+      Fields1_Local_V            => Fields1_G,
+      Fields1_Direct_V           => Fields1_G,
+      Fields2_Local_V            => Fields2_G,
+      Fields2_Direct_V           => Fields2_G,
+      Fields3_Local_V            => Fields3_G,
+      Fields3_Direct_V           => Fields3_G,
+      Fields4_Local_V            => Fields4_G,
+      Fields4_Direct_V           => Fields4_G,
+      Fields8_Local_V            => Fields8_G,
+      Fields8_Direct_V           => Fields8_G,
+      Calls_Both_Local_V         => Calls_G,
+      Calls_Inner_Local_V        => Calls_G,
+      Calls_Direct_V             => Calls_G,
+      Kaitai_Xor_One_V           => Xor_One_G,
+      Xor_One_Classic_V          => Xor_One_G,
+      Kaitai_Xor_Many_V          => Xor_Many_G,
+      Xor_Many_Classic_Mod_V     => Xor_Many_G,
+      Xor_Many_Classic_Counter_V => Xor_Many_G,
+      Kaitai_Rotate_V            => Rotate_G,
+      Rotate_Classic_V           => Rotate_G];
 
-   subtype Name is String (1 .. 17);
+   subtype Name is String (1 .. 24);
 
    Names : constant array (Variant) of Name :=
-     ["kaitai_term      ",
-      "term_classic     ",
-      "kaitai_contents  ",
-      "contents_classic ",
-      "kaitai_substream ",
-      "substream_classic",
-      "nested_local     ",
-      "nested_outer_only",
-      "nested_direct    "];
+     ["kaitai_term             ",
+      "term_classic            ",
+      "kaitai_contents         ",
+      "contents_classic        ",
+      "kaitai_substream        ",
+      "substream_classic       ",
+      "nested_local            ",
+      "nested_outer_only       ",
+      "nested_direct           ",
+      "fields1_local           ",
+      "fields1_direct          ",
+      "fields2_local           ",
+      "fields2_direct          ",
+      "fields3_local           ",
+      "fields3_direct          ",
+      "fields4_local           ",
+      "fields4_direct          ",
+      "fields8_local           ",
+      "fields8_direct          ",
+      "calls_both_local        ",
+      "calls_inner_local       ",
+      "calls_direct            ",
+      "kaitai_xor_one          ",
+      "xor_one_classic         ",
+      "kaitai_xor_many         ",
+      "xor_many_classic_mod    ",
+      "xor_many_classic_counter",
+      "kaitai_rotate           ",
+      "rotate_classic          "];
 
    Failed : Boolean := False;
 
@@ -85,10 +159,14 @@ begin
       Contents       : constant Bytes_Access := new Bytes (1 .. Length (Records) * Bench_Data.Contents_Record_Size);
       Substream      : constant Bytes_Access := new Bytes (1 .. Length (Records) * Bench_Data.Substream_Record_Max);
       Nested         : constant Bytes_Access := new Bytes (1 .. Length (Records) * Bench_Data.Nested_Record_Size);
+      Fields         : constant Bytes_Access := new Bytes (1 .. Length (Records) * Bench_Data.Fields_Record_Max);
+      Process        : constant Bytes_Access := new Bytes (1 .. Length (Records) * Bench_Data.Process_Record_Size);
       Term_Used      : Length;
       Contents_Used  : Length;
       Substream_Used : Length;
       Nested_Used    : Length;
+      Fields_Used    : Length;
+      Process_Used   : Length;
 
       Times : array (Variant) of Samples (1 .. Reps) := [others => [others => 0.0]];
       Sums  : array (Variant) of U64 := [others => 0];
@@ -98,6 +176,8 @@ begin
       Bench_Data.Fill_Contents (Records, Contents.all, Contents_Used);
       Bench_Data.Fill_Substream (Records, Substream.all, Substream_Used);
       Bench_Data.Fill_Nested (Records, Nested.all, Nested_Used);
+      Bench_Data.Fill_Fields (Records, Fields.all, Fields_Used);
+      Bench_Data.Fill_Process (Records, Process.all, Process_Used);
 
       --  Interleave the variants so that drift affects all of them alike
       for R in 1 .. Reps loop
@@ -106,15 +186,35 @@ begin
                Watch := Start;
                Sums (V) :=
                  (case V is
-                    when Kaitai_Term_V       => Run_Term_Kaitai (Term (1 .. Term_Used)),
-                    when Term_Classic_V      => Run_Term_Classic (Term (1 .. Term_Used)),
-                    when Kaitai_Contents_V   => Run_Contents_Kaitai (Contents (1 .. Contents_Used)),
-                    when Contents_Classic_V  => Run_Contents_Classic (Contents (1 .. Contents_Used)),
-                    when Kaitai_Substream_V  => Run_Substream_Kaitai (Substream (1 .. Substream_Used)),
-                    when Substream_Classic_V => Run_Substream_Classic (Substream (1 .. Substream_Used)),
-                    when Nested_Local_V      => Run_Nested_Local (Nested (1 .. Nested_Used)),
-                    when Nested_Outer_Only_V => Run_Nested_Outer_Only (Nested (1 .. Nested_Used)),
-                    when Nested_Direct_V     => Run_Nested_Direct (Nested (1 .. Nested_Used)));
+                    when Kaitai_Term_V              => Run_Term_Kaitai (Term (1 .. Term_Used)),
+                    when Term_Classic_V             => Run_Term_Classic (Term (1 .. Term_Used)),
+                    when Kaitai_Contents_V          => Run_Contents_Kaitai (Contents (1 .. Contents_Used)),
+                    when Contents_Classic_V         => Run_Contents_Classic (Contents (1 .. Contents_Used)),
+                    when Kaitai_Substream_V         => Run_Substream_Kaitai (Substream (1 .. Substream_Used)),
+                    when Substream_Classic_V        => Run_Substream_Classic (Substream (1 .. Substream_Used)),
+                    when Nested_Local_V             => Run_Nested_Local (Nested (1 .. Nested_Used)),
+                    when Nested_Outer_Only_V        => Run_Nested_Outer_Only (Nested (1 .. Nested_Used)),
+                    when Nested_Direct_V            => Run_Nested_Direct (Nested (1 .. Nested_Used)),
+                    when Fields1_Local_V            => Run_Fields1_Local (Fields (1 .. 1 * Length (Records))),
+                    when Fields1_Direct_V           => Run_Fields1_Direct (Fields (1 .. 1 * Length (Records))),
+                    when Fields2_Local_V            => Run_Fields2_Local (Fields (1 .. 2 * Length (Records))),
+                    when Fields2_Direct_V           => Run_Fields2_Direct (Fields (1 .. 2 * Length (Records))),
+                    when Fields3_Local_V            => Run_Fields3_Local (Fields (1 .. 3 * Length (Records))),
+                    when Fields3_Direct_V           => Run_Fields3_Direct (Fields (1 .. 3 * Length (Records))),
+                    when Fields4_Local_V            => Run_Fields4_Local (Fields (1 .. 4 * Length (Records))),
+                    when Fields4_Direct_V           => Run_Fields4_Direct (Fields (1 .. 4 * Length (Records))),
+                    when Fields8_Local_V            => Run_Fields8_Local (Fields (1 .. 8 * Length (Records))),
+                    when Fields8_Direct_V           => Run_Fields8_Direct (Fields (1 .. 8 * Length (Records))),
+                    when Calls_Both_Local_V         => Run_Calls_Both_Local (Fields (1 .. Fields_Used)),
+                    when Calls_Inner_Local_V        => Run_Calls_Inner_Local (Fields (1 .. Fields_Used)),
+                    when Calls_Direct_V             => Run_Calls_Direct (Fields (1 .. Fields_Used)),
+                    when Kaitai_Xor_One_V           => Run_Xor_One_Kaitai (Process (1 .. Process_Used)),
+                    when Xor_One_Classic_V          => Run_Xor_One_Classic (Process (1 .. Process_Used)),
+                    when Kaitai_Xor_Many_V          => Run_Xor_Many_Kaitai (Process (1 .. Process_Used)),
+                    when Xor_Many_Classic_Mod_V     => Run_Xor_Many_Classic_Mod (Process (1 .. Process_Used)),
+                    when Xor_Many_Classic_Counter_V => Run_Xor_Many_Classic_Counter (Process (1 .. Process_Used)),
+                    when Kaitai_Rotate_V            => Run_Rotate_Kaitai (Process (1 .. Process_Used)),
+                    when Rotate_Classic_V           => Run_Rotate_Classic (Process (1 .. Process_Used)));
                Times (V) (R) := Elapsed_NS (Watch) / Long_Float (Records);
             end if;
          end loop;

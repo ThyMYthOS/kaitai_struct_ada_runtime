@@ -26,6 +26,19 @@ package Bench_Data is
    --  Records of four u1: 4 bytes
    Nested_Record_Size : constant := 4;
 
+   --  Records * 8 random bytes for the benchmarks of fields of u1 and of
+   --  calls of nested parsers, which use as many of them as they need
+   Fields_Record_Max : constant := 8;
+
+   --  Records * 64 random bytes, to be processed in blocks of that size
+   Process_Record_Size : constant := 64;
+
+   --  The key of the xor_many processing
+   Xor_Key : constant Bytes := [16#11#, 16#22#, 16#33#, 16#44#, 16#55#];
+
+   procedure Fill_Fields (Records : Positive; Buffer : out Bytes; Used : out Length);
+   procedure Fill_Process (Records : Positive; Buffer : out Bytes; Used : out Length);
+
    procedure Fill_Term (Records : Positive; Buffer : out Bytes; Used : out Length);
    procedure Fill_Contents (Records : Positive; Buffer : out Bytes; Used : out Length);
    procedure Fill_Substream (Records : Positive; Buffer : out Bytes; Used : out Length);

@@ -68,7 +68,29 @@ project Kaitai_Bench_Target is
       "target_arith_guarded.adb",
       "target_arith_guarded_where_needed.adb",
       "target_arith_checked.adb",
-      "target_arith_flagged.adb");
+      "target_arith_flagged.adb",
+      "target_none_fields.adb",
+      "target_none_process.adb",
+      "target_fields1_local.adb",
+      "target_fields1_direct.adb",
+      "target_fields2_local.adb",
+      "target_fields2_direct.adb",
+      "target_fields3_local.adb",
+      "target_fields3_direct.adb",
+      "target_fields4_local.adb",
+      "target_fields4_direct.adb",
+      "target_fields8_local.adb",
+      "target_fields8_direct.adb",
+      "target_calls_both_local.adb",
+      "target_calls_inner_local.adb",
+      "target_calls_direct.adb",
+      "target_kaitai_xor_one.adb",
+      "target_xor_one_classic.adb",
+      "target_kaitai_xor_many.adb",
+      "target_xor_many_classic_mod.adb",
+      "target_xor_many_classic_counter.adb",
+      "target_kaitai_rotate.adb",
+      "target_rotate_classic.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use Switches;

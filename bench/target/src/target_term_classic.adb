@@ -8,7 +8,7 @@ procedure Target_Term_Classic is
       Used : Length;
    begin
       Target_Data.Fill_Term (Used);
-      return Stream_Runs.Run_Term_Classic (Target_Data.Term_Buffer (1 .. Used));
+      return Stream_Runs.Run_Term_Classic (Target_Data.Work_Buffer (1 .. Used));
    end Parse;
 
    procedure Run is new Target_Harness (Parse);

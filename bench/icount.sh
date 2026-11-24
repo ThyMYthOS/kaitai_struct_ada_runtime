@@ -52,9 +52,14 @@ for mode in checked inlined proven; do
    echo "-- mode $mode"
    base=$(count ./bin/$mode/parse_bench "$RECORDS" 1 none)
    for variant in kaitai_term term_classic kaitai_contents contents_classic kaitai_substream substream_classic \
-         nested_local nested_outer_only nested_direct; do
+         nested_local nested_outer_only nested_direct \
+         fields1_local fields1_direct fields2_local fields2_direct \
+         fields3_local fields3_direct fields4_local fields4_direct \
+         fields8_local fields8_direct calls_both_local calls_inner_local \
+         calls_direct kaitai_xor_one xor_one_classic kaitai_xor_many \
+         xor_many_classic_mod xor_many_classic_counter kaitai_rotate rotate_classic; do
       total=$(count ./bin/$mode/parse_bench "$RECORDS" 1 $variant)
-      printf "%-18s%s\n" $variant "$(per "$total" "$base" "$RECORDS")"
+      printf "%-26s%s\n" $variant "$(per "$total" "$base" "$RECORDS")"
    done
 done
 

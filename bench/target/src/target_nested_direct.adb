@@ -8,7 +8,7 @@ procedure Target_Nested_Direct is
       Used : Length;
    begin
       Target_Data.Fill_Nested (Used);
-      return Stream_Runs.Run_Nested_Direct (Target_Data.Nested_Buffer (1 .. Used));
+      return Stream_Runs.Run_Nested_Direct (Target_Data.Work_Buffer (1 .. Used));
    end Parse;
 
    procedure Run is new Target_Harness (Parse);

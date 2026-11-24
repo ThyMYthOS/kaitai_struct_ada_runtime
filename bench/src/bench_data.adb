@@ -97,4 +97,29 @@ package body Bench_Data is
       Used := Pos - 1;
    end Fill_Nested;
 
+   --  Count random bytes
+   procedure Fill_Random (Count : Length; Buffer : out Bytes) is
+      State : U32 := Initial_State;
+      Value : U32 := 0;
+   begin
+      for I in 0 .. Count - 1 loop
+         if I mod 4 = 0 then
+            Next (State, Value);
+         end if;
+         Buffer (1 + I) := U8 (Shift_Right (Value, Natural (I mod 4) * 8) and 16#FF#);
+      end loop;
+   end Fill_Random;
+
+   procedure Fill_Fields (Records : Positive; Buffer : out Bytes; Used : out Length) is
+   begin
+      Used := Length (Records) * Fields_Record_Max;
+      Fill_Random (Used, Buffer);
+   end Fill_Fields;
+
+   procedure Fill_Process (Records : Positive; Buffer : out Bytes; Used : out Length) is
+   begin
+      Used := Length (Records) * Process_Record_Size;
+      Fill_Random (Used, Buffer);
+   end Fill_Process;
+
 end Bench_Data;

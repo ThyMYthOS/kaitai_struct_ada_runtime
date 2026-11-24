@@ -1,0 +1,87 @@
+with "kaitai_style.gpr";
+
+--  The Kaitai Struct runtime library.
+--
+--  KAITAI_STRUCT_CHECKS
+--     "enabled"  run-time checks are compiled in (default)
+--     "proven"   run-time checks are left out.  All checks of this library
+--                are proven absent with GNATprove, so this is safe for the
+--                library itself; code using it needs the same guarantee.
+--
+--  KAITAI_STRUCT_CONTRACTS
+--     "off"      contracts are not executed (default)
+--     "on"       preconditions and postconditions are checked at run time,
+--                for testing
+--
+--  KAITAI_STRUCT_RESTRICTIONS
+--     "off"      (default)
+--     "on"       compile with the restrictions of kaitai_struct.adc, to
+--                check that the library keeps to what a light run-time
+--                library offers.  The restrictions hold for the whole
+--                program, so this is not meant for building applications.
+--
+--  KAITAI_STRUCT_SUBDIR
+--     Subdirectory for objects and the library.  A project that builds for
+--     another target or run-time library sets it to keep the builds apart.
+library project Kaitai_Struct is
+
+   type Checks_Type is ("enabled", "proven");
+   Checks : Checks_Type := external ("KAITAI_STRUCT_CHECKS", "enabled");
+
+   type Switch_Type is ("off", "on");
+   Contracts : Switch_Type := external ("KAITAI_STRUCT_CONTRACTS", "off");
+   Restrictions : Switch_Type := external ("KAITAI_STRUCT_RESTRICTIONS", "off");
+
+   Subdir := external ("KAITAI_STRUCT_SUBDIR", "native") & "/" & Checks & "-" & Contracts & "-" & Restrictions;
+
+   --  -gnatn: the read operations are small and marked Inline.  Code using
+   --  the library needs the switch as well; without it a parser takes 50 to
+   --  70 percent more instructions.
+   --
+   --  -gnatw.X: when the library is built for a light run-time library with
+   --  checks enabled, GNAT would warn at every check that a failure calls
+   --  the last chance handler.  That is the intended behaviour there.
+   Switches := ("-O2", "-g", "-gnat2012", "-gnatn", "-gnatwa", "-gnatw.X") & Kaitai_Style.Style_Switches;
+
+   case Checks is
+      when "enabled" =>
+         null;
+
+      when "proven" =>
+         Switches := Switches & ("-gnatp");
+   end case;
+
+   case Contracts is
+      when "off" =>
+         null;
+
+      when "on" =>
+         Switches := Switches & ("-gnata");
+   end case;
+
+   for Library_Name use "kaitai_struct";
+   for Library_Kind use external ("KAITAI_STRUCT_LIBRARY_TYPE", external ("LIBRARY_TYPE", "static"));
+   for Source_Dirs use ("src/");
+   for Object_Dir use "obj/" & Subdir;
+   for Library_Dir use "lib/" & Subdir;
+   for Create_Missing_Dirs use "True";
+
+   package Compiler is
+      for Default_Switches ("Ada") use Switches;
+
+      case Restrictions is
+         when "off" =>
+            null;
+
+         when "on" =>
+            for Local_Configuration_Pragmas use "kaitai_struct.adc";
+      end case;
+   end Compiler;
+
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=1", "-j0", "--checks-as-errors=on");
+   end Prove;
+
+   package Format renames Kaitai_Style.Format;
+
+end Kaitai_Struct;

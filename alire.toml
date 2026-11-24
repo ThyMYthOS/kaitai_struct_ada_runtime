@@ -1,0 +1,10 @@
+name = "kaitai_struct"
+description = "Kaitai Struct runtime library for Ada and SPARK"
+version = "0.1.0-dev"
+
+authors = ["Manuel Stahl"]
+maintainers = ["Manuel Stahl <thymythos@googlemail.com>"]
+licenses = "MIT"
+tags = ["kaitai", "parser", "binary", "spark", "embedded"]
+
+project-files = ["kaitai_struct.gpr"]

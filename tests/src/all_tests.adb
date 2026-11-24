@@ -5,6 +5,7 @@ with Decoding_Tests;
 with Examples_Tests;
 with Processing_Tests;
 with Sample_Parser_Tests;
+with Showcase_Tests;
 with Streams_Tests;
 with Strings_Tests;
 with Substreams_Tests;
@@ -22,5 +23,6 @@ begin
    Arithmetic_Tests.Run;
    Sample_Parser_Tests.Run;
    Examples_Tests.Run;
+   Showcase_Tests.Run;
    Test_Support.Summary;
 end All_Tests;

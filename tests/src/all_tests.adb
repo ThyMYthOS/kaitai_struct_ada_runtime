@@ -6,6 +6,7 @@ with Examples_Tests;
 with Processing_Tests;
 with Sample_Parser_Tests;
 with Streams_Tests;
+with Strings_Tests;
 with Substreams_Tests;
 with Test_Support;
 
@@ -15,6 +16,7 @@ begin
    Streams_Tests.Run;
    Bits_Tests.Run;
    Byte_Arrays_Tests.Run;
+   Strings_Tests.Run;
    Substreams_Tests.Run;
    Processing_Tests.Run;
    Arithmetic_Tests.Run;

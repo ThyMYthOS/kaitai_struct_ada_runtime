@@ -49,6 +49,20 @@ is
    is (if Value >= U64 (Length'Last) then Length'Last else Length (Value))
    with Inline;
 
+   --  A length that is the value of an expression.  A negative value is
+   --  mapped like one that is too large, so that the read fails.  This has
+   --  a name of its own because a literal would fit both it and To_Length.
+   function To_Size (Value : S64) return Length
+   is (if Value < 0 or else U64 (Value) >= U64 (Length'Last) then Length'Last else Length (Value))
+   with Inline;
+
+   --  A number of repetitions that is the value of an expression.  A
+   --  negative value means none, as in the other targets, where the loop
+   --  simply does not run.
+   function To_Count (Value : S64) return Length
+   is (if Value <= 0 then 0 elsif U64 (Value) >= U64 (Length'Last) then Length'Last else Length (Value))
+   with Inline;
+
    --  The bytes First .. Last of a buffer; empty if Last = First - 1.  A
    --  slice refers to data without copying it and is only meaningful
    --  together with the buffer it was taken from.

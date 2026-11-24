@@ -168,8 +168,72 @@ package body Substreams_Tests is
       Check (Status (S) = Validation_Expr, "join keeps the first failure");
    end Test_Substream;
 
+   procedure Test_Elements is
+      S    : Stream := Open (Data);
+      From : Stream;
+      D    : Slice;
+      V    : U8;
+   begin
+      Group ("Streams elements of a fixed size");
+      Read_Elements (S, Count => 2, Element_Size => 3, Data => D);
+      Check (OK (S) and then D = (First => 5, Last => 10) and then Pos (S) = 6, "two elements of three bytes");
+      Read_Elements (S, Count => 0, Element_Size => 3, Data => D);
+      Check (OK (S) and then Is_Empty (D) and then D.First = 11 and then Pos (S) = 6, "no element");
+      Read_Elements (S, Count => 4, Element_Size => 1, Data => D);
+      Check (OK (S) and then D = (First => 11, Last => 14) and then Is_EOF (S), "exactly what is left");
+      Read_Elements (S, Count => 1, Element_Size => 1, Data => D);
+      Check (Status (S) = End_Of_Stream and then Is_Empty (D), "one more than is left");
+
+      S := Open (Data);
+      Read_Elements (S, Count => 3, Element_Size => 4, Data => D);
+      Check (Status (S) = End_Of_Stream and then Pos (S) = 0, "the last element is incomplete");
+      S := Open (Data);
+      Read_Elements (S, Count => Length'Last, Element_Size => Length'Last, Data => D);
+      Check (Status (S) = End_Of_Stream and then Is_Empty (D), "a count and a size beyond every buffer");
+      S := Open (Data);
+      Read_Elements (S, Count => Length'Last / 2 + 1, Element_Size => 2, Data => D);
+      Check (Status (S) = End_Of_Stream and then Is_Empty (D), "a product that does not fit a length");
+
+      S := Open (Data);
+      Read_Elements_Full (S, Element_Size => 5, Data => D);
+      Check (OK (S) and then D = (First => 5, Last => 14) and then Is_EOF (S), "all that is left, in whole elements");
+      Read_Elements_Full (S, Element_Size => 5, Data => D);
+      Check (OK (S) and then Is_Empty (D), "nothing left is no element");
+      S := Open (Data);
+      Read_Elements_Full (S, Element_Size => 3, Data => D);
+      Check (Status (S) = End_Of_Stream and then Is_Empty (D) and then Pos (S) = 0, "the rest is no whole element");
+      S := Open (Data);
+      Skip (S, 4);
+      Read_Elements_Full (S, Element_Size => 2, Data => D);
+      Check (OK (S) and then D = (First => 9, Last => 14), "from the current position");
+      Read_Elements_Full (S, Element_Size => 2, Data => D);
+      Fail (S, Validation_Expr);
+      Read_Elements_Full (S, Element_Size => 1, Data => D);
+      Check (Status (S) = Validation_Expr and then Is_Empty (D), "after a failure nothing happens");
+
+      Group ("Streams bytes between two positions");
+      S := Open (Data);
+      Skip (S, 2);
+      From := S;
+      Check (Is_Empty (Between (From, S)) and then Between (From, S).First = 7, "nothing read yet");
+      Read_U1 (Data, S, V);
+      Read_U1 (Data, S, V);
+      Check (Between (From, S) = (First => 7, Last => 8) and then V = 124, "two bytes read");
+      Skip (S, 6);
+      Check (Between (From, S) = (First => 7, Last => 14), "up to the end");
+
+      Group ("Sizes and counts from expressions");
+      Check (To_Size (0) = 0 and then To_Size (17) = 17, "a size");
+      Check (To_Size (-1) = Length'Last and then To_Size (S64'First) = Length'Last, "a negative size cannot be read");
+      Check (To_Size (S64'Last) = Length'Last, "the largest size cannot be read either");
+      Check (To_Count (0) = 0 and then To_Count (17) = 17, "a count");
+      Check (To_Count (-1) = 0 and then To_Count (S64'First) = 0, "a negative count means no element");
+      Check (To_Count (S64'Last) = Length'Last, "the largest count");
+   end Test_Elements;
+
    procedure Run is
    begin
+      Test_Elements;
       Test_Term;
       Test_Term_Multi;
       Test_Contents;

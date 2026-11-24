@@ -370,6 +370,30 @@ is
       end if;
    end Read_Bytes_Term_Multi;
 
+   procedure Read_Elements (S : in out Stream; Count : Length; Element_Size : Length; Data : out Slice) is
+   begin
+      if S.State = Success and then Count <= (S.Last - S.Next + 1) / Element_Size then
+         Data := (First => S.Next, Last => S.Next + Count * Element_Size - 1);
+         S.Unread := 0;
+         S.Next := Data.Last + 1;
+      else
+         Data := (First => 1, Last => 0);
+         Run_Out (S);
+      end if;
+   end Read_Elements;
+
+   procedure Read_Elements_Full (S : in out Stream; Element_Size : Length; Data : out Slice) is
+   begin
+      if S.State = Success and then (S.Last - S.Next + 1) mod Element_Size = 0 then
+         Data := (First => S.Next, Last => S.Last);
+         S.Unread := 0;
+         S.Next := S.Last + 1;
+      else
+         Data := (First => 1, Last => 0);
+         Run_Out (S);
+      end if;
+   end Read_Elements_Full;
+
    procedure Read_Contents (Buffer : Bytes; S : in out Stream; Expected : Bytes) is
       Data : Slice;
    begin

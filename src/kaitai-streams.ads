@@ -97,6 +97,17 @@ is
                    and then Status (After) = (if OK (Before) then End_Of_Stream else Status (Before))))
    with Ghost;
 
+   --  What every parser guarantees for the stream it reads from: it covers
+   --  the same bytes as before, its position has not moved back, and a
+   --  stream that had failed has still failed.  The parsers of nested types
+   --  compose through this.
+   function Advanced (Before, After : Stream) return Boolean
+   is (Same_Window (Before, After)
+       and then Pos (Before) <= Pos (After)
+       and then Next_Index (Before) <= Next_Index (After)
+       and then (if not OK (Before) then not OK (After)))
+   with Ghost;
+
    ---------------------------------------------------------------------
    --  Opening and positioning
    ---------------------------------------------------------------------
@@ -551,6 +562,50 @@ is
                    and then Bits_Left (S) = Bits_Left (S'Old)
                    and then Status (S) = (if OK (S'Old) then End_Of_Stream else Status (S'Old)));
 
+   --  The bytes that were read between two states of a stream
+   function Between (From, To : Stream) return Slice
+   with
+     Pre  => Same_Window (From, To) and then Next_Index (From) <= Next_Index (To),
+     Post =>
+       Between'Result.First = Next_Index (From)
+       and then Between'Result.Last = Next_Index (To) - 1
+       and then Covers (From, Between'Result);
+
+   --  Read Count elements of Element_Size bytes each, which is how a
+   --  repetition of a type of fixed size is read: the elements stay in the
+   --  buffer and are decoded when asked for.
+   procedure Read_Elements (S : in out Stream; Count : Length; Element_Size : Length; Data : out Slice)
+   with
+     Pre  => Element_Size > 0,
+     Post =>
+       Same_Window (S'Old, S)
+       and then Covers (S, Data)
+       and then (if not OK (S'Old) then not OK (S))
+       and then Next_Index (S'Old) <= Next_Index (S)
+       and then Pos (S'Old) <= Pos (S)
+       and then (if OK (S)
+                 then
+                   Data.First = Next_Index (S'Old)
+                   and then Size (Data) mod Element_Size = 0
+                   and then Size (Data) / Element_Size = Count
+                   and then Next_Index (S) = Data.Last + 1
+                 else Is_Empty (Data) and then Next_Index (S) = Next_Index (S'Old));
+
+   --  Read elements of Element_Size bytes each up to the end of the
+   --  stream.  Fails with End_Of_Stream if the last one is incomplete.
+   procedure Read_Elements_Full (S : in out Stream; Element_Size : Length; Data : out Slice)
+   with
+     Pre  => Element_Size > 0,
+     Post =>
+       Same_Window (S'Old, S)
+       and then Covers (S, Data)
+       and then (if not OK (S'Old) then not OK (S))
+       and then Next_Index (S'Old) <= Next_Index (S)
+       and then Pos (S'Old) <= Pos (S)
+       and then (if OK (S)
+                 then Data.First = Next_Index (S'Old) and then Size (Data) mod Element_Size = 0 and then Is_EOF (S)
+                 else Is_Empty (Data) and then Next_Index (S) = Next_Index (S'Old));
+
    --  Read as many bytes as Expected has and fail with Validation_Not_Equal
    --  if they differ from it.  This is how a "contents" attribute is read.
    procedure Read_Contents (Buffer : Bytes; S : in out Stream; Expected : Bytes)
@@ -667,5 +722,8 @@ private
 
    function Covers (S : Stream; Item : Slice) return Boolean
    is (Is_Empty (Item) or else (Item.First >= S.First and then Item.Last <= S.Last));
+
+   function Between (From, To : Stream) return Slice
+   is (First => From.Next, Last => To.Next - 1);
 
 end Kaitai.Streams;

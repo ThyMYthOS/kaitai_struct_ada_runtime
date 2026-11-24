@@ -10,6 +10,7 @@ with Streams_Tests;
 with Strings_Tests;
 with Substreams_Tests;
 with Test_Support;
+with Zlib_Tests;
 
 procedure All_Tests is
 begin
@@ -20,6 +21,7 @@ begin
    Strings_Tests.Run;
    Substreams_Tests.Run;
    Processing_Tests.Run;
+   Zlib_Tests.Run;
    Arithmetic_Tests.Run;
    Sample_Parser_Tests.Run;
    Examples_Tests.Run;

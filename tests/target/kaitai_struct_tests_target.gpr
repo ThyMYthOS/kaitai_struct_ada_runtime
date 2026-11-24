@@ -13,7 +13,7 @@ project Kaitai_Struct_Tests_Target is
    for Target use "arm-eabi";
    for Runtime ("Ada") use RTS;
 
-   for Source_Dirs use ("src/", "../src/");
+   for Source_Dirs use ("src/", "../src/", "../../examples/**");
    for Object_Dir use "obj/" & RTS;
    for Create_Missing_Dirs use "True";
    for Exec_Dir use "bin/" & RTS;

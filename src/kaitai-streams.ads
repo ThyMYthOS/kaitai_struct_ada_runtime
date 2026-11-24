@@ -13,6 +13,7 @@
 --  operation on the stream does nothing.  It is therefore enough to look at
 --  OK before a decision that depends on values read, and at the end.
 
+with Kaitai.Bits;  use Kaitai.Bits;
 with Kaitai.Decoding;
 with Kaitai.Types; use Kaitai.Types;
 
@@ -44,13 +45,19 @@ is
    function Remaining (S : Stream) return Length
    is (Size (S) - Pos (S));
 
-   --  True if no byte is left to read
+   --  True if nothing is left to read: no byte, and no bit of a byte that a
+   --  bit field has begun.  This is "_io.eof" of the expression language.
    function Is_EOF (S : Stream) return Boolean
-   is (Remaining (S) = 0);
+   with Post => (if Is_EOF'Result then Remaining (S) = 0);
 
    --  Index in the buffer of the byte the next read starts at
    function Next_Index (S : Stream) return Length
    with Post => Next_Index'Result >= 1;
+
+   --  Number of bits that a bit field has left unread in the byte before
+   --  Next_Index.  It is zero unless the last read was that of a bit field.
+   function Bits_Left (S : Stream) return Bit_Remainder
+   with Post => (if Bits_Left'Result > 0 then Pos (S) > 0);
 
    --  True if the stream lies inside Buffer.  This holds for the buffer a
    --  stream was opened on and is required by every operation that takes
@@ -63,8 +70,8 @@ is
    with Post => (if Same_Window'Result then Size (Left) = Size (Right));
 
    --  What an attempt to consume Count bytes does to a stream: on success
-   --  the position moves on by Count, otherwise the stream fails and stays
-   --  where it was
+   --  the position moves on by Count and unread bits of a bit field are
+   --  dropped, otherwise the stream fails and stays as it was
    function Consumed (Before, After : Stream; Count : Length) return Boolean
    is (Same_Window (Before, After)
        and then (if OK (Before) and then Count <= Remaining (Before)
@@ -72,10 +79,12 @@ is
                    OK (After)
                    and then Pos (After) = Pos (Before) + Count
                    and then Next_Index (After) = Next_Index (Before) + Count
+                   and then Bits_Left (After) = 0
                  else
                    not OK (After)
                    and then Pos (After) = Pos (Before)
                    and then Next_Index (After) = Next_Index (Before)
+                   and then Bits_Left (After) = Bits_Left (Before)
                    and then Status (After) = (if OK (Before) then End_Of_Stream else Status (Before))))
    with Ghost;
 
@@ -86,10 +95,12 @@ is
    --  A stream over all of Buffer, positioned at its start
    function Open (Buffer : Bytes) return Stream
    with
+     Inline,
      Post =>
        Is_Valid (Open'Result, Buffer)
        and then OK (Open'Result)
        and then Pos (Open'Result) = 0
+       and then Bits_Left (Open'Result) = 0
        and then Size (Open'Result) = Buffer'Length;
 
    --  Move to the position To, counted from the start of the stream.  Fails
@@ -100,10 +111,11 @@ is
      Post =>
        Same_Window (S'Old, S)
        and then (if OK (S'Old) and then To <= Size (S'Old)
-                 then OK (S) and then Pos (S) = To
+                 then OK (S) and then Pos (S) = To and then Bits_Left (S) = 0
                  else
                    not OK (S)
                    and then Pos (S) = Pos (S'Old)
+                   and then Bits_Left (S) = Bits_Left (S'Old)
                    and then Status (S) = (if OK (S'Old) then End_Of_Stream else Status (S'Old)));
 
    --  Move on by Count bytes.  Fails with End_Of_Stream if fewer are left.
@@ -126,6 +138,7 @@ is
        and then not OK (S)
        and then Pos (S) = Pos (S'Old)
        and then Next_Index (S) = Next_Index (S'Old)
+       and then Bits_Left (S) = Bits_Left (S'Old)
        and then Status (S) = (if OK (S'Old) then Reason else Status (S'Old));
 
    ---------------------------------------------------------------------
@@ -357,6 +370,64 @@ is
                  else Value = 0);
 
    ---------------------------------------------------------------------
+   --  Bit fields
+   --
+   --  Integers of 1 to 64 bits that need not start or end at a byte
+   --  boundary.  A bit field continues where the previous one stopped.  Any
+   --  other read starts at the next byte boundary and drops the bits left
+   --  over; Align_To_Byte does that explicitly.
+   --
+   --  The two bit orders differ in which bits of a byte come first: the
+   --  most significant ones in big endian order, the least significant ones
+   --  in little endian order.  Mixing the orders within one byte is not
+   --  meaningful; align in between.
+   ---------------------------------------------------------------------
+
+   --  Drop the bits a bit field has left unread
+   procedure Align_To_Byte (S : in out Stream)
+   with
+     Inline,
+     Post =>
+       Same_Window (S'Old, S)
+       and then Status (S) = Status (S'Old)
+       and then Pos (S) = Pos (S'Old)
+       and then Next_Index (S) = Next_Index (S'Old)
+       and then Bits_Left (S) = 0;
+
+   --  What an attempt to read a bit field of Count bits does to a stream
+   function Consumed_Bits (Before, After : Stream; Count : Bit_Count) return Boolean
+   is (Same_Window (Before, After)
+       and then (if OK (Before) and then Bytes_Needed (Count, Bits_Left (Before)) <= Remaining (Before)
+                 then
+                   OK (After)
+                   and then Pos (After) = Pos (Before) + Bytes_Needed (Count, Bits_Left (Before))
+                   and then Bits_Left (After) = Left_After (Count, Bits_Left (Before))
+                 else
+                   not OK (After)
+                   and then Pos (After) = Pos (Before)
+                   and then Bits_Left (After) = Bits_Left (Before)
+                   and then Status (After) = (if OK (Before) then End_Of_Stream else Status (Before))))
+   with Ghost;
+
+   procedure Read_Bits_Int_Be (Buffer : Bytes; S : in out Stream; Count : Bit_Count; Value : out U64)
+   with
+     Inline,
+     Pre  => Is_Valid (S, Buffer),
+     Post =>
+       Consumed_Bits (S'Old, S, Count)
+       and then Is_Valid (S, Buffer)
+       and then (if OK (S) then Value <= Mask (Count) else Value = 0);
+
+   procedure Read_Bits_Int_Le (Buffer : Bytes; S : in out Stream; Count : Bit_Count; Value : out U64)
+   with
+     Inline,
+     Pre  => Is_Valid (S, Buffer),
+     Post =>
+       Consumed_Bits (S'Old, S, Count)
+       and then Is_Valid (S, Buffer)
+       and then (if OK (S) then Value <= Mask (Count) else Value = 0);
+
+   ---------------------------------------------------------------------
    --  Byte arrays
    --
    --  The data is not copied.  The result is the slice of the buffer that
@@ -380,8 +451,12 @@ is
        Same_Window (S'Old, S)
        and then Status (S) = Status (S'Old)
        and then (if OK (S)
-                 then Is_EOF (S) and then Data.First = Next_Index (S'Old) and then Size (Data) = Remaining (S'Old)
-                 else Pos (S) = Pos (S'Old) and then Is_Empty (Data));
+                 then
+                   Is_EOF (S)
+                   and then Bits_Left (S) = 0
+                   and then Data.First = Next_Index (S'Old)
+                   and then Size (Data) = Remaining (S'Old)
+                 else Pos (S) = Pos (S'Old) and then Bits_Left (S) = Bits_Left (S'Old) and then Is_Empty (Data));
 
    --  True if Item lies inside the bytes S covers.  Slices delivered by a
    --  stream do; together with Is_Valid this gives Within (Item, Buffer).
@@ -402,6 +477,10 @@ private
       Last  : Length := 0;
       Next  : Length := 1;
       State : Status_Kind := Success;
+
+      --  Bits of the byte at Next - 1 that a bit field has not read yet.
+      --  They are not kept here; they are taken from the buffer again.
+      Unread : Bit_Remainder := 0;
    end record
    with
      Predicate =>
@@ -409,7 +488,8 @@ private
        and then Stream.Last < Length'Last
        and then Stream.Last >= Stream.First - 1
        and then Stream.Next >= Stream.First
-       and then Stream.Next - 1 <= Stream.Last;
+       and then Stream.Next - 1 <= Stream.Last
+       and then (if Stream.Unread > 0 then Stream.Next > Stream.First);
 
    function OK (S : Stream) return Boolean
    is (S.State = Success);
@@ -425,6 +505,12 @@ private
 
    function Next_Index (S : Stream) return Length
    is (S.Next);
+
+   function Bits_Left (S : Stream) return Bit_Remainder
+   is (S.Unread);
+
+   function Is_EOF (S : Stream) return Boolean
+   is (S.Next > S.Last and then S.Unread = 0);
 
    function Is_Valid (S : Stream; Buffer : Bytes) return Boolean
    is (S.Last < S.First or else (S.First >= Buffer'First and then S.Last <= Buffer'Last));

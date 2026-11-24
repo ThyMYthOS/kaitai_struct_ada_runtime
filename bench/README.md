@@ -65,6 +65,29 @@ against the design it implements.
 The parsing loops are in `src/stream_runs.adb` and are shared with the target
 benchmark.
 
+## `parse_bench`: library operations against hand-written code
+
+Usage: `parse_bench [records] [repetitions] [variant]`. Holds operations of the
+library against code that does the same job directly on the buffer with a
+plain index, written the way a careful C programmer would. Each measurement
+models generated code: the parser of one record is a procedure that is not
+inlined, takes the buffer as `in` and the stream as `in out` parameter, and is
+called from a loop in `src/stream_runs.adb`, which also forms the checksum.
+Variants of one group read the same data and must agree on the checksum;
+`parse_bench` fails if they do not. `icount.sh` and `target/run.sh` report
+instructions per record, with the cost of generating the input taken off as
+with the stream designs. The input is made by `src/bench_data.adb`, which the
+target program uses as well.
+
+| Group | Records | Variants |
+|---|---|---|
+| `term` | two zero-terminated strings of 0 to 12 bytes, a `u2le` | `kaitai_term`: `Read_Bytes_Term`, `Read_U2le` on a local copy of the stream; `term_classic`: hand-written scan |
+| `contents` | 4 bytes magic, a `u4le` | `kaitai_contents`: `Read_Contents`; `contents_classic`: compares the bytes, then decodes |
+| `substream` | `u1` length N (4 to 16), N bytes of which a `u2le` and a `u1` are read | `kaitai_substream`: `Substream`, a parser of the body, `Join`; `substream_classic`: explicit bounds, a parser of the body |
+| `nested_copy` | 4 nested types of one `u1` each | `nested_local`: the parser of the record and that of the nested type copy the stream; `nested_outer_only`: only the parser of the record does; `nested_direct`: neither does |
+
+`scripts/check.sh bench` runs it over all variants.
+
 ## `target/`: the stream designs on a low-end target
 
 A crate of its own that cross-compiles the stream benchmark for an STM32F4

@@ -35,5 +35,19 @@ for rts in "${@:-light-stm32f4}"; do
          awk -v name=$variant -v total="$1" -v base="$base" -v n=$RECORDS -v sum="$2" \
             'BEGIN { printf "%-16s%10.1f   %s\n", name, (total - base) / n, sum }'
       done
+      # The programs of parse_bench: each group has a base of its own, which
+      # fills the buffer for the group and parses nothing
+      echo "-- parsing designs, instructions per record"
+      for group in "term kaitai_term term_classic" "contents kaitai_contents contents_classic" \
+         "substream kaitai_substream substream_classic" \
+         "nested nested_local nested_outer_only nested_direct"; do
+         set -- $(simulate "bin/$rts/$mode/target_none_${group%% *}")
+         base=$1
+         for variant in ${group#* }; do
+            set -- $(simulate "bin/$rts/$mode/target_$variant")
+            awk -v name=$variant -v total="$1" -v base="$base" -v n=$RECORDS -v sum="$2" \
+               'BEGIN { printf "%-18s%10.1f   %s\n", name, (total - base) / n, sum }'
+         done
+      done
    done
 done

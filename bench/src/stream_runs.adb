@@ -1,3 +1,4 @@
+with Bench_Data;
 with Bit_Variants;
 with Kaitai.Decoding;
 with Kaitai.Streams;
@@ -316,5 +317,381 @@ package body Stream_Runs is
       Parse_Kaitai_Bits_Le (Data, S, Sum);
       return Sum;
    end Run_Kaitai_Bits_Le;
+
+   ---------------------------------------------------------------------
+   --  Zero-terminated strings
+   ---------------------------------------------------------------------
+
+   type Term_Record is record
+      S1 : Slice;
+      S2 : Slice;
+      N  : U16 := 0;
+   end record;
+
+   function Term_Mix (Sum : U64; This : Term_Record) return U64
+   is (Sum * 31 + U64 (Size (This.S1)) + U64 (Size (This.S2)) + U64 (This.N))
+   with Inline_Always;
+
+   procedure Parse_Term_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; This : out Term_Record)
+   with No_Inline;
+
+   procedure Parse_Term_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; This : out Term_Record) is
+      use Kaitai.Streams;
+      L : Stream := S;
+   begin
+      Read_Bytes_Term (Data, L, 0, Include => False, Consume => True, EOS_Error => True, Data => This.S1);
+      Read_Bytes_Term (Data, L, 0, Include => False, Consume => True, EOS_Error => True, Data => This.S2);
+      Read_U2le (Data, L, This.N);
+      S := L;
+   end Parse_Term_Kaitai;
+
+   function Run_Term_Kaitai (Data : Bytes) return U64 is
+      S    : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      This : Term_Record;
+      Sum  : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Term_Kaitai (Data, S, This);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Term_Mix (Sum, This);
+      end loop;
+      return Sum;
+   end Run_Term_Kaitai;
+
+   procedure Parse_Term_Classic (Data : Bytes; Pos : in out Length; This : out Term_Record; OK : out Boolean)
+   with No_Inline;
+
+   procedure Parse_Term_Classic (Data : Bytes; Pos : in out Length; This : out Term_Record; OK : out Boolean) is
+      use Decoding;
+      I     : Length := Pos;
+      Start : Length;
+   begin
+      Start := I;
+      while I <= Data'Last and then Data (I) /= 0 loop
+         I := I + 1;
+      end loop;
+      if I > Data'Last then
+         OK := False;
+         return;
+      end if;
+      This.S1 := (First => Start, Last => I - 1);
+      I := I + 1;
+
+      Start := I;
+      while I <= Data'Last and then Data (I) /= 0 loop
+         I := I + 1;
+      end loop;
+      if I > Data'Last then
+         OK := False;
+         return;
+      end if;
+      This.S2 := (First => Start, Last => I - 1);
+      I := I + 1;
+
+      if Data'Last - I < 1 then
+         OK := False;
+         return;
+      end if;
+      This.N := U16_LE (Data, I);
+      Pos := I + 2;
+      OK := True;
+   end Parse_Term_Classic;
+
+   function Run_Term_Classic (Data : Bytes) return U64 is
+      Pos  : Length := Data'First;
+      This : Term_Record;
+      OK   : Boolean;
+      Sum  : U64 := 0;
+   begin
+      while Pos <= Data'Last loop
+         Parse_Term_Classic (Data, Pos, This, OK);
+         exit when not OK;
+         Sum := Term_Mix (Sum, This);
+      end loop;
+      return Sum;
+   end Run_Term_Classic;
+
+   ---------------------------------------------------------------------
+   --  Contents
+   ---------------------------------------------------------------------
+
+   procedure Parse_Contents_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; Value : out U32)
+   with No_Inline;
+
+   procedure Parse_Contents_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; Value : out U32) is
+      use Kaitai.Streams;
+      L : Stream := S;
+   begin
+      Read_Contents (Data, L, Bench_Data.Magic);
+      Read_U4le (Data, L, Value);
+      S := L;
+   end Parse_Contents_Kaitai;
+
+   function Run_Contents_Kaitai (Data : Bytes) return U64 is
+      S     : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      Value : U32;
+      Sum   : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Contents_Kaitai (Data, S, Value);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + U64 (Value);
+      end loop;
+      return Sum;
+   end Run_Contents_Kaitai;
+
+   procedure Parse_Contents_Classic (Data : Bytes; Pos : in out Length; Value : out U32; OK : out Boolean)
+   with No_Inline;
+
+   procedure Parse_Contents_Classic (Data : Bytes; Pos : in out Length; Value : out U32; OK : out Boolean) is
+      use Decoding;
+      I : constant Length := Pos;
+   begin
+      Value := 0;
+      if Data'Last - I < 7 then
+         OK := False;
+         return;
+      end if;
+      for K in Length range 0 .. 3 loop
+         if Data (I + K) /= Bench_Data.Magic (Bench_Data.Magic'First + K) then
+            OK := False;
+            return;
+         end if;
+      end loop;
+      Value := U32_LE (Data, I + 4);
+      Pos := I + 8;
+      OK := True;
+   end Parse_Contents_Classic;
+
+   function Run_Contents_Classic (Data : Bytes) return U64 is
+      Pos   : Length := Data'First;
+      Value : U32;
+      OK    : Boolean;
+      Sum   : U64 := 0;
+   begin
+      while Pos <= Data'Last loop
+         Parse_Contents_Classic (Data, Pos, Value, OK);
+         exit when not OK;
+         Sum := Sum * 31 + U64 (Value);
+      end loop;
+      return Sum;
+   end Run_Contents_Classic;
+
+   ---------------------------------------------------------------------
+   --  Substreams
+   ---------------------------------------------------------------------
+
+   procedure Parse_Body_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8)
+   with No_Inline;
+
+   procedure Parse_Body_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8) is
+      use Kaitai.Streams;
+      L : Stream := S;
+   begin
+      Read_U2le (Data, L, A);
+      Read_U1 (Data, L, B);
+      S := L;
+   end Parse_Body_Kaitai;
+
+   procedure Parse_Substream_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8)
+   with No_Inline;
+
+   procedure Parse_Substream_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8) is
+      use Kaitai.Streams;
+      L   : Stream := S;
+      N   : U8;
+      Sub : Stream;
+   begin
+      Read_U1 (Data, L, N);
+      Substream (Data, L, Length (N), Sub);
+      Parse_Body_Kaitai (Data, Sub, A, B);
+      Join (L, Sub);
+      S := L;
+   end Parse_Substream_Kaitai;
+
+   function Run_Substream_Kaitai (Data : Bytes) return U64 is
+      S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      A   : U16;
+      B   : U8;
+      Sum : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Substream_Kaitai (Data, S, A, B);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + U64 (A) + U64 (B);
+      end loop;
+      return Sum;
+   end Run_Substream_Kaitai;
+
+   --  The body occupies First .. Last of Data and is not read beyond
+   procedure Parse_Body_Classic (Data : Bytes; First, Last : Length; A : out U16; B : out U8; OK : out Boolean)
+   with No_Inline;
+
+   procedure Parse_Body_Classic (Data : Bytes; First, Last : Length; A : out U16; B : out U8; OK : out Boolean) is
+      use Decoding;
+   begin
+      if Last - First < 2 then
+         A := 0;
+         B := 0;
+         OK := False;
+         return;
+      end if;
+      A := U16_LE (Data, First);
+      B := Data (First + 2);
+      OK := True;
+   end Parse_Body_Classic;
+
+   procedure Parse_Substream_Classic (Data : Bytes; Pos : in out Length; A : out U16; B : out U8; OK : out Boolean)
+   with No_Inline;
+
+   procedure Parse_Substream_Classic (Data : Bytes; Pos : in out Length; A : out U16; B : out U8; OK : out Boolean) is
+      I : Length := Pos;
+      N : Length;
+   begin
+      N := Length (Data (I));
+      I := I + 1;
+      if Data'Last - I + 1 < N then
+         A := 0;
+         B := 0;
+         OK := False;
+         return;
+      end if;
+      Parse_Body_Classic (Data, I, I + N - 1, A, B, OK);
+      if OK then
+         Pos := I + N;
+      end if;
+   end Parse_Substream_Classic;
+
+   function Run_Substream_Classic (Data : Bytes) return U64 is
+      Pos : Length := Data'First;
+      A   : U16;
+      B   : U8;
+      OK  : Boolean;
+      Sum : U64 := 0;
+   begin
+      while Pos <= Data'Last loop
+         Parse_Substream_Classic (Data, Pos, A, B, OK);
+         exit when not OK;
+         Sum := Sum * 31 + U64 (A) + U64 (B);
+      end loop;
+      return Sum;
+   end Run_Substream_Classic;
+
+   ---------------------------------------------------------------------
+   --  Nested types
+   ---------------------------------------------------------------------
+
+   type Quad is record
+      A : U8;
+      B : U8;
+      C : U8;
+      D : U8;
+   end record;
+
+   function Quad_Mix (Sum : U64; This : Quad) return U64
+   is (Sum * 31 + U64 (This.A) + U64 (This.B) + U64 (This.C) + U64 (This.D))
+   with Inline_Always;
+
+   --  The nested type: a single u1
+   procedure Parse_Inner_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Value : out U8)
+   with No_Inline;
+
+   procedure Parse_Inner_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Value : out U8) is
+      use Kaitai.Streams;
+      L : Stream := S;
+   begin
+      Read_U1 (Data, L, Value);
+      S := L;
+   end Parse_Inner_Local;
+
+   procedure Parse_Inner_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; Value : out U8)
+   with No_Inline;
+
+   procedure Parse_Inner_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; Value : out U8) is
+   begin
+      Kaitai.Streams.Read_U1 (Data, S, Value);
+   end Parse_Inner_Direct;
+
+   --  The record: four nested types.  Parse_Outer_Local and
+   --  Parse_Outer_Only copy the stream, Parse_Outer_Direct does not; the
+   --  first calls the nested parser that copies, the other two the one that
+   --  does not.
+   procedure Parse_Outer_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; This : out Quad)
+   with No_Inline;
+
+   procedure Parse_Outer_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; This : out Quad) is
+      use Kaitai.Streams;
+      L : Stream := S;
+   begin
+      Parse_Inner_Local (Data, L, This.A);
+      Parse_Inner_Local (Data, L, This.B);
+      Parse_Inner_Local (Data, L, This.C);
+      Parse_Inner_Local (Data, L, This.D);
+      S := L;
+   end Parse_Outer_Local;
+
+   procedure Parse_Outer_Only (Data : Bytes; S : in out Kaitai.Streams.Stream; This : out Quad)
+   with No_Inline;
+
+   procedure Parse_Outer_Only (Data : Bytes; S : in out Kaitai.Streams.Stream; This : out Quad) is
+      use Kaitai.Streams;
+      L : Stream := S;
+   begin
+      Parse_Inner_Direct (Data, L, This.A);
+      Parse_Inner_Direct (Data, L, This.B);
+      Parse_Inner_Direct (Data, L, This.C);
+      Parse_Inner_Direct (Data, L, This.D);
+      S := L;
+   end Parse_Outer_Only;
+
+   procedure Parse_Outer_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; This : out Quad)
+   with No_Inline;
+
+   procedure Parse_Outer_Direct (Data : Bytes; S : in out Kaitai.Streams.Stream; This : out Quad) is
+   begin
+      Parse_Inner_Direct (Data, S, This.A);
+      Parse_Inner_Direct (Data, S, This.B);
+      Parse_Inner_Direct (Data, S, This.C);
+      Parse_Inner_Direct (Data, S, This.D);
+   end Parse_Outer_Direct;
+
+   function Run_Nested_Local (Data : Bytes) return U64 is
+      S    : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      This : Quad;
+      Sum  : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Outer_Local (Data, S, This);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Quad_Mix (Sum, This);
+      end loop;
+      return Sum;
+   end Run_Nested_Local;
+
+   function Run_Nested_Outer_Only (Data : Bytes) return U64 is
+      S    : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      This : Quad;
+      Sum  : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Outer_Only (Data, S, This);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Quad_Mix (Sum, This);
+      end loop;
+      return Sum;
+   end Run_Nested_Outer_Only;
+
+   function Run_Nested_Direct (Data : Bytes) return U64 is
+      S    : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      This : Quad;
+      Sum  : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Outer_Direct (Data, S, This);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Quad_Mix (Sum, This);
+      end loop;
+      return Sum;
+   end Run_Nested_Direct;
 
 end Stream_Runs;

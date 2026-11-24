@@ -47,6 +47,18 @@ for mode in checked inlined proven; do
 done
 
 echo
+echo "== parsing designs: instructions per record (the formats are described in bench/README.md)"
+for mode in checked inlined proven; do
+   echo "-- mode $mode"
+   base=$(count ./bin/$mode/parse_bench "$RECORDS" 1 none)
+   for variant in kaitai_term term_classic kaitai_contents contents_classic kaitai_substream substream_classic \
+         nested_local nested_outer_only nested_direct; do
+      total=$(count ./bin/$mode/parse_bench "$RECORDS" 1 $variant)
+      printf "%-18s%s\n" $variant "$(per "$total" "$base" "$RECORDS")"
+   done
+done
+
+echo
 echo "== memory strategies, $RECORDS records, payload 0..$MAX_PAYLOAD bytes"
 echo "   instructions per record: build, traverse; per access: pick; per record: teardown"
 for mode in inlined proven; do

@@ -49,7 +49,20 @@ project Kaitai_Bench_Target is
       "target_bits_classic_be.adb",
       "target_kaitai_bits_be.adb",
       "target_bits_classic_le.adb",
-      "target_kaitai_bits_le.adb");
+      "target_kaitai_bits_le.adb",
+      "target_none_term.adb",
+      "target_kaitai_term.adb",
+      "target_term_classic.adb",
+      "target_none_contents.adb",
+      "target_kaitai_contents.adb",
+      "target_contents_classic.adb",
+      "target_none_substream.adb",
+      "target_kaitai_substream.adb",
+      "target_substream_classic.adb",
+      "target_none_nested.adb",
+      "target_nested_local.adb",
+      "target_nested_outer_only.adb",
+      "target_nested_direct.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use Switches;

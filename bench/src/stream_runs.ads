@@ -52,4 +52,39 @@ package Stream_Runs is
    function Run_Kaitai_Bits_Le (Data : Bytes) return U64
    with No_Inline;
 
+   --  Library operations against hand-written code that does the same job
+   --  directly on the buffer with a plain index.  Each loop calls a parser
+   --  for one record, as the generated code of a repeated field would; the
+   --  formats are those of Bench_Data.
+   --
+   --  Zero-terminated strings: two of them and a u2le per record
+   function Run_Term_Kaitai (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Term_Classic (Data : Bytes) return U64
+   with No_Inline;
+
+   --  A "contents" attribute of four bytes and a u4le per record
+   function Run_Contents_Kaitai (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Contents_Classic (Data : Bytes) return U64
+   with No_Inline;
+
+   --  A u1 length and a body of that many bytes, which is parsed from a
+   --  substream of its own and reads a u2le and a u1
+   function Run_Substream_Kaitai (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Substream_Classic (Data : Bytes) return U64
+   with No_Inline;
+
+   --  What the local copy of the stream costs in small nested types: a
+   --  record of four nested types of a single u1 each.  The parser of the
+   --  record and that of the nested type copy the stream, only the first
+   --  does, or neither does.
+   function Run_Nested_Local (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Nested_Outer_Only (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Nested_Direct (Data : Bytes) return U64
+   with No_Inline;
+
 end Stream_Runs;

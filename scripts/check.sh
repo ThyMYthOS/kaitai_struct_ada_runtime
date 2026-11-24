@@ -70,6 +70,8 @@ step_bench() {
          esac
          [ "$sums" = 1 ] || { echo "stream designs disagree" >&2; exit 1; }
       done
+      # The parsing designs compare the checksums of each group themselves
+      ./bin/proven/parse_bench 10000 1 >/dev/null || { echo "parsing designs disagree" >&2; exit 1; }
       sums=$(for strategy in lazy index_arena index_owned vector_values vector_reserved ada_vector \
          ptr_malloc ptr_pool ptr_pool_kept ptr_subpool owned_malloc owned_pool owned_pool_kept owned_subpool; do
          ./bin/proven/memory_bench $strategy 10000 32 1 | awk '{ print $(NF - 1), $NF }'

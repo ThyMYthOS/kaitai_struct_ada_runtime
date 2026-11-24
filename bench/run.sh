@@ -26,6 +26,13 @@ for mode in checked inlined proven; do
 done
 
 echo
+echo "== parsing designs: ns per record (median, minimum), checksum"
+for mode in checked inlined proven; do
+   echo "-- mode $mode"
+   ./bin/$mode/parse_bench "$RECORDS" 15
+done
+
+echo
 echo "== memory strategies, $RECORDS records, payload 0..$MAX_PAYLOAD bytes"
 echo "   ns per record: build, traverse; ns per access: pick; ns per record: teardown;"
 echo "   resident bytes per record; checksums"

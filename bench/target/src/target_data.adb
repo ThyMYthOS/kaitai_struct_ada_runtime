@@ -9,4 +9,24 @@ package body Target_Data is
       end loop;
    end Fill;
 
+   procedure Fill_Term (Used : out Length) is
+   begin
+      Bench_Data.Fill_Term (Records, Term_Buffer, Used);
+   end Fill_Term;
+
+   procedure Fill_Contents (Used : out Length) is
+   begin
+      Bench_Data.Fill_Contents (Records, Contents_Buffer, Used);
+   end Fill_Contents;
+
+   procedure Fill_Substream (Used : out Length) is
+   begin
+      Bench_Data.Fill_Substream (Records, Substream_Buffer, Used);
+   end Fill_Substream;
+
+   procedure Fill_Nested (Used : out Length) is
+   begin
+      Bench_Data.Fill_Nested (Records, Nested_Buffer, Used);
+   end Fill_Nested;
+
 end Target_Data;

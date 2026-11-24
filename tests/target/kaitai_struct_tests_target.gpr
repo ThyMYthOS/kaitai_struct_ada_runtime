@@ -1,0 +1,35 @@
+with "kaitai_struct.gpr";
+with "../../kaitai_style.gpr";
+
+--  The tests of ../src for an STM32F4 (Cortex-M4), to be run in Renode.
+--
+--  RTS selects the run-time library.  "light-stm32f4" is the profile the
+--  core of the library has to run on.
+project Kaitai_Struct_Tests_Target is
+
+   type RTS_Type is ("light-stm32f4", "embedded-stm32f4");
+   RTS : RTS_Type := external ("RTS", "light-stm32f4");
+
+   for Target use "arm-eabi";
+   for Runtime ("Ada") use RTS;
+
+   for Source_Dirs use ("src/", "../src/");
+   for Object_Dir use "obj/" & RTS;
+   for Create_Missing_Dirs use "True";
+   for Exec_Dir use "bin/" & RTS;
+   for Main use ("target_tests_main.adb");
+
+   package Compiler is
+      --  -gnatw.X: on a light run-time library every possible check failure
+      --  is reported as a call of the last chance handler, which is expected
+      for Default_Switches ("Ada") use
+        ("-O1", "-g", "-gnat2012", "-gnata", "-gnatwa", "-gnatw.X") & Kaitai_Style.Style_Switches;
+   end Compiler;
+
+   package Linker is
+      for Default_Switches ("Ada") use ("-Wl,--no-warn-rwx-segments");
+   end Linker;
+
+   package Format renames Kaitai_Style.Format;
+
+end Kaitai_Struct_Tests_Target;

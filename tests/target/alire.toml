@@ -1,0 +1,17 @@
+name = "kaitai_struct_tests_target"
+description = "Tests of the Kaitai Struct runtime library on a simulated STM32F4"
+version = "0.1.0-dev"
+
+licenses = "MIT"
+maintainers = ["Manuel Stahl <thymythos@googlemail.com>"]
+
+[[depends-on]]
+gnat_arm_elf = "^16"
+kaitai_struct = "*"
+
+[[pins]]
+kaitai_struct = { path = "../.." }
+
+[gpr-set-externals]
+KAITAI_STRUCT_CONTRACTS = "on"
+KAITAI_STRUCT_SUBDIR = "arm-eabi"

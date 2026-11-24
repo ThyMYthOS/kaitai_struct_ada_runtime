@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: scripts/install-toolchain.sh
+
+      - name: Format
+        run: scripts/check.sh format
+
+      - name: Build
+        run: scripts/check.sh build
+
+      - name: Test
+        run: scripts/check.sh test
+
+      - name: Prove
+        run: scripts/check.sh prove
+
+      - name: Test on simulated STM32F4
+        run: scripts/check.sh target
+
+      - name: Benchmarks
+        run: scripts/check.sh bench

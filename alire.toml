@@ -1,10 +1,21 @@
 name = "kaitai_struct"
 description = "Kaitai Struct runtime library for Ada and SPARK"
+long-description = """
+Kaitai Struct describes binary formats in `.ksy` files and generates parsers
+from them. This library is what such parsers are built on when the target
+language is Ada.
+
+It is written in SPARK and proven free of run-time errors. It uses neither
+heap nor exceptions nor the secondary stack, never copies input, and runs on
+a light run-time library on a microcontroller.
+"""
 version = "0.1.0-dev"
 
 authors = ["Manuel Stahl"]
 maintainers = ["Manuel Stahl <thymythos@googlemail.com>"]
+maintainers-logins = ["ThyMYthOS"]
 licenses = "MIT"
+website = "https://github.com/ThyMYthOS/kaitai_struct_ada_runtime"
 tags = ["kaitai", "parser", "binary", "spark", "embedded"]
 
 project-files = ["kaitai_struct.gpr", "kaitai_struct_files.gpr"]

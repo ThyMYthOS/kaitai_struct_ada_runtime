@@ -1,0 +1,24 @@
+with "kaitai_struct.gpr";
+with "kaitai_style.gpr";
+
+--  The part of the Kaitai Struct runtime library that reads files.  It is a
+--  project of its own because it needs a run-time library with a file
+--  system, which the core in kaitai_struct.gpr must do without.
+library project Kaitai_Struct_Files is
+
+   for Library_Name use "kaitai_struct_files";
+   for Library_Kind use external ("KAITAI_STRUCT_LIBRARY_TYPE", external ("LIBRARY_TYPE", "static"));
+   for Source_Dirs use ("files/");
+   for Object_Dir use "obj/files/" & Kaitai_Struct.Subdir;
+   for Library_Dir use "lib/files/" & Kaitai_Struct.Subdir;
+   for Create_Missing_Dirs use "True";
+
+   package Compiler is
+      for Default_Switches ("Ada") use Kaitai_Struct.Switches;
+   end Compiler;
+
+   package Prove renames Kaitai_Struct.Prove;
+
+   package Format renames Kaitai_Style.Format;
+
+end Kaitai_Struct_Files;

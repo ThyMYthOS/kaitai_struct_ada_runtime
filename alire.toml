@@ -7,4 +7,4 @@ maintainers = ["Manuel Stahl <thymythos@googlemail.com>"]
 licenses = "MIT"
 tags = ["kaitai", "parser", "binary", "spark", "embedded"]
 
-project-files = ["kaitai_struct.gpr"]
+project-files = ["kaitai_struct.gpr", "kaitai_struct_files.gpr"]

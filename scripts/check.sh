@@ -18,7 +18,7 @@ cd "$(dirname "$0")/.."
 root=$PWD
 
 step_format() {
-   for project in kaitai_struct.gpr tests/kaitai_struct_tests.gpr tests/target/kaitai_struct_tests_target.gpr \
+   for project in kaitai_struct.gpr kaitai_struct_files.gpr tests/kaitai_struct_tests.gpr tests/target/kaitai_struct_tests_target.gpr \
       bench/kaitai_bench.gpr bench/target/kaitai_bench_target.gpr; do
       (cd "$(dirname "$project")" && alr exec -- gnatformat -P "$(basename "$project")" -U --no-subprojects --check)
    done

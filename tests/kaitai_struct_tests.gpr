@@ -1,4 +1,5 @@
 with "kaitai_struct.gpr";
+with "kaitai_struct_files.gpr";
 with "../kaitai_style.gpr";
 
 --  Tests of the library for the development machine.  The same tests are

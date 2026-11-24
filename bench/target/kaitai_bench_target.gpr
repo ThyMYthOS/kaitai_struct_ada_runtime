@@ -1,0 +1,64 @@
+with "kaitai_struct.gpr";
+with "../../kaitai_style.gpr";
+
+--  The stream benchmark for an STM32F4 (Cortex-M4), to be run in Renode.
+--
+--  RTS selects the run-time library: "light-stm32f4" is what the zero-copy
+--  variant of the generated code has to run on, "embedded-stm32f4" is the
+--  smallest profile the heap variant may assume.  MODE has the same meaning
+--  as in ../kaitai_bench.gpr.
+project Kaitai_Bench_Target is
+
+   type RTS_Type is ("light-stm32f4", "embedded-stm32f4");
+   RTS : RTS_Type := external ("RTS", "light-stm32f4");
+
+   type Mode_Type is ("checked", "inlined", "proven");
+   Mode : Mode_Type := external ("MODE", "proven");
+
+   --  -gnatw.X: on a light run-time library every possible check failure is
+   --  reported as a call of the last chance handler, which is expected here
+   Switches := ("-O2", "-g", "-gnat2022", "-gnatwa", "-gnatw.X") & Kaitai_Style.Style_Switches;
+
+   case Mode is
+      when "checked" =>
+         null;
+
+      when "inlined" =>
+         Switches := Switches & ("-gnatn");
+
+      when "proven" =>
+         Switches := Switches & ("-gnatn", "-gnatp");
+   end case;
+
+   for Target use "arm-eabi";
+   for Runtime ("Ada") use RTS;
+
+   for Source_Dirs use ("src/", "../src/");
+   for Object_Dir use "obj/" & RTS & "/" & Mode;
+   for Create_Missing_Dirs use "True";
+   for Exec_Dir use "bin/" & RTS & "/" & Mode;
+   for Main use
+     ("target_none.adb",
+      "target_cursor_sticky.adb",
+      "target_pointer_sticky.adb",
+      "target_cursor_status.adb",
+      "target_block_check.adb",
+      "target_kaitai.adb",
+      "target_kaitai_block.adb",
+      "target_kaitai_local.adb",
+      "target_bits_classic_be.adb",
+      "target_kaitai_bits_be.adb",
+      "target_bits_classic_le.adb",
+      "target_kaitai_bits_le.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use Switches;
+   end Compiler;
+
+   package Linker is
+      for Default_Switches ("Ada") use ("-Wl,--no-warn-rwx-segments");
+   end Linker;
+
+   package Format renames Kaitai_Style.Format;
+
+end Kaitai_Bench_Target;

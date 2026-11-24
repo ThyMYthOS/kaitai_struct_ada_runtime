@@ -14,6 +14,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Everything scripts/install-toolchain.sh puts under the home
+      # directory.  The key changes with the script and with the crate
+      # manifests, which is also when the script installs again.
+      - name: Cache toolchain
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.local/bin/alr
+            ~/.local/bin/renode
+            ~/.local/share/alire
+            ~/.local/share/renode
+            ~/.alire
+            ~/.config/alire
+          key: toolchain-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/install-toolchain.sh', '**/alire.toml') }}
+
       - name: Install toolchain
         run: scripts/install-toolchain.sh
 
@@ -26,8 +41,19 @@ jobs:
       - name: Test
         run: scripts/check.sh test
 
+      # The answers of the provers.  A cache cannot be changed once it is
+      # saved, so every run saves one of its own and starts from the most
+      # recent one made with the same toolchain.
+      - name: Cache proof results
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/gnatprove
+          key: gnatprove-${{ runner.os }}-${{ hashFiles('scripts/install-toolchain.sh') }}-${{ github.sha }}
+          restore-keys: |
+            gnatprove-${{ runner.os }}-${{ hashFiles('scripts/install-toolchain.sh') }}-
+
       - name: Prove
-        run: scripts/check.sh prove
+        run: GNATPROVE_CACHE="$HOME/.cache/gnatprove" scripts/check.sh prove
 
       - name: Test on simulated STM32F4
         run: scripts/check.sh target

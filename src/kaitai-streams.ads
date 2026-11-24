@@ -512,6 +512,45 @@ is
                    and then Bits_Left (S) = Bits_Left (S'Old)
                    and then Status (S) = (if OK (S'Old) then End_Of_Stream else Status (S'Old)));
 
+   --  Like Read_Bytes_Term for a terminator of several bytes.  The bytes
+   --  that follow are taken as units as long as Term, and the first unit
+   --  that equals Term ends the data; see Byte_Arrays.Find_Multi.
+   procedure Read_Bytes_Term_Multi
+     (Buffer    : Bytes;
+      S         : in out Stream;
+      Term      : Bytes;
+      Include   : Boolean;
+      Consume   : Boolean;
+      EOS_Error : Boolean;
+      Data      : out Slice)
+   with
+     Pre  => Is_Valid (S, Buffer) and then Term'Length > 0,
+     Post =>
+       Same_Window (S'Old, S)
+       and then Is_Valid (S, Buffer)
+       and then Within (Data, Buffer)
+       and then (if OK (S'Old) and then Byte_Arrays.Find_Multi (Buffer, Rest (S'Old), Term) <= Rest (S'Old).Last
+                 then
+                   OK (S)
+                   and then Bits_Left (S) = 0
+                   and then Data.First = Next_Index (S'Old)
+                   and then Data.Last
+                            = (if Include
+                               then Byte_Arrays.Find_Multi (Buffer, Rest (S'Old), Term) + (Term'Length - 1)
+                               else Byte_Arrays.Find_Multi (Buffer, Rest (S'Old), Term) - 1)
+                   and then Next_Index (S)
+                            = (if Consume
+                               then Byte_Arrays.Find_Multi (Buffer, Rest (S'Old), Term) + Term'Length
+                               else Byte_Arrays.Find_Multi (Buffer, Rest (S'Old), Term))
+                 elsif OK (S'Old) and then not EOS_Error
+                 then OK (S) and then Bits_Left (S) = 0 and then Data = Rest (S'Old) and then Is_EOF (S)
+                 else
+                   not OK (S)
+                   and then Is_Empty (Data)
+                   and then Pos (S) = Pos (S'Old)
+                   and then Bits_Left (S) = Bits_Left (S'Old)
+                   and then Status (S) = (if OK (S'Old) then End_Of_Stream else Status (S'Old)));
+
    --  Read as many bytes as Expected has and fail with Validation_Not_Equal
    --  if they differ from it.  This is how a "contents" attribute is read.
    procedure Read_Contents (Buffer : Bytes; S : in out Stream; Expected : Bytes)

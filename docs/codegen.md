@@ -79,6 +79,7 @@ reports the assignment as unused.
 | bytes with `size` | `Read_Bytes (L, To_Length (U64 (Size)), This.X)` | `Slice` |
 | bytes with `size-eos` | `Read_Bytes_Full (L, This.X)` | `Slice` |
 | bytes or string with `terminator` | `Read_Bytes_Term (Buffer, L, Term, Include, Consume, EOS_Error, This.X)` | `Slice` |
+| the same with a `terminator` of several bytes | `Read_Bytes_Term_Multi (Buffer, L, Term, Include, Consume, EOS_Error, This.X)` | `Slice` |
 | `contents` | `Read_Contents (Buffer, L, Expected)` | not stored; `Expected` is a constant of the package |
 | field of a nested type | `Nested.Parse (Buffer, L, This.X)` | `Nested.T` |
 | field of a nested type with `size` | `Substream (Buffer, L, Size, Sub); Nested.Parse (Buffer, Sub, This.X); Join (L, Sub);` | `Nested.T` |
@@ -109,6 +110,11 @@ which `Parse` establishes for the buffer it read from. With it a caller can
 prove that `Buffer (This.X.First .. This.X.Last)` is within bounds.
 
 Strings are slices as well for now; their encoding is not checked yet.
+
+Expressions on byte arrays use `Kaitai.Byte_Arrays`: `Equal` for `==`,
+`Compare` for the ordering operators, `Min` and `Max` for `.min` and `.max`.
+Where both sides are slices, `Compare` takes them as
+`Buffer (X.First .. X.Last)`, which copies nothing.
 
 ## Instances
 

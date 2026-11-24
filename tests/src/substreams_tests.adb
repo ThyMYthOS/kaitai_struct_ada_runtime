@@ -45,6 +45,58 @@ package body Substreams_Tests is
       Check (Is_Empty (D) and then Status (S) = End_Of_Stream, "after a failure nothing happens");
    end Test_Term;
 
+   --                                   3  4  5   6  7  8   9  10 11 12 13 14
+   Wide : constant Bytes (3 .. 14) := (65, 0, 0, 66, 0, 0, 67, 0, 0, 0, 9, 9);
+
+   procedure Test_Term_Multi is
+      S : Stream := Open (Wide);
+      D : Slice;
+      B : U64;
+   begin
+      Group ("Streams terminated bytes, long terminator");
+      Read_Bytes_Term_Multi (Wide, S, (0, 0), Include => False, Consume => True, EOS_Error => True, Data => D);
+      Check (D = (First => 3, Last => 6) and then Pos (S) = 6, "two zeros across units are not the terminator");
+      Read_Bytes_Term_Multi (Wide, S, (0, 0), Include => True, Consume => False, EOS_Error => True, Data => D);
+      Check (D = (First => 9, Last => 12) and then Pos (S) = 8, "included but not consumed");
+      Read_Bytes_Term_Multi (Wide, S, (0, 0), Include => False, Consume => True, EOS_Error => True, Data => D);
+      Check (Is_Empty (D) and then Pos (S) = 10 and then OK (S), "terminator first: nothing, consumed");
+      Read_Bytes_Term_Multi (Wide, S, (0, 0), Include => False, Consume => True, EOS_Error => True, Data => D);
+      Check (Status (S) = End_Of_Stream and then Is_Empty (D) and then Pos (S) = 10, "no terminator is a failure");
+      Read_Bytes_Term_Multi (Wide, S, (9, 9), Include => False, Consume => True, EOS_Error => False, Data => D);
+      Check (Is_Empty (D) and then Status (S) = End_Of_Stream, "after a failure nothing happens");
+
+      S := Open (Wide);
+      Seek (S, 10);
+      Read_Bytes_Term_Multi (Wide, S, (0, 0), Include => False, Consume => True, EOS_Error => False, Data => D);
+      Check (OK (S) and then D = (First => 13, Last => 14) and then Is_EOF (S), "or the rest, if that is allowed");
+      Read_Bytes_Term_Multi (Wide, S, (0, 0), Include => False, Consume => True, EOS_Error => False, Data => D);
+      Check (OK (S) and then Is_Empty (D), "nothing left, allowed");
+
+      S := Open (Wide);
+      Seek (S, 9);
+      Read_Bytes_Term_Multi (Wide, S, (9, 9), Include => False, Consume => True, EOS_Error => False, Data => D);
+      Check (OK (S) and then D = (First => 12, Last => 14) and then Is_EOF (S), "a unit cut off at the end is data");
+      S := Open (Wide);
+      Seek (S, 9);
+      Read_Bytes_Term_Multi (Wide, S, (9, 9), Include => False, Consume => True, EOS_Error => True, Data => D);
+      Check (Status (S) = End_Of_Stream and then Pos (S) = 9, "or a failure");
+
+      S := Open (Wide);
+      Seek (S, 10);
+      Read_Bytes_Term_Multi (Wide, S, (9, 9), Include => True, Consume => True, EOS_Error => True, Data => D);
+      Check (OK (S) and then D = (First => 13, Last => 14) and then Is_EOF (S), "terminator at the very end");
+
+      S := Open (Wide);
+      Read_Bytes_Term_Multi (Wide, S, (67, 0, 0), Include => False, Consume => True, EOS_Error => True, Data => D);
+      Check (D = (First => 3, Last => 8) and then Pos (S) = 9, "terminator of three bytes");
+
+      S := Open (Wide);
+      Read_Bits_Int_Be (Wide, S, 3, B);
+      Read_Bytes_Term_Multi (Wide, S, (0, 0), Include => False, Consume => True, EOS_Error => True, Data => D);
+      Check (B = 2 and then Is_Empty (D) and then Pos (S) = 3, "units start at the next whole byte");
+      Check (Bits_Left (S) = 0, "and the unread bits are dropped");
+   end Test_Term_Multi;
+
    procedure Test_Contents is
       S : Stream := Open (Data);
    begin
@@ -119,6 +171,7 @@ package body Substreams_Tests is
    procedure Run is
    begin
       Test_Term;
+      Test_Term_Multi;
       Test_Contents;
       Test_Substream;
    end Run;

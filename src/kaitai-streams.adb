@@ -340,6 +340,36 @@ is
       end if;
    end Read_Bytes_Term;
 
+   procedure Read_Bytes_Term_Multi
+     (Buffer    : Bytes;
+      S         : in out Stream;
+      Term      : Bytes;
+      Include   : Boolean;
+      Consume   : Boolean;
+      EOS_Error : Boolean;
+      Data      : out Slice)
+   is
+      Found : Length;
+   begin
+      Data := (First => 1, Last => 0);
+      if S.State /= Success then
+         return;
+      end if;
+
+      Found := Byte_Arrays.Find_Multi (Buffer, (First => S.Next, Last => S.Last), Term);
+      if Found <= S.Last then
+         Data := (First => S.Next, Last => (if Include then Found + (Term'Length - 1) else Found - 1));
+         S.Unread := 0;
+         S.Next := (if Consume then Found + Term'Length else Found);
+      elsif EOS_Error then
+         Run_Out (S);
+      else
+         Data := (First => S.Next, Last => S.Last);
+         S.Unread := 0;
+         S.Next := S.Last + 1;
+      end if;
+   end Read_Bytes_Term_Multi;
+
    procedure Read_Contents (Buffer : Bytes; S : in out Stream; Expected : Bytes) is
       Data : Slice;
    begin

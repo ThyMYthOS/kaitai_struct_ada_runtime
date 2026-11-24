@@ -52,4 +52,78 @@ is
       return True;
    end Equal;
 
+   function Find_Multi (Buffer : Bytes; Item : Slice; Term : Bytes) return Length is
+      Unit : constant Length := Term'Length;
+      From : Length := Item.First;
+   begin
+      while Unit - 1 <= Item.Last - From loop
+         pragma Loop_Invariant (From in Item.First .. Item.Last);
+         pragma Loop_Invariant ((From - Item.First) mod Unit = 0);
+         pragma Loop_Variant (Increases => From);
+         if Equal (Buffer, (First => From, Last => From + (Unit - 1)), Term) then
+            return From;
+         end if;
+         From := From + Unit;
+      end loop;
+      return Item.Last + 1;
+   end Find_Multi;
+
+   function Terminate_At_Multi (Buffer : Bytes; Item : Slice; Term : Bytes; Include : Boolean) return Slice is
+      Found : constant Length := Find_Multi (Buffer, Item, Term);
+   begin
+      if Found > Item.Last then
+         return Item;
+      elsif Include then
+         return (First => Item.First, Last => Found + (Term'Length - 1));
+      else
+         return (First => Item.First, Last => Found - 1);
+      end if;
+   end Terminate_At_Multi;
+
+   function Min (Buffer : Bytes; Item : Slice) return Byte is
+      Result : Byte := Byte'Last;
+   begin
+      for I in Item.First .. Item.Last loop
+         if Buffer (I) < Result then
+            Result := Buffer (I);
+         end if;
+         pragma Loop_Invariant (for all J in Item.First .. I => Result <= Buffer (J));
+         pragma Loop_Invariant (for some J in Item.First .. I => Result = Buffer (J));
+      end loop;
+      return Result;
+   end Min;
+
+   function Max (Buffer : Bytes; Item : Slice) return Byte is
+      Result : Byte := Byte'First;
+   begin
+      for I in Item.First .. Item.Last loop
+         if Buffer (I) > Result then
+            Result := Buffer (I);
+         end if;
+         pragma Loop_Invariant (for all J in Item.First .. I => Result >= Buffer (J));
+         pragma Loop_Invariant (for some J in Item.First .. I => Result = Buffer (J));
+      end loop;
+      return Result;
+   end Max;
+
+   function Compare (Left, Right : Bytes) return Order is
+      Common : constant Length := Length'Min (Left'Length, Right'Length);
+   begin
+      for I in 0 .. Common - 1 loop
+         if Left (Left'First + I) < Right (Right'First + I) then
+            return Less;
+         elsif Left (Left'First + I) > Right (Right'First + I) then
+            return Greater;
+         end if;
+         pragma Loop_Invariant (Common_Prefix (Left, Right, I + 1));
+      end loop;
+      if Left'Length < Right'Length then
+         return Less;
+      elsif Left'Length > Right'Length then
+         return Greater;
+      else
+         return Same;
+      end if;
+   end Compare;
+
 end Kaitai.Byte_Arrays;

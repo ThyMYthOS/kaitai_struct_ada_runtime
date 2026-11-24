@@ -43,6 +43,43 @@ package body Byte_Arrays_Tests is
       Check (not Equal (Data, (First => 21, Last => 23), (65, 66)), "expected is shorter");
       Check (Equal (Data, Empty, (1 .. 0 => 0)), "both empty");
 
+      Group ("Byte_Arrays.Find_Multi");
+      Check (Find_Multi (Data, All_Of, (0, 0)) = 25, "third unit");
+      Check (Find_Multi (Data, (First => 22, Last => 30), (0, 0)) = 31, "two zeros across units do not match");
+      Check (Find_Multi (Data, All_Of, (32, 32)) = 29, "last unit");
+      Check (Find_Multi (Data, (First => 22, Last => 30), (32, 32)) = 28, "units count from the slice");
+      Check (Find_Multi (Data, (First => 21, Last => 29), (32, 32)) = 30, "a unit cut off at the end does not match");
+      Check (Find_Multi (Data, All_Of, (65, 66)) = 21, "first unit");
+      Check (Find_Multi (Data, All_Of, (1 => 0)) = 23, "unit of one byte");
+      Check (Find_Multi (Data, (First => 21, Last => 22), (65, 66, 0)) = 23, "terminator longer than the slice");
+      Check (Find_Multi (Data, All_Of, (67, 0, 0)) = 24, "unit of three bytes");
+      Check (Find_Multi (Data, Empty, (0, 0)) = 25, "empty slice");
+
+      Group ("Byte_Arrays.Terminate_At_Multi");
+      Check (Terminate_At_Multi (Data, All_Of, (0, 0), Include => False) = (First => 21, Last => 24), "without");
+      Check (Terminate_At_Multi (Data, All_Of, (0, 0), Include => True) = (First => 21, Last => 26), "with");
+      Check (Terminate_At_Multi (Data, All_Of, (9, 9), Include => True) = All_Of, "no terminator: everything");
+      Check (Is_Empty (Terminate_At_Multi (Data, All_Of, (65, 66), Include => False)), "terminator first: nothing");
+      Check (Is_Empty (Terminate_At_Multi (Data, Empty, (0, 0), Include => True)), "empty slice");
+
+      Group ("Byte_Arrays.Min and Max");
+      Check (Min (Data, All_Of) = 0 and then Max (Data, All_Of) = 68, "whole array");
+      Check (Min (Data, (First => 21, Last => 22)) = 65 and then Max (Data, (First => 21, Last => 22)) = 66, "part");
+      Check (Min (Data, (First => 27, Last => 27)) = 68 and then Max (Data, (First => 27, Last => 27)) = 68, "one");
+      Check (Min (Data, Empty) = 255 and then Max (Data, Empty) = 0, "empty slice");
+
+      Group ("Byte_Arrays.Compare");
+      Check (Compare ((1, 2, 3), (1, 2, 3)) = Same, "same");
+      Check (Compare ((1, 2), (1, 2, 3)) = Less, "a prefix is less");
+      Check (Compare ((1, 2, 3), (1, 2)) = Greater, "longer with the same start is greater");
+      Check (Compare ((1, 3), (1, 2, 3)) = Greater, "the first difference decides, not the length");
+      Check (Compare ((1, 2, 3), (1, 3)) = Less, "the first difference decides, the other way");
+      Check (Compare ((1 => 255), (0, 0)) = Greater, "bytes compare unsigned");
+      Check (Compare ((1 .. 0 => 0), (1 .. 0 => 0)) = Same, "both empty");
+      Check (Compare ((1 .. 0 => 0), (1 => 0)) = Less, "empty is less than anything else");
+      Check (Compare (Data (28 .. 29), Data (29 .. 30)) = Same, "slices with different bounds");
+      Check (Compare (Data (21 .. 22), Data (24 .. 25)) = Less, "slices, less");
+
       Group ("Floats");
       Check (Is_Finite (U32'(16#3F80_0000#)) and then To_F32 (16#3F80_0000#) = 1.0, "f4 one");
       Check (To_F32 (16#BF00_0000#) = -0.5, "f4 minus a half");

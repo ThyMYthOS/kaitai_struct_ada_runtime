@@ -1,0 +1,14 @@
+name = "kaitai_bench_target"
+description = "Benchmarks on a simulated low-end target (Renode)"
+version = "0.1.0-dev"
+
+licenses = "MIT"
+maintainers = ["Manuel Stahl <thymythos@googlemail.com>"]
+tags = ["benchmark", "embedded"]
+
+[[depends-on]]
+kaitai_struct = "*"
+gnat_arm_elf = "^16"
+
+[[pins]]
+kaitai_struct = { path = "../.." }

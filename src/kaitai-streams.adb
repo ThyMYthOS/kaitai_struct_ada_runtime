@@ -272,6 +272,66 @@ is
       end if;
    end Read_Bytes_Full;
 
+   procedure Read_Bytes_Term
+     (Buffer    : Bytes;
+      S         : in out Stream;
+      Term      : Byte;
+      Include   : Boolean;
+      Consume   : Boolean;
+      EOS_Error : Boolean;
+      Data      : out Slice)
+   is
+      Found : Length;
+   begin
+      Data := (First => 1, Last => 0);
+      if S.State /= Success then
+         return;
+      end if;
+
+      Found := Byte_Arrays.Find (Buffer, (First => S.Next, Last => S.Last), Term);
+      if Found <= S.Last then
+         Data := (First => S.Next, Last => (if Include then Found else Found - 1));
+         S.Unread := 0;
+         S.Next := (if Consume then Found + 1 else Found);
+      elsif EOS_Error then
+         Run_Out (S);
+      else
+         Data := (First => S.Next, Last => S.Last);
+         S.Unread := 0;
+         S.Next := S.Last + 1;
+      end if;
+   end Read_Bytes_Term;
+
+   procedure Read_Contents (Buffer : Bytes; S : in out Stream; Expected : Bytes) is
+      Data : Slice;
+   begin
+      Read_Bytes (S, Expected'Length, Data);
+      if S.State = Success and then not Byte_Arrays.Equal (Buffer, Data, Expected) then
+         S.State := Validation_Not_Equal;
+      end if;
+   end Read_Contents;
+
+   procedure Substream (Buffer : Bytes; S : in out Stream; Count : Length; Sub : out Stream) is
+      --  Buffer only serves the contract
+      pragma Warnings (Off, Buffer);
+   begin
+      if Available (S, Count) then
+         Sub := (First => S.Next, Last => S.Next + Count - 1, Next => S.Next, State => Success, Unread => 0);
+         S.Next := S.Next + Count;
+         S.Unread := 0;
+      else
+         Run_Out (S);
+         Sub := (First => 1, Last => 0, Next => 1, State => S.State, Unread => 0);
+      end if;
+   end Substream;
+
+   procedure Join (S : in out Stream; Sub : Stream) is
+   begin
+      if S.State = Success then
+         S.State := Sub.State;
+      end if;
+   end Join;
+
    procedure Align_To_Byte (S : in out Stream) is
    begin
       S.Unread := 0;

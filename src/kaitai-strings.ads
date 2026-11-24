@@ -9,7 +9,7 @@ package Kaitai.Strings
   with Pure, SPARK_Mode, Always_Terminates
 is
 
-   type Encoding is (US_ASCII, UTF_8, UTF_16LE, UTF_16BE, Single_Byte);
+   type Encoding is (US_ASCII, UTF_8, UTF_16LE, UTF_16BE, UTF_32LE, UTF_32BE, Single_Byte);
    --  Single_Byte stands for every encoding in which each byte is one
    --  character and every byte is accepted: ISO-8859-x, CP437, windows-125x
    --  and the like.
@@ -23,6 +23,8 @@ is
    --  UTF_16LE/BE:  an even number of bytes, every high surrogate is
    --                followed by a low surrogate and no low surrogate stands
    --                alone.
+   --  UTF_32LE/BE:  a multiple of four bytes, and every unit is at most
+   --                U+10FFFF and no surrogate (U+D800 .. U+DFFF).
    --  Single_Byte:  always.
    function Is_Valid (Buffer : Bytes; Item : Slice; Enc : Encoding) return Boolean
    with
@@ -43,13 +45,78 @@ is
    --  UTF_16LE/BE:         the number of code units that are not low
    --                       surrogates; a last byte that is no whole unit is
    --                       ignored.
+   --  UTF_32LE/BE:         the number of whole units (a quarter of the
+   --                       bytes, rounded down); bytes at the end that are
+   --                       no whole unit are ignored.
    function Character_Count (Buffer : Bytes; Item : Slice; Enc : Encoding) return Kaitai.Types.Length
    with
      Pre  => Within (Item, Buffer),
      Post =>
        Character_Count'Result <= Size (Item)
        and then (if Enc in US_ASCII | Single_Byte then Character_Count'Result = Size (Item))
-       and then (if Enc in UTF_16LE | UTF_16BE then Character_Count'Result <= Size (Item) / 2);
+       and then (if Enc in UTF_16LE | UTF_16BE then Character_Count'Result <= Size (Item) / 2)
+       and then (if Enc in UTF_32LE | UTF_32BE then Character_Count'Result = Size (Item) / 4);
+
+   --  An upper bound of the number of bytes that Item has in UTF-8, which
+   --  depends on the size of Item and on Enc only: one byte of UTF-8 per
+   --  byte for US_ASCII, UTF_8 and UTF_32LE/BE (a character of four bytes
+   --  needs at most four), one and a half for UTF_16LE/BE, two for
+   --  Single_Byte.  A buffer that big always suffices for To_UTF_8.  The
+   --  result is Length'Last if the bound does not fit into a Length.
+   function Max_UTF_8_Size (Item : Slice; Enc : Encoding) return Kaitai.Types.Length
+   is (case Enc is
+         when US_ASCII | UTF_8 | UTF_32LE | UTF_32BE => Size (Item),
+         when UTF_16LE | UTF_16BE                    =>
+           (if Size (Item) > Length'Last / 2 then Length'Last else Size (Item) + Size (Item) / 2),
+         when Single_Byte                            =>
+           (if Size (Item) > Length'Last / 2 then Length'Last else 2 * Size (Item)));
+
+   --  The number of bytes that Item has in UTF-8, as To_UTF_8 writes it.
+   --  It is 0 if Item is not valid in Enc, which is also what To_UTF_8
+   --  writes then.  The result never exceeds Max_UTF_8_Size.
+   function UTF_8_Size (Buffer : Bytes; Item : Slice; Enc : Encoding) return Kaitai.Types.Length
+   with
+     Pre  => Within (Item, Buffer),
+     Post =>
+       UTF_8_Size'Result <= Max_UTF_8_Size (Item, Enc)
+       and then (if not Is_Valid (Buffer, Item, Enc) then UTF_8_Size'Result = 0);
+
+   --  Write Item as UTF-8 to Target (Target'First .. Last), so that a caller
+   --  gets one representation whatever the encoding, and nothing is
+   --  allocated.
+   --
+   --  OK is False, and Last is Target'First - 1, if Item is not valid in Enc
+   --  (the caller reports Illegal_Sequence) or if Target is too small; the
+   --  contents of Target are then of no use.  On success the bytes of Target
+   --  after Last are unchanged.  A Target of at least Max_UTF_8_Size (Item,
+   --  Enc) bytes is never too small (proved).  Neither is one of UTF_8_Size
+   --  bytes, which the tests check.
+   --
+   --  Target may be empty; then its Last is Target'First - 1 as usual (the
+   --  precondition rules out the odd bounds that an empty array can have).
+   --
+   --  US_ASCII and UTF_8 are copied, UTF_16 and UTF_32 are converted.  For
+   --  Single_Byte the bytes 0 .. 127 are copied and the bytes 128 .. 255 are
+   --  taken as ISO-8859-1, that is as the characters U+0080 .. U+00FF.  That
+   --  is exact for ISO-8859-1 and wrong for the other single byte encodings
+   --  (CP437, windows-1252 and the like) in the positions that they use
+   --  differently, because the library has no tables for them.
+   procedure To_UTF_8
+     (Buffer : Bytes;
+      Item   : Slice;
+      Enc    : Encoding;
+      Target : in out Bytes;
+      Last   : out Kaitai.Types.Length;
+      OK     : out Boolean)
+   with
+     Pre  => Within (Item, Buffer) and then Target'First >= 1 and then Target'Last >= Target'First - 1,
+     Post =>
+       Last in Target'First - 1 .. Target'Last
+       and then (if not OK then Last = Target'First - 1)
+       and then (if OK then Is_Valid (Buffer, Item, Enc))
+       and then (if OK then (for all I in Last + 1 .. Target'Last => Target (I) = Target'Old (I)))
+       and then (if OK and then Enc in US_ASCII | UTF_8 then Last + 1 - Target'First = Size (Item))
+       and then (if Is_Valid (Buffer, Item, Enc) and then Max_UTF_8_Size (Item, Enc) <= Target'Length then OK);
 
    --  True if Item is a number in the sense of `.to_i (Base)` of the
    --  expression language, for a string in an encoding that includes ASCII:

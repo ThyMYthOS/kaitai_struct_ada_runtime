@@ -10,7 +10,7 @@ project Kaitai_Struct_Tests is
    for Object_Dir use "obj/";
    for Create_Missing_Dirs use "True";
    for Exec_Dir use "bin/";
-   for Main use ("tests_main.adb");
+   for Main use ("tests_main.adb", "fuzz_main.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use ("-O1", "-g", "-gnat2012", "-gnata", "-gnatwa") & Kaitai_Style.Style_Switches;

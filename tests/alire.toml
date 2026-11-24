@@ -5,7 +5,7 @@ version = "0.1.0-dev"
 licenses = "MIT"
 maintainers = ["Manuel Stahl <thymythos@googlemail.com>"]
 
-executables = ["tests_main"]
+executables = ["tests_main", "fuzz_main"]
 
 [[depends-on]]
 kaitai_struct = "*"

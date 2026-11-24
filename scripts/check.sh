@@ -7,6 +7,8 @@
 #   build    the library builds without warnings, with checks enabled and
 #            without, and under the restrictions of a light run-time library
 #   test     the tests pass on the development machine
+#   fuzz     the parsers under examples/ survive input changed at random,
+#            with run-time checks on and contracts executed
 #   prove    GNATprove proves all checks of the library and of the parsers
 #            that use it: the sample parser and those under examples/
 #   target   the tests pass on a simulated STM32F4, with a light and an
@@ -34,6 +36,10 @@ step_build() {
 
 step_test() {
    (cd tests && alr -n build -- -cargs -gnatwe && ./bin/tests_main)
+}
+
+step_fuzz() {
+   (cd tests && alr -n build -- -cargs -gnatwe && ./bin/fuzz_main 200000)
 }
 
 step_prove() {
@@ -82,7 +88,7 @@ step_bench() {
    )
 }
 
-[ $# -gt 0 ] || set -- format build test prove target bench
+[ $# -gt 0 ] || set -- format build test fuzz prove target bench
 for step in "$@"; do
    echo "== $step"
    cd "$root"

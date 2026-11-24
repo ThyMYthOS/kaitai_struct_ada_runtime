@@ -41,6 +41,9 @@ jobs:
       - name: Test
         run: scripts/check.sh test
 
+      - name: Fuzz
+        run: scripts/check.sh fuzz
+
       # The answers of the provers.  A cache cannot be changed once it is
       # saved, so every run saves one of its own and starts from the most
       # recent one made with the same toolchain.

@@ -88,6 +88,21 @@ target program uses as well.
 
 `scripts/check.sh bench` runs it over all variants.
 
+## `arith_bench`: protection against overflow in expressions
+
+Usage: `arith_bench [records] [variant]`. Parses the records of `stream_bench`
+and computes two expressions from each, `c * b + a - 7` and `d * b + c`. The
+types show that the first cannot overflow. The second does not overflow for
+the input used, which the compiler cannot know.
+
+| Variant | Design |
+|---|---|
+| `plain` | no protection; what protection costs is measured against this |
+| `guarded` | `Kaitai.Arithmetic`: a function per operation tells whether it would overflow, and the parser asks before it computes |
+| `guarded_where_needed` | the same, but only for the expression whose types do not rule out an overflow |
+| `checked` | a value carries a validity flag that the operators hand on |
+| `flagged` | a procedure per operation with a flag that stays false after an overflow |
+
 ## `target/`: the stream designs on a low-end target
 
 A crate of its own that cross-compiles the stream benchmark for an STM32F4

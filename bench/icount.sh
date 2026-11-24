@@ -59,6 +59,17 @@ for mode in checked inlined proven; do
 done
 
 echo
+echo "== overflow protection: instructions per 15-byte record with two expressions"
+for mode in checked inlined proven; do
+   echo "-- mode $mode"
+   base=$(count ./bin/$mode/arith_bench "$RECORDS" none)
+   for variant in plain guarded guarded_where_needed checked flagged; do
+      total=$(count ./bin/$mode/arith_bench "$RECORDS" $variant)
+      printf "%-22s%s\n" $variant "$(per "$total" "$base" "$RECORDS")"
+   done
+done
+
+echo
 echo "== memory strategies, $RECORDS records, payload 0..$MAX_PAYLOAD bytes"
 echo "   instructions per record: build, traverse; per access: pick; per record: teardown"
 for mode in inlined proven; do

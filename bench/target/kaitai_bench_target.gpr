@@ -62,7 +62,13 @@ project Kaitai_Bench_Target is
       "target_none_nested.adb",
       "target_nested_local.adb",
       "target_nested_outer_only.adb",
-      "target_nested_direct.adb");
+      "target_nested_direct.adb",
+      "target_arith_none.adb",
+      "target_arith_plain.adb",
+      "target_arith_guarded.adb",
+      "target_arith_guarded_where_needed.adb",
+      "target_arith_checked.adb",
+      "target_arith_flagged.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use Switches;

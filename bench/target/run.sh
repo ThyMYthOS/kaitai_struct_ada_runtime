@@ -49,5 +49,13 @@ for rts in "${@:-light-stm32f4}"; do
                'BEGIN { printf "%-18s%10.1f   %s\n", name, (total - base) / n, sum }'
          done
       done
+      echo "-- overflow protection, instructions per 15-byte record with two expressions"
+      set -- $(simulate "bin/$rts/$mode/target_arith_none")
+      base=$1
+      for variant in plain guarded guarded_where_needed checked flagged; do
+         set -- $(simulate "bin/$rts/$mode/target_arith_$variant")
+         awk -v name=$variant -v total="$1" -v base="$base" -v n=$RECORDS -v sum="$2" \
+            'BEGIN { printf "%-22s%10.1f   %s\n", name, (total - base) / n, sum }'
+      done
    done
 done

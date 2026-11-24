@@ -37,10 +37,19 @@ step_test() {
 }
 
 step_prove() {
-   alr exec -- gnatprove -P kaitai_struct.gpr
+   # GNATprove keeps the answers of the provers in the directory that
+   # GNATPROVE_CACHE names, and takes them from there when it meets the same
+   # question again.  The CI sets it and carries the directory from run to
+   # run.  It has to be an absolute path.
+   cache=""
+   if [ -n "${GNATPROVE_CACHE:-}" ]; then
+      mkdir -p "$GNATPROVE_CACHE"
+      cache="--memcached-server=file:$GNATPROVE_CACHE"
+   fi
+   alr exec -- gnatprove -P kaitai_struct.gpr $cache
    # Of the tests project this covers the units in SPARK: the sample parser
    # and the parsers under examples/
-   (cd tests && alr exec -- gnatprove -P kaitai_struct_tests.gpr)
+   (cd tests && alr exec -- gnatprove -P kaitai_struct_tests.gpr $cache)
 }
 
 step_target() {

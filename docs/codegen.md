@@ -22,9 +22,50 @@ capitalised: `len_of_1` becomes `Len_Of_1`.
 | field or instance `qux` | function or procedure `Qux` |
 
 The suffixes keep a field apart from a type or an enumeration of the same
-name, which descriptions have all the time (`header` of type `header`). A
-name that is a reserved word of Ada or is used by the generated code itself
-(`T`, `Parse`, `Valid`, `Belongs_To`, `Next`, …) gets the suffix `_Field`.
+name, which descriptions have all the time (`header` of type `header`).
+
+A name gets the suffix `_Field` if it is
+- a reserved word of Ada,
+- used by the generated code itself (`T`, `Parse`, `Valid`, `Belongs_To`,
+  `Next`, `Has_Element`, `Remaining`, `Max_Depth`, `Is_Valid`, `Io`, and the
+  names `This`, `Buffer`, `S`, `Order` of parameters),
+- `Kaitai`, or an identifier of package Standard that the code uses
+  (`Boolean`, `True`, `False`, `Natural`, `Positive`, `Integer`, `String`,
+  `Character`, `Standard`),
+- the name of the enclosing top-level package.
+
+A parameter of a type also avoids the names of the local variables of
+`Parse` (`Sub`, `Bit`, `Element`, `Done`, `Value`, …). Only the name of the
+accessor and of the component get the suffix; the names derived from it
+(`Body_Case`, `Has_Body`, `Body_Count`) are built from the plain name. A
+description whose own id is `kaitai` or a reserved word is rejected.
+
+Names that the generated code derives from an identifier keep their form:
+`Has_X`, `X_Count`, `X_First`, `X_Cursor`, `X_Value`, `X_Bits`, `X_Case`,
+`X_Kind`, `X_As_Y`, `X_Is_Y`, `Get_X`, `X_Type`, `X_Enum`, the literals of an
+enumeration. If one of them would equal a name that comes directly from an
+identifier of the description in the same declarative region, the name from
+the description gets the suffix `_Field`. A parameter `has_trailer` next to a
+field `trailer` with a condition becomes `Has_Trailer_Field`, and the function
+that tells whether the field exists stays `Has_Trailer`. The compiler collects
+the derived names of a type first and renames afterwards.
+
+## Names of the library
+
+Generated code does not rely on `use` clauses for the library: a declaration
+of the generated package hides a use-visible name of the same identifier (a
+function `Length` hides the type `Kaitai.Types.Length`). A unit has
+`with Kaitai.Streams;`, `with Kaitai.Types;` and so on for what it uses, and
+writes every entity with its full name: `Kaitai.Types.U8`,
+`Kaitai.Streams.Read_U1 (Buffer, S, This.X)`,
+`Kaitai.Arithmetic.Add_OK (A, B)`, `Kaitai.Types.Arithmetic_Error`. The
+examples of this document leave the prefixes out to stay short.
+
+Operators are not names. Right after its `is`, the library-level package has
+a `use type` clause for each type of `Kaitai.Types` whose operators the unit
+uses (`S64` for `+` and `=`, `Length` for the arithmetic of indexes,
+`Status_Kind`, `Byte_Order`, `U64`). A clause for a type that no operator
+needs would be a warning, so the compiler lists only the used ones.
 
 ## Shape of a type
 
@@ -418,6 +459,67 @@ and hands it on.
 The value is taken when the parser of the parent calls. A reference to a
 field that is parsed later, which other targets resolve when an instance is
 asked for, is rejected by the compiler.
+
+## Rules of the compiler
+
+Where the rules above are silent, the compiler does the following.
+
+- `This := (others => <>);` is the first statement of `Parse` if some
+  component may stay unassigned on a path (a field with `if`, a switch
+  without `else`, a failed condition of an expression, a repetition whose
+  count is guarded) or if `This` is handed on as a whole (the element
+  procedure of a repetition takes it). Otherwise there is none. A type
+  without fields has `pragma Unmodified (S);` in `Parse` and no statement
+  that touches the stream.
+- The value of a parameter is assigned to `This` before anything is read.
+  Parameters of an integer, boolean or enumeration type are supported; an
+  enumeration is kept as the integer, with the pair of accessors.
+- Byte order. A type with a fixed default byte order uses the forms with the
+  order in the name. A type whose byte order is calculated by `endian:
+  switch-on` that mentions `_parent` is given it as a parameter
+  `Order : Byte_Order` (after `S`) by its callers, who compute it from the
+  expression with `_parent.x` read as the field `x` of their own type. A type
+  that inherits a calculated byte order gets `Order` as well and passes its
+  own to nested types. A type whose calculation does not mention `_parent`
+  computes `Order` itself at the start of `Parse`. A type with `Order` keeps
+  it in `T` for its instances and element procedures. No match and no `_`
+  case fails with `Undecided_Endianness`.
+- A switch whose cases are all integers keeps one component of the widest
+  type; without an `else` case it has `Has_X` as well. Otherwise it is a
+  record with variants, one per distinct type of a case (a structure, or
+  `Bytes`/`Str` for a slice), named `X_Is_<Type>`; `X_Is_None` is the variant
+  of a value that no case covers and is always there. The cases of the
+  switch are Ada cases when the expression is an integer or an enumeration
+  and all labels are literals, and an `if` chain for strings.
+- A repetition of integers or floats of a fixed size is one slice. `repeat:
+  until` reads the elements one by one and takes the slice with `Between`;
+  its `Valid` does not state that the size is a multiple of the element
+  size. A repetition of anything else is walked with a cursor.
+- A value instance with a guard is a pair `Has_X`/`X`. Value instances of
+  the same type that an expression uses are inserted into the expression, so
+  they can be used in `Parse`. A value instance that needs the buffer (a
+  string length, a comparison of bytes) takes `Buffer` before `This`, and its
+  precondition adds `Belongs_To (This, Buffer)`. A value instance of an
+  enumeration has `X_Value` and `X`.
+- A parse instance without `io` reads from `This.Io`; with `io: _root._io`
+  from `Open (Buffer)`. `pos` is required. An instance with `if` has `Has_X`.
+  The result is an `out` parameter of the type of the value; the postcondition
+  says `Within (Result, Buffer)` for a slice.
+- An expression of a repeated field, `_index`, `_parent`, `_root` other than
+  `_root._io`, floats, string operations other than comparison with a
+  literal or another string, `.length`, `.to_i`, and array subscripts are
+  supported only as the translator lists in `compiler/README.md`; whatever is
+  not supported is a compile error with the path of the attribute.
+- The argument of a type is passed without conversion when it is a field of
+  the same type as the parameter. Otherwise it is converted, and a value
+  outside the range of the parameter makes the stream fail with
+  `Arithmetic_Error`.
+- A string in `ASCII`, `UTF-8`, `UTF-16LE` or `UTF-16BE` is checked; every
+  other encoding is `Single_Byte`, which accepts everything. The encodings
+  `UTF-16` without byte order, `UTF-32` and the like are rejected.
+- `contents` is a constant `X_Expected` of the body, compared by
+  `Read_Contents`. `valid` is checked after the read and fails the stream
+  with the matching `Validation_*` status.
 
 ## What differs from other Kaitai Struct targets
 

@@ -1,3 +1,4 @@
+with Arithmetic_Tests;
 with Bits_Tests;
 with Byte_Arrays_Tests;
 with Decoding_Tests;
@@ -16,6 +17,7 @@ begin
    Byte_Arrays_Tests.Run;
    Substreams_Tests.Run;
    Processing_Tests.Run;
+   Arithmetic_Tests.Run;
    Sample_Parser_Tests.Run;
    Examples_Tests.Run;
    Test_Support.Summary;

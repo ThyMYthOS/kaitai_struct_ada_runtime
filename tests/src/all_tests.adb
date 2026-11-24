@@ -11,6 +11,7 @@ with Streams_Tests;
 with Strings_Tests;
 with Substreams_Tests;
 with Test_Support;
+with Writers_Tests;
 with Zlib_Tests;
 
 procedure All_Tests is
@@ -28,5 +29,6 @@ begin
    Examples_Tests.Run;
    Showcase_Tests.Run;
    Extras_Tests.Run;
+   Writers_Tests.Run;
    Test_Support.Summary;
 end All_Tests;

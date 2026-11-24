@@ -1,0 +1,33 @@
+--  Coding style shared by all projects of this repository.
+--
+--  Sources are formatted with gnatformat, which reads package Format.  What
+--  the formatter does not cover is checked by the compiler through
+--  Style_Switches: comments in GNAT style ("--" followed by two spaces),
+--  casing of identifiers, keywords, attributes and pragmas, no tabs, no
+--  trailing blanks, labels on "end" and "exit", and the line length.
+
+abstract project Kaitai_Style is
+
+   Line_Length := "120";
+
+   Style_Switches :=
+     ("-gnatya",                  --  attribute casing
+      "-gnatyb",                  --  no trailing blanks
+      "-gnatyc",                  --  comment format
+      "-gnatye",                  --  labels on end and exit
+      "-gnatyf",                  --  no form feeds or vertical tabs
+      "-gnatyh",                  --  no horizontal tabs
+      "-gnatyk",                  --  keyword casing
+      "-gnatyn",                  --  casing of entities from Standard
+      "-gnatyp",                  --  pragma casing
+      "-gnatyr",                  --  identifier casing follows the declaration
+      "-gnatyM" & Line_Length);   --  maximum line length
+
+   package Format is
+      for Width ("Ada") use Line_Length;
+      for Indentation ("Ada") use "3";
+      for Indentation_Kind ("Ada") use "spaces";
+      for End_Of_Line ("Ada") use "lf";
+   end Format;
+
+end Kaitai_Style;

@@ -1,0 +1,18 @@
+name = "kaitai_struct_tests"
+description = "Tests of the Kaitai Struct runtime library"
+version = "0.1.0-dev"
+
+licenses = "MIT"
+maintainers = ["Manuel Stahl <thymythos@googlemail.com>"]
+
+executables = ["tests_main"]
+
+[[depends-on]]
+kaitai_struct = "*"
+
+[[pins]]
+kaitai_struct = { path = ".." }
+
+# Tests run with the contracts of the library checked
+[gpr-set-externals]
+KAITAI_STRUCT_CONTRACTS = "on"

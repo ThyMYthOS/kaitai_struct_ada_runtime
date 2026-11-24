@@ -1,0 +1,24 @@
+with "kaitai_struct.gpr";
+with "../kaitai_style.gpr";
+
+--  Tests of the library for the development machine.  The same tests are
+--  built for a simulated microcontroller by target/.
+project Kaitai_Struct_Tests is
+
+   for Source_Dirs use ("src/", "host/");
+   for Object_Dir use "obj/";
+   for Create_Missing_Dirs use "True";
+   for Exec_Dir use "bin/";
+   for Main use ("tests_main.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O1", "-g", "-gnat2012", "-gnata", "-gnatwa") & Kaitai_Style.Style_Switches;
+   end Compiler;
+
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=1", "-j0", "--checks-as-errors=on");
+   end Prove;
+
+   package Format renames Kaitai_Style.Format;
+
+end Kaitai_Struct_Tests;

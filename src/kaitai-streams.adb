@@ -20,6 +20,44 @@ is
       end if;
    end Run_Out;
 
+   --  Byte_Arrays.Find and Byte_Arrays.Equal once more.  A body of this
+   --  package that is inlined into a parser can only take along what this
+   --  package holds itself: the compiler does not look into the body of a
+   --  package the parser does not name.  With a call left in, a terminated
+   --  string cost a quarter more instructions.
+
+   function Find (Buffer : Bytes; Item : Slice; Term : Byte) return Length
+   with Inline, Pre => Within (Item, Buffer), Post => Find'Result = Byte_Arrays.Find (Buffer, Item, Term);
+
+   function Find (Buffer : Bytes; Item : Slice; Term : Byte) return Length is
+   begin
+      for I in Item.First .. Item.Last loop
+         if Buffer (I) = Term then
+            return I;
+         end if;
+         pragma Loop_Invariant (for all J in Item.First .. I => Buffer (J) /= Term);
+      end loop;
+      return Item.Last + 1;
+   end Find;
+
+   function Equal (Buffer : Bytes; Item : Slice; Expected : Bytes) return Boolean
+   with Inline, Pre => Within (Item, Buffer), Post => Equal'Result = Byte_Arrays.Equal (Buffer, Item, Expected);
+
+   function Equal (Buffer : Bytes; Item : Slice; Expected : Bytes) return Boolean is
+   begin
+      if Size (Item) /= Expected'Length then
+         return False;
+      end if;
+      for I in Item.First .. Item.Last loop
+         if Buffer (I) /= Expected (Expected'First + (I - Item.First)) then
+            return False;
+         end if;
+         pragma
+           Loop_Invariant (for all J in Item.First .. I => Buffer (J) = Expected (Expected'First + (J - Item.First)));
+      end loop;
+      return True;
+   end Equal;
+
    function Open (Buffer : Bytes) return Stream is
    begin
       if Buffer'Length = 0 then
@@ -271,6 +309,66 @@ is
          Data := (First => 1, Last => 0);
       end if;
    end Read_Bytes_Full;
+
+   procedure Read_Bytes_Term
+     (Buffer    : Bytes;
+      S         : in out Stream;
+      Term      : Byte;
+      Include   : Boolean;
+      Consume   : Boolean;
+      EOS_Error : Boolean;
+      Data      : out Slice)
+   is
+      Found : Length;
+   begin
+      Data := (First => 1, Last => 0);
+      if S.State /= Success then
+         return;
+      end if;
+
+      Found := Find (Buffer, (First => S.Next, Last => S.Last), Term);
+      if Found <= S.Last then
+         Data := (First => S.Next, Last => (if Include then Found else Found - 1));
+         S.Unread := 0;
+         S.Next := (if Consume then Found + 1 else Found);
+      elsif EOS_Error then
+         Run_Out (S);
+      else
+         Data := (First => S.Next, Last => S.Last);
+         S.Unread := 0;
+         S.Next := S.Last + 1;
+      end if;
+   end Read_Bytes_Term;
+
+   procedure Read_Contents (Buffer : Bytes; S : in out Stream; Expected : Bytes) is
+      Data : Slice;
+   begin
+      Read_Bytes (S, Expected'Length, Data);
+      if S.State = Success and then not Equal (Buffer, Data, Expected) then
+         S.State := Validation_Not_Equal;
+      end if;
+   end Read_Contents;
+
+   procedure Substream (Buffer : Bytes; S : in out Stream; Count : Length; Sub : out Stream) is
+      --  Buffer only serves the contract
+      pragma Warnings (Off, Buffer);
+   begin
+      if Available (S, Count) then
+         Sub := (First => S.Next, Last => S.Next + Count - 1, Next => S.Next, State => Success, Unread => 0);
+         S.Next := S.Next + Count;
+         S.Unread := 0;
+      else
+         Run_Out (S);
+         Sub := (First => 1, Last => 0, Next => 1, State => S.State, Unread => 0);
+      end if;
+   end Substream;
+
+   procedure Join (S : in out Stream; Sub : Stream) is
+   begin
+      if S.State = Success then
+         S.State := Sub.State;
+      end if;
+   end Join;
 
    procedure Align_To_Byte (S : in out Stream) is
    begin

@@ -14,6 +14,7 @@
 --  OK before a decision that depends on values read, and at the end.
 
 with Kaitai.Bits;  use Kaitai.Bits;
+with Kaitai.Byte_Arrays;
 with Kaitai.Decoding;
 with Kaitai.Types; use Kaitai.Types;
 
@@ -59,11 +60,19 @@ is
    function Bits_Left (S : Stream) return Bit_Remainder
    with Post => (if Bits_Left'Result > 0 then Pos (S) > 0);
 
+   --  The bytes from the current position to the end, as a slice of the
+   --  buffer
+   function Rest (S : Stream) return Slice
+   with Post => Rest'Result.First = Next_Index (S) and then Size (Rest'Result) = Remaining (S);
+
    --  True if the stream lies inside Buffer.  This holds for the buffer a
    --  stream was opened on and is required by every operation that takes
    --  the buffer.
    function Is_Valid (S : Stream; Buffer : Bytes) return Boolean
-   with Post => (if Is_Valid'Result then Decoding.Has (Buffer, Next_Index (S), Remaining (S)));
+   with
+     Post =>
+       (if Is_Valid'Result
+        then Decoding.Has (Buffer, Next_Index (S), Remaining (S)) and then Within (Rest (S), Buffer));
 
    --  True if Left and Right cover the same bytes
    function Same_Window (Left, Right : Stream) return Boolean
@@ -458,6 +467,102 @@ is
                    and then Size (Data) = Remaining (S'Old)
                  else Pos (S) = Pos (S'Old) and then Bits_Left (S) = Bits_Left (S'Old) and then Is_Empty (Data));
 
+   --  The bytes up to the next byte that equals Term.  This is
+   --  read_bytes_term of the Kaitai Struct stream API.
+   --
+   --    Include    the terminator is part of Data
+   --    Consume    the stream moves past the terminator; otherwise it stops
+   --               at the terminator, which the next read then delivers
+   --    EOS_Error  if there is no terminator, fail with End_Of_Stream;
+   --               otherwise deliver all bytes up to the end of the stream
+   procedure Read_Bytes_Term
+     (Buffer    : Bytes;
+      S         : in out Stream;
+      Term      : Byte;
+      Include   : Boolean;
+      Consume   : Boolean;
+      EOS_Error : Boolean;
+      Data      : out Slice)
+   with
+     Inline,
+     Pre  => Is_Valid (S, Buffer),
+     Post =>
+       Same_Window (S'Old, S)
+       and then Is_Valid (S, Buffer)
+       and then Within (Data, Buffer)
+       and then (if OK (S'Old) and then Byte_Arrays.Find (Buffer, Rest (S'Old), Term) <= Rest (S'Old).Last
+                 then
+                   OK (S)
+                   and then Bits_Left (S) = 0
+                   and then Data.First = Next_Index (S'Old)
+                   and then Data.Last
+                            = (if Include
+                               then Byte_Arrays.Find (Buffer, Rest (S'Old), Term)
+                               else Byte_Arrays.Find (Buffer, Rest (S'Old), Term) - 1)
+                   and then Next_Index (S)
+                            = (if Consume
+                               then Byte_Arrays.Find (Buffer, Rest (S'Old), Term) + 1
+                               else Byte_Arrays.Find (Buffer, Rest (S'Old), Term))
+                 elsif OK (S'Old) and then not EOS_Error
+                 then OK (S) and then Bits_Left (S) = 0 and then Data = Rest (S'Old) and then Is_EOF (S)
+                 else
+                   not OK (S)
+                   and then Is_Empty (Data)
+                   and then Pos (S) = Pos (S'Old)
+                   and then Bits_Left (S) = Bits_Left (S'Old)
+                   and then Status (S) = (if OK (S'Old) then End_Of_Stream else Status (S'Old)));
+
+   --  Read as many bytes as Expected has and fail with Validation_Not_Equal
+   --  if they differ from it.  This is how a "contents" attribute is read.
+   procedure Read_Contents (Buffer : Bytes; S : in out Stream; Expected : Bytes)
+   with
+     Inline,
+     Pre  => Is_Valid (S, Buffer),
+     Post =>
+       Is_Valid (S, Buffer)
+       and then (if OK (S'Old) and then Expected'Length <= Remaining (S'Old)
+                 then
+                   Same_Window (S'Old, S)
+                   and then Pos (S) = Pos (S'Old) + Expected'Length
+                   and then Bits_Left (S) = 0
+                   and then Status (S) in Success | Validation_Not_Equal
+                 else Consumed (S'Old, S, Expected'Length));
+
+   ---------------------------------------------------------------------
+   --  Substreams
+   --
+   --  A field with a size of its own is parsed from a stream that covers
+   --  just its bytes, so that it cannot read beyond them.  Substream makes
+   --  that stream and moves the parent past the field.  When the field has
+   --  been parsed, Join hands a failure of the substream to the parent.
+   ---------------------------------------------------------------------
+
+   --  A stream over the next Count bytes of S.  Fails with End_Of_Stream
+   --  if fewer are left; Sub is then empty and has failed as well.
+   procedure Substream (Buffer : Bytes; S : in out Stream; Count : Length; Sub : out Stream)
+   with
+     Inline,
+     Pre  => Is_Valid (S, Buffer),
+     Post =>
+       Consumed (S'Old, S, Count)
+       and then Is_Valid (S, Buffer)
+       and then Is_Valid (Sub, Buffer)
+       and then Pos (Sub) = 0
+       and then Bits_Left (Sub) = 0
+       and then Status (Sub) = Status (S)
+       and then (if OK (S) then Size (Sub) = Count and then Next_Index (Sub) = Next_Index (S'Old) else Size (Sub) = 0);
+
+   --  Let S fail for the reason Sub has failed for, if it has and S has not
+   procedure Join (S : in out Stream; Sub : Stream)
+   with
+     Inline,
+     Post =>
+       Same_Window (S'Old, S)
+       and then Pos (S) = Pos (S'Old)
+       and then Next_Index (S) = Next_Index (S'Old)
+       and then Bits_Left (S) = Bits_Left (S'Old)
+       and then Status (S) = (if OK (S'Old) then Status (Sub) else Status (S'Old));
+
    --  True if Item lies inside the bytes S covers.  Slices delivered by a
    --  stream do; together with Is_Valid this gives Within (Item, Buffer).
    function Covers (S : Stream; Item : Slice) return Boolean
@@ -511,6 +616,9 @@ private
 
    function Is_EOF (S : Stream) return Boolean
    is (S.Next > S.Last and then S.Unread = 0);
+
+   function Rest (S : Stream) return Slice
+   is (First => S.Next, Last => S.Last);
 
    function Is_Valid (S : Stream; Buffer : Bytes) return Boolean
    is (S.Last < S.First or else (S.First >= Buffer'First and then S.Last <= Buffer'Last));

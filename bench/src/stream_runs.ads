@@ -58,20 +58,20 @@ package Stream_Runs is
    --  formats are those of Bench_Data.
    --
    --  Zero-terminated strings: two of them and a u2le per record
-   function Run_Term_Kaitai (Data : Bytes) return U64
+   function Run_Term_Kaitai_Local (Data : Bytes) return U64
    with No_Inline;
    function Run_Term_Classic (Data : Bytes) return U64
    with No_Inline;
 
    --  A "contents" attribute of four bytes and a u4le per record
-   function Run_Contents_Kaitai (Data : Bytes) return U64
+   function Run_Contents_Kaitai_Local (Data : Bytes) return U64
    with No_Inline;
    function Run_Contents_Classic (Data : Bytes) return U64
    with No_Inline;
 
    --  A u1 length and a body of that many bytes, which is parsed from a
    --  substream of its own and reads a u2le and a u1
-   function Run_Substream_Kaitai (Data : Bytes) return U64
+   function Run_Substream_Kaitai_Local (Data : Bytes) return U64
    with No_Inline;
    function Run_Substream_Classic (Data : Bytes) return U64
    with No_Inline;
@@ -137,6 +137,33 @@ package Stream_Runs is
    function Run_Rotate_Kaitai (Data : Bytes) return U64
    with No_Inline;
    function Run_Rotate_Classic (Data : Bytes) return U64
+   with No_Inline;
+
+   --  The variants of the library that read through the stream parameter,
+   --  as generated code does, are Run_Term_Kaitai, Run_Contents_Kaitai and
+   --  Run_Substream_Kaitai; those above with the suffix _Local copy the
+   --  stream into a local variable instead
+   function Run_Term_Kaitai (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Contents_Kaitai (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Substream_Kaitai (Data : Bytes) return U64
+   with No_Inline;
+
+   --  The cost of a returned status against a sticky one when a parser is
+   --  called once per record: N fields of u1 read with the stream designs
+   --  of Stream_Variants, to be compared with the Run_Fields<N>_Direct above
+   function Run_Status1_Sticky (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Status1_Returned (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Status4_Sticky (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Status4_Returned (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Status8_Sticky (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Status8_Returned (Data : Bytes) return U64
    with No_Inline;
 
 end Stream_Runs;

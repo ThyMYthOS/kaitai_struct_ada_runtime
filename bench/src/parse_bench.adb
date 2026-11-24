@@ -29,10 +29,13 @@ procedure Parse_Bench is
 
    type Variant is
      (Kaitai_Term_V,
+      Kaitai_Term_Local_V,
       Term_Classic_V,
       Kaitai_Contents_V,
+      Kaitai_Contents_Local_V,
       Contents_Classic_V,
       Kaitai_Substream_V,
+      Kaitai_Substream_Local_V,
       Substream_Classic_V,
       Nested_Local_V,
       Nested_Outer_Only_V,
@@ -56,7 +59,13 @@ procedure Parse_Bench is
       Xor_Many_Classic_Mod_V,
       Xor_Many_Classic_Counter_V,
       Kaitai_Rotate_V,
-      Rotate_Classic_V);
+      Rotate_Classic_V,
+      Status1_Sticky_V,
+      Status1_Returned_V,
+      Status4_Sticky_V,
+      Status4_Returned_V,
+      Status8_Sticky_V,
+      Status8_Returned_V);
 
    type Group is
      (Term_G,
@@ -71,14 +80,20 @@ procedure Parse_Bench is
       Calls_G,
       Xor_One_G,
       Xor_Many_G,
-      Rotate_G);
+      Rotate_G,
+      Status1_G,
+      Status4_G,
+      Status8_G);
 
    Groups : constant array (Variant) of Group :=
      [Kaitai_Term_V              => Term_G,
+      Kaitai_Term_Local_V        => Term_G,
       Term_Classic_V             => Term_G,
       Kaitai_Contents_V          => Contents_G,
+      Kaitai_Contents_Local_V    => Contents_G,
       Contents_Classic_V         => Contents_G,
       Kaitai_Substream_V         => Substream_G,
+      Kaitai_Substream_Local_V   => Substream_G,
       Substream_Classic_V        => Substream_G,
       Nested_Local_V             => Nested_G,
       Nested_Outer_Only_V        => Nested_G,
@@ -102,16 +117,25 @@ procedure Parse_Bench is
       Xor_Many_Classic_Mod_V     => Xor_Many_G,
       Xor_Many_Classic_Counter_V => Xor_Many_G,
       Kaitai_Rotate_V            => Rotate_G,
-      Rotate_Classic_V           => Rotate_G];
+      Rotate_Classic_V           => Rotate_G,
+      Status1_Sticky_V           => Status1_G,
+      Status1_Returned_V         => Status1_G,
+      Status4_Sticky_V           => Status4_G,
+      Status4_Returned_V         => Status4_G,
+      Status8_Sticky_V           => Status8_G,
+      Status8_Returned_V         => Status8_G];
 
    subtype Name is String (1 .. 24);
 
    Names : constant array (Variant) of Name :=
      ["kaitai_term             ",
+      "kaitai_term_local       ",
       "term_classic            ",
       "kaitai_contents         ",
+      "kaitai_contents_local   ",
       "contents_classic        ",
       "kaitai_substream        ",
+      "kaitai_substream_local  ",
       "substream_classic       ",
       "nested_local            ",
       "nested_outer_only       ",
@@ -135,7 +159,13 @@ procedure Parse_Bench is
       "xor_many_classic_mod    ",
       "xor_many_classic_counter",
       "kaitai_rotate           ",
-      "rotate_classic          "];
+      "rotate_classic          ",
+      "status1_sticky          ",
+      "status1_returned        ",
+      "status4_sticky          ",
+      "status4_returned        ",
+      "status8_sticky          ",
+      "status8_returned        "];
 
    Failed : Boolean := False;
 
@@ -187,10 +217,13 @@ begin
                Sums (V) :=
                  (case V is
                     when Kaitai_Term_V              => Run_Term_Kaitai (Term (1 .. Term_Used)),
+                    when Kaitai_Term_Local_V        => Run_Term_Kaitai_Local (Term (1 .. Term_Used)),
                     when Term_Classic_V             => Run_Term_Classic (Term (1 .. Term_Used)),
                     when Kaitai_Contents_V          => Run_Contents_Kaitai (Contents (1 .. Contents_Used)),
+                    when Kaitai_Contents_Local_V    => Run_Contents_Kaitai_Local (Contents (1 .. Contents_Used)),
                     when Contents_Classic_V         => Run_Contents_Classic (Contents (1 .. Contents_Used)),
                     when Kaitai_Substream_V         => Run_Substream_Kaitai (Substream (1 .. Substream_Used)),
+                    when Kaitai_Substream_Local_V   => Run_Substream_Kaitai_Local (Substream (1 .. Substream_Used)),
                     when Substream_Classic_V        => Run_Substream_Classic (Substream (1 .. Substream_Used)),
                     when Nested_Local_V             => Run_Nested_Local (Nested (1 .. Nested_Used)),
                     when Nested_Outer_Only_V        => Run_Nested_Outer_Only (Nested (1 .. Nested_Used)),
@@ -214,7 +247,13 @@ begin
                     when Xor_Many_Classic_Mod_V     => Run_Xor_Many_Classic_Mod (Process (1 .. Process_Used)),
                     when Xor_Many_Classic_Counter_V => Run_Xor_Many_Classic_Counter (Process (1 .. Process_Used)),
                     when Kaitai_Rotate_V            => Run_Rotate_Kaitai (Process (1 .. Process_Used)),
-                    when Rotate_Classic_V           => Run_Rotate_Classic (Process (1 .. Process_Used)));
+                    when Rotate_Classic_V           => Run_Rotate_Classic (Process (1 .. Process_Used)),
+                    when Status1_Sticky_V           => Run_Status1_Sticky (Fields (1 .. 1 * Length (Records))),
+                    when Status1_Returned_V         => Run_Status1_Returned (Fields (1 .. 1 * Length (Records))),
+                    when Status4_Sticky_V           => Run_Status4_Sticky (Fields (1 .. 4 * Length (Records))),
+                    when Status4_Returned_V         => Run_Status4_Returned (Fields (1 .. 4 * Length (Records))),
+                    when Status8_Sticky_V           => Run_Status8_Sticky (Fields (1 .. 8 * Length (Records))),
+                    when Status8_Returned_V         => Run_Status8_Returned (Fields (1 .. 8 * Length (Records))));
                Times (V) (R) := Elapsed_NS (Watch) / Long_Float (Records);
             end if;
          end loop;

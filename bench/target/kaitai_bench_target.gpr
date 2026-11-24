@@ -90,7 +90,16 @@ project Kaitai_Bench_Target is
       "target_xor_many_classic_mod.adb",
       "target_xor_many_classic_counter.adb",
       "target_kaitai_rotate.adb",
-      "target_rotate_classic.adb");
+      "target_rotate_classic.adb",
+      "target_kaitai_term_local.adb",
+      "target_kaitai_contents_local.adb",
+      "target_kaitai_substream_local.adb",
+      "target_status1_sticky.adb",
+      "target_status1_returned.adb",
+      "target_status4_sticky.adb",
+      "target_status4_returned.adb",
+      "target_status8_sticky.adb",
+      "target_status8_returned.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use Switches;

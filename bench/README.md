@@ -81,11 +81,12 @@ target program uses as well.
 
 | Group | Records | Variants |
 |---|---|---|
-| `term` | two zero-terminated strings of 0 to 12 bytes, a `u2le` | `kaitai_term`: `Read_Bytes_Term`, `Read_U2le` on a local copy of the stream; `term_classic`: hand-written scan |
-| `contents` | 4 bytes magic, a `u4le` | `kaitai_contents`: `Read_Contents`; `contents_classic`: compares the bytes, then decodes |
-| `substream` | `u1` length N (4 to 16), N bytes of which a `u2le` and a `u1` are read | `kaitai_substream`: `Substream`, a parser of the body, `Join`; `substream_classic`: explicit bounds, a parser of the body |
+| `term` | two zero-terminated strings of 0 to 12 bytes, a `u2le` | `kaitai_term`: `Read_Bytes_Term`, `Read_U2le` through the stream parameter; `kaitai_term_local`: the same on a local copy of the stream; `term_classic`: hand-written scan |
+| `contents` | 4 bytes magic, a `u4le` | `kaitai_contents`: `Read_Contents`; `kaitai_contents_local`: the same on a local copy; `contents_classic`: compares the bytes, then decodes |
+| `substream` | `u1` length N (4 to 16), N bytes of which a `u2le` and a `u1` are read | `kaitai_substream`: `Substream`, a parser of the body, `Join`, all through the stream parameter; `kaitai_substream_local`: the same, both parsers on local copies; `substream_classic`: explicit bounds, a parser of the body |
 | `nested_copy` | 4 nested types of one `u1` each | `nested_local`: the parser of the record and that of the nested type copy the stream; `nested_outer_only`: only the parser of the record does; `nested_direct`: neither does |
 | `fields<N>` | N `u1` (N = 1, 2, 3, 4, 8), read by one parser per record; N bytes of a buffer shared by all N | `fields<N>_local`: the parser copies the stream; `fields<N>_direct`: it reads through the parameter |
+| `status<N>` | N `u1` (N = 1, 4, 8), the input and checksum of `fields<N>_direct` | `status<N>_sticky`: `Stream_Variants.Cursor_Sticky`, no check in the parser, the loop checks the flag; `status<N>_returned`: `Stream_Variants.Cursor_Status`, the parser checks the status after each read, returns early and reports it |
 | `calls` | 4 calls of a nested parser that reads 2 `u1`; the outer parser reads nothing itself; 8 bytes | `calls_both_local`: both copy the stream; `calls_inner_local`: the outer parser passes it on, the nested one copies; `calls_direct`: neither copies |
 | `xor_one`, `xor_many`, `rotate` | a record of 64 bytes processed into a 64-byte array of the package, four bytes of which enter the checksum | `kaitai_xor_one` (key `16#5A#`), `kaitai_xor_many` (5-byte key), `kaitai_rotate` (left by 3) against `xor_one_classic`, `xor_many_classic_mod` (key index by `mod`), `xor_many_classic_counter` (key index counted along and wrapped), `rotate_classic` |
 

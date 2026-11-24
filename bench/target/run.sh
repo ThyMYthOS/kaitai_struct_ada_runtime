@@ -38,10 +38,11 @@ for rts in "${@:-light-stm32f4}"; do
       # The programs of parse_bench: each group has a base of its own, which
       # fills the buffer for the group and parses nothing
       echo "-- parsing designs, instructions per record"
-      for group in "term kaitai_term term_classic" "contents kaitai_contents contents_classic" \
-         "substream kaitai_substream substream_classic" \
+      for group in "term kaitai_term kaitai_term_local term_classic" \
+         "contents kaitai_contents kaitai_contents_local contents_classic" \
+         "substream kaitai_substream kaitai_substream_local substream_classic" \
          "nested nested_local nested_outer_only nested_direct" \
-         "fields fields1_local fields1_direct fields2_local fields2_direct fields3_local fields3_direct fields4_local fields4_direct fields8_local fields8_direct calls_both_local calls_inner_local calls_direct" \
+         "fields fields1_local fields1_direct fields2_local fields2_direct fields3_local fields3_direct fields4_local fields4_direct fields8_local fields8_direct calls_both_local calls_inner_local calls_direct status1_sticky status1_returned status4_sticky status4_returned status8_sticky status8_returned" \
          "process kaitai_xor_one xor_one_classic kaitai_xor_many xor_many_classic_mod xor_many_classic_counter kaitai_rotate rotate_classic"; do
          set -- $(simulate "bin/$rts/$mode/target_none_${group%% *}")
          base=$1

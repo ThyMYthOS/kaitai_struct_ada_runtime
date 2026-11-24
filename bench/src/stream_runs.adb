@@ -333,10 +333,10 @@ package body Stream_Runs is
    is (Sum * 31 + U64 (Size (This.S1)) + U64 (Size (This.S2)) + U64 (This.N))
    with Inline_Always;
 
-   procedure Parse_Term_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; This : out Term_Record)
+   procedure Parse_Term_Kaitai_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; This : out Term_Record)
    with No_Inline;
 
-   procedure Parse_Term_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; This : out Term_Record) is
+   procedure Parse_Term_Kaitai_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; This : out Term_Record) is
       use Kaitai.Streams;
       L : Stream := S;
    begin
@@ -344,20 +344,20 @@ package body Stream_Runs is
       Read_Bytes_Term (Data, L, 0, Include => False, Consume => True, EOS_Error => True, Data => This.S2);
       Read_U2le (Data, L, This.N);
       S := L;
-   end Parse_Term_Kaitai;
+   end Parse_Term_Kaitai_Local;
 
-   function Run_Term_Kaitai (Data : Bytes) return U64 is
+   function Run_Term_Kaitai_Local (Data : Bytes) return U64 is
       S    : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
       This : Term_Record;
       Sum  : U64 := 0;
    begin
       while not Kaitai.Streams.Is_EOF (S) loop
-         Parse_Term_Kaitai (Data, S, This);
+         Parse_Term_Kaitai_Local (Data, S, This);
          exit when not Kaitai.Streams.OK (S);
          Sum := Term_Mix (Sum, This);
       end loop;
       return Sum;
-   end Run_Term_Kaitai;
+   end Run_Term_Kaitai_Local;
 
    procedure Parse_Term_Classic (Data : Bytes; Pos : in out Length; This : out Term_Record; OK : out Boolean)
    with No_Inline;
@@ -416,30 +416,30 @@ package body Stream_Runs is
    --  Contents
    ---------------------------------------------------------------------
 
-   procedure Parse_Contents_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; Value : out U32)
+   procedure Parse_Contents_Kaitai_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Value : out U32)
    with No_Inline;
 
-   procedure Parse_Contents_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; Value : out U32) is
+   procedure Parse_Contents_Kaitai_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; Value : out U32) is
       use Kaitai.Streams;
       L : Stream := S;
    begin
       Read_Contents (Data, L, Bench_Data.Magic);
       Read_U4le (Data, L, Value);
       S := L;
-   end Parse_Contents_Kaitai;
+   end Parse_Contents_Kaitai_Local;
 
-   function Run_Contents_Kaitai (Data : Bytes) return U64 is
+   function Run_Contents_Kaitai_Local (Data : Bytes) return U64 is
       S     : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
       Value : U32;
       Sum   : U64 := 0;
    begin
       while not Kaitai.Streams.Is_EOF (S) loop
-         Parse_Contents_Kaitai (Data, S, Value);
+         Parse_Contents_Kaitai_Local (Data, S, Value);
          exit when not Kaitai.Streams.OK (S);
          Sum := Sum * 31 + U64 (Value);
       end loop;
       return Sum;
-   end Run_Contents_Kaitai;
+   end Run_Contents_Kaitai_Local;
 
    procedure Parse_Contents_Classic (Data : Bytes; Pos : in out Length; Value : out U32; OK : out Boolean)
    with No_Inline;
@@ -482,22 +482,22 @@ package body Stream_Runs is
    --  Substreams
    ---------------------------------------------------------------------
 
-   procedure Parse_Body_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8)
+   procedure Parse_Body_Kaitai_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8)
    with No_Inline;
 
-   procedure Parse_Body_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8) is
+   procedure Parse_Body_Kaitai_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8) is
       use Kaitai.Streams;
       L : Stream := S;
    begin
       Read_U2le (Data, L, A);
       Read_U1 (Data, L, B);
       S := L;
-   end Parse_Body_Kaitai;
+   end Parse_Body_Kaitai_Local;
 
-   procedure Parse_Substream_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8)
+   procedure Parse_Substream_Kaitai_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8)
    with No_Inline;
 
-   procedure Parse_Substream_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8) is
+   procedure Parse_Substream_Kaitai_Local (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8) is
       use Kaitai.Streams;
       L   : Stream := S;
       N   : U8;
@@ -505,24 +505,24 @@ package body Stream_Runs is
    begin
       Read_U1 (Data, L, N);
       Substream (Data, L, Length (N), Sub);
-      Parse_Body_Kaitai (Data, Sub, A, B);
+      Parse_Body_Kaitai_Local (Data, Sub, A, B);
       Join (L, Sub);
       S := L;
-   end Parse_Substream_Kaitai;
+   end Parse_Substream_Kaitai_Local;
 
-   function Run_Substream_Kaitai (Data : Bytes) return U64 is
+   function Run_Substream_Kaitai_Local (Data : Bytes) return U64 is
       S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
       A   : U16;
       B   : U8;
       Sum : U64 := 0;
    begin
       while not Kaitai.Streams.Is_EOF (S) loop
-         Parse_Substream_Kaitai (Data, S, A, B);
+         Parse_Substream_Kaitai_Local (Data, S, A, B);
          exit when not Kaitai.Streams.OK (S);
          Sum := Sum * 31 + U64 (A) + U64 (B);
       end loop;
       return Sum;
-   end Run_Substream_Kaitai;
+   end Run_Substream_Kaitai_Local;
 
    --  The body occupies First .. Last of Data and is not read beyond
    procedure Parse_Body_Classic (Data : Bytes; First, Last : Length; A : out U16; B : out U8; OK : out Boolean)
@@ -1313,5 +1313,349 @@ package body Stream_Runs is
       end loop;
       return Sum;
    end Run_Rotate_Classic;
+
+   ---------------------------------------------------------------------
+   --  The library reading through the stream parameter
+   ---------------------------------------------------------------------
+
+   procedure Parse_Term_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; This : out Term_Record)
+   with No_Inline;
+
+   procedure Parse_Term_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; This : out Term_Record) is
+      use Kaitai.Streams;
+   begin
+      Read_Bytes_Term (Data, S, 0, Include => False, Consume => True, EOS_Error => True, Data => This.S1);
+      Read_Bytes_Term (Data, S, 0, Include => False, Consume => True, EOS_Error => True, Data => This.S2);
+      Read_U2le (Data, S, This.N);
+   end Parse_Term_Kaitai;
+
+   function Run_Term_Kaitai (Data : Bytes) return U64 is
+      S    : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      This : Term_Record;
+      Sum  : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Term_Kaitai (Data, S, This);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Term_Mix (Sum, This);
+      end loop;
+      return Sum;
+   end Run_Term_Kaitai;
+
+   procedure Parse_Contents_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; Value : out U32)
+   with No_Inline;
+
+   procedure Parse_Contents_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; Value : out U32) is
+      use Kaitai.Streams;
+   begin
+      Read_Contents (Data, S, Bench_Data.Magic);
+      Read_U4le (Data, S, Value);
+   end Parse_Contents_Kaitai;
+
+   function Run_Contents_Kaitai (Data : Bytes) return U64 is
+      S     : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      Value : U32;
+      Sum   : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Contents_Kaitai (Data, S, Value);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + U64 (Value);
+      end loop;
+      return Sum;
+   end Run_Contents_Kaitai;
+
+   procedure Parse_Body_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8)
+   with No_Inline;
+
+   procedure Parse_Body_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8) is
+      use Kaitai.Streams;
+   begin
+      Read_U2le (Data, S, A);
+      Read_U1 (Data, S, B);
+   end Parse_Body_Kaitai;
+
+   procedure Parse_Substream_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8)
+   with No_Inline;
+
+   procedure Parse_Substream_Kaitai (Data : Bytes; S : in out Kaitai.Streams.Stream; A : out U16; B : out U8) is
+      use Kaitai.Streams;
+      N   : U8;
+      Sub : Stream;
+   begin
+      Read_U1 (Data, S, N);
+      Substream (Data, S, Length (N), Sub);
+      Parse_Body_Kaitai (Data, Sub, A, B);
+      Join (S, Sub);
+   end Parse_Substream_Kaitai;
+
+   function Run_Substream_Kaitai (Data : Bytes) return U64 is
+      S   : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      A   : U16;
+      B   : U8;
+      Sum : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse_Substream_Kaitai (Data, S, A, B);
+         exit when not Kaitai.Streams.OK (S);
+         Sum := Sum * 31 + U64 (A) + U64 (B);
+      end loop;
+      return Sum;
+   end Run_Substream_Kaitai;
+
+   ---------------------------------------------------------------------
+   --  Sticky against returned status, one parser per record
+   ---------------------------------------------------------------------
+
+   procedure Parse_Status1_Sticky (Data : Bytes; S : in out Cursor_Sticky.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Status1_Sticky (Data : Bytes; S : in out Cursor_Sticky.Stream; Acc : out U64) is
+      use Cursor_Sticky;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, S, V);
+      A := U64 (V);
+      Acc := A;
+   end Parse_Status1_Sticky;
+
+   function Run_Status1_Sticky (Data : Bytes) return U64 is
+      S   : Cursor_Sticky.Stream := Cursor_Sticky.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while S.Pos <= S.Last loop
+         Parse_Status1_Sticky (Data, S, Acc);
+         exit when S.Failed;
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Status1_Sticky;
+
+   procedure Parse_Status1_Returned (Data : Bytes; S : in out Cursor_Status.Stream; Acc : out U64; OK : out Boolean)
+   with No_Inline;
+
+   procedure Parse_Status1_Returned (Data : Bytes; S : in out Cursor_Status.Stream; Acc : out U64; OK : out Boolean) is
+      use Cursor_Status;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, S, V, OK);
+      if not OK then
+         Acc := 0;
+         return;
+      end if;
+      A := U64 (V);
+      Acc := A;
+   end Parse_Status1_Returned;
+
+   function Run_Status1_Returned (Data : Bytes) return U64 is
+      S   : Cursor_Status.Stream := Cursor_Status.Open (Data);
+      Acc : U64;
+      OK  : Boolean;
+      Sum : U64 := 0;
+   begin
+      while S.Pos <= S.Last loop
+         Parse_Status1_Returned (Data, S, Acc, OK);
+         exit when not OK;
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Status1_Returned;
+
+   procedure Parse_Status4_Sticky (Data : Bytes; S : in out Cursor_Sticky.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Status4_Sticky (Data : Bytes; S : in out Cursor_Sticky.Stream; Acc : out U64) is
+      use Cursor_Sticky;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, S, V);
+      A := U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Acc := A;
+   end Parse_Status4_Sticky;
+
+   function Run_Status4_Sticky (Data : Bytes) return U64 is
+      S   : Cursor_Sticky.Stream := Cursor_Sticky.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while S.Pos <= S.Last loop
+         Parse_Status4_Sticky (Data, S, Acc);
+         exit when S.Failed;
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Status4_Sticky;
+
+   procedure Parse_Status4_Returned (Data : Bytes; S : in out Cursor_Status.Stream; Acc : out U64; OK : out Boolean)
+   with No_Inline;
+
+   procedure Parse_Status4_Returned (Data : Bytes; S : in out Cursor_Status.Stream; Acc : out U64; OK : out Boolean) is
+      use Cursor_Status;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, S, V, OK);
+      if not OK then
+         Acc := 0;
+         return;
+      end if;
+      A := U64 (V);
+      Read_U1 (Data, S, V, OK);
+      if not OK then
+         Acc := 0;
+         return;
+      end if;
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V, OK);
+      if not OK then
+         Acc := 0;
+         return;
+      end if;
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V, OK);
+      if not OK then
+         Acc := 0;
+         return;
+      end if;
+      A := A * 31 + U64 (V);
+      Acc := A;
+   end Parse_Status4_Returned;
+
+   function Run_Status4_Returned (Data : Bytes) return U64 is
+      S   : Cursor_Status.Stream := Cursor_Status.Open (Data);
+      Acc : U64;
+      OK  : Boolean;
+      Sum : U64 := 0;
+   begin
+      while S.Pos <= S.Last loop
+         Parse_Status4_Returned (Data, S, Acc, OK);
+         exit when not OK;
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Status4_Returned;
+
+   procedure Parse_Status8_Sticky (Data : Bytes; S : in out Cursor_Sticky.Stream; Acc : out U64)
+   with No_Inline;
+
+   procedure Parse_Status8_Sticky (Data : Bytes; S : in out Cursor_Sticky.Stream; Acc : out U64) is
+      use Cursor_Sticky;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, S, V);
+      A := U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V);
+      A := A * 31 + U64 (V);
+      Acc := A;
+   end Parse_Status8_Sticky;
+
+   function Run_Status8_Sticky (Data : Bytes) return U64 is
+      S   : Cursor_Sticky.Stream := Cursor_Sticky.Open (Data);
+      Acc : U64;
+      Sum : U64 := 0;
+   begin
+      while S.Pos <= S.Last loop
+         Parse_Status8_Sticky (Data, S, Acc);
+         exit when S.Failed;
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Status8_Sticky;
+
+   procedure Parse_Status8_Returned (Data : Bytes; S : in out Cursor_Status.Stream; Acc : out U64; OK : out Boolean)
+   with No_Inline;
+
+   procedure Parse_Status8_Returned (Data : Bytes; S : in out Cursor_Status.Stream; Acc : out U64; OK : out Boolean) is
+      use Cursor_Status;
+      V : U8;
+      A : U64;
+   begin
+      Read_U1 (Data, S, V, OK);
+      if not OK then
+         Acc := 0;
+         return;
+      end if;
+      A := U64 (V);
+      Read_U1 (Data, S, V, OK);
+      if not OK then
+         Acc := 0;
+         return;
+      end if;
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V, OK);
+      if not OK then
+         Acc := 0;
+         return;
+      end if;
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V, OK);
+      if not OK then
+         Acc := 0;
+         return;
+      end if;
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V, OK);
+      if not OK then
+         Acc := 0;
+         return;
+      end if;
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V, OK);
+      if not OK then
+         Acc := 0;
+         return;
+      end if;
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V, OK);
+      if not OK then
+         Acc := 0;
+         return;
+      end if;
+      A := A * 31 + U64 (V);
+      Read_U1 (Data, S, V, OK);
+      if not OK then
+         Acc := 0;
+         return;
+      end if;
+      A := A * 31 + U64 (V);
+      Acc := A;
+   end Parse_Status8_Returned;
+
+   function Run_Status8_Returned (Data : Bytes) return U64 is
+      S   : Cursor_Status.Stream := Cursor_Status.Open (Data);
+      Acc : U64;
+      OK  : Boolean;
+      Sum : U64 := 0;
+   begin
+      while S.Pos <= S.Last loop
+         Parse_Status8_Returned (Data, S, Acc, OK);
+         exit when not OK;
+         Sum := Sum * 31 + Acc;
+      end loop;
+      return Sum;
+   end Run_Status8_Returned;
 
 end Stream_Runs;

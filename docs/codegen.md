@@ -348,12 +348,85 @@ The parameters of a type are parameters of its `Parse`, between the stream
 and the result, and are kept in `T`, where instances and repetitions find
 them again. Each has an accessor.
 
+## Processing
+
+A field with `process` is kept as the bytes that are in the input. The
+processing is undone when the field is asked for, into an array of the
+caller, since a parser has no memory of its own:
+
+```ada
+function Secret_Raw (This : T) return Slice
+with Pre => Valid (This);
+
+procedure Secret (Buffer : Bytes; This : T; Target : in out Bytes; Last : out Length; Outcome : out Status_Kind);
+
+procedure Packed
+  (Buffer : Bytes; This : T; Storage : in out Bytes; Result : out Inner_Type.T; Outcome : out Status_Kind);
+```
+
+`Secret` is for a byte array: the result is `Target (Target'First .. Last)`.
+`Packed` is for a field of a type: the bytes are processed into `Storage`
+and the value is parsed from there, so that what it refers to lies in
+`Storage`. Both report `Capacity_Exceeded` if the array is too small.
+
+A value inside processed bytes is therefore parsed only when it is asked
+for, and an error in it shows only then. `Parse` cannot use such a value;
+the compiler rejects a description in which a later field depends on one.
+
+`examples/extras` shows this and the next two sections.
+
+## Types that contain themselves
+
+`Parse` of such a type has a parameter `Depth`, the number of levels of
+nesting that are accepted below the value. It is passed on reduced by one,
+and at zero the stream fails with `Limit_Exceeded`. `Depth` is what proves
+that the recursion ends:
+
+```ada
+procedure Parse (Buffer : Bytes; S : in out Stream; Depth : Natural; This : out T)
+with ..., Subprogram_Variant => (Decreases => Depth, Decreases => 1);
+```
+
+The procedure that parses one element has the variant
+`(Decreases => This.Depth, Decreases => 0)`, so that the call from `Parse`
+to it counts as a step down as well. Where the type is used from outside,
+`Depth` is the constant `Max_Depth` of the library-level package, 8 unless
+the compiler is told otherwise.
+
+Every level takes room on the stack, and the proof does not cover the size
+of the stack. Measured for `examples/extras` on a Cortex-M4 with run-time
+checks: 232 bytes per level. A light run-time library gives the main program
+4 KiB and does not notice when they are used up; with 32 levels the tests
+overwrote other memory on the simulated STM32F4. The default of 8 stays
+well within that stack. `-fstack-usage` tells what a level costs for a
+given type.
+
+A field of its own type is not held in `T`, which Ada does not allow. Like a
+repetition it is parsed again when asked for. A type that contains itself
+only through a repetition needs nothing more, since repetitions are not held
+either.
+
+## References to the parent and the root
+
+A value has no reference to the value it is part of. Where a type uses
+`_parent.x` or `_root.x.y`, the value of that expression becomes a parameter
+of its `Parse`, named `Parent_X` or `Root_X_Y`, after the parameters of the
+description. It is kept in `T` like those. The parser of the parent passes
+it; if it does not have it itself, as for `_root`, it gets the same parameter
+and hands it on.
+
+The value is taken when the parser of the parent calls. A reference to a
+field that is parsed later, which other targets resolve when an instance is
+asked for, is rejected by the compiler.
+
 ## What differs from other Kaitai Struct targets
 
 - There are no `_io`, `_parent` and `_root` references in the parsed values.
-  What a type needs from elsewhere has to be passed as a parameter. The
-  compiler rejects a description that uses `_parent` or `_root` otherwise,
-  except for `_root._io`.
+  What a type needs from its parent or the root is passed to its parser as a
+  parameter, and has to be parsed by then.
+- The bytes of a field with `process` are processed when the field is asked
+  for, not when it is parsed.
+- A type that contains itself can be nested only up to a fixed depth.
 - A failure is not an exception. It is the status of the stream.
 - `contents` fields are checked but not stored.
 - Seeking beyond the end of the stream fails at once, not at the next read.

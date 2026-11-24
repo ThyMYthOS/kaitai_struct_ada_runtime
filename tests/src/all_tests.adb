@@ -3,6 +3,7 @@ with Bits_Tests;
 with Byte_Arrays_Tests;
 with Decoding_Tests;
 with Examples_Tests;
+with Extras_Tests;
 with Processing_Tests;
 with Sample_Parser_Tests;
 with Showcase_Tests;
@@ -26,5 +27,6 @@ begin
    Sample_Parser_Tests.Run;
    Examples_Tests.Run;
    Showcase_Tests.Run;
+   Extras_Tests.Run;
    Test_Support.Summary;
 end All_Tests;

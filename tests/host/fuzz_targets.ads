@@ -5,7 +5,7 @@ with Kaitai.Types; use Kaitai.Types;
 
 package Fuzz_Targets is
 
-   type Target is (Showcase_Parser);
+   type Target is (Showcase_Parser, Extras_Parser);
 
    --  An input the parser accepts.  Round selects one where there are
    --  several.

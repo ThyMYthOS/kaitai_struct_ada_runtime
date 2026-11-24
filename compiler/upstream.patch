@@ -1,0 +1,35 @@
+diff --git a/project/plugins.sbt b/project/plugins.sbt
+index 5b34d46..b8c370d 100644
+--- a/project/plugins.sbt
++++ b/project/plugins.sbt
+@@ -2,4 +2,4 @@ logLevel := Level.Warn
+ 
+ addSbtPlugin("com.github.sbt" % "sbt-native-packager" % "1.11.3")
+ addSbtPlugin("org.scala-js" % "sbt-scalajs" % "1.20.1")
+-addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject" % "1.0.0")
++addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject" % "1.3.2")
+diff --git a/shared/src/main/scala/io/kaitai/struct/Main.scala b/shared/src/main/scala/io/kaitai/struct/Main.scala
+index 7ac34ef..f8137fa 100644
+--- a/shared/src/main/scala/io/kaitai/struct/Main.scala
++++ b/shared/src/main/scala/io/kaitai/struct/Main.scala
+@@ -76,6 +76,8 @@ object Main {
+     val config = updateConfigFromMeta(conf, spec.meta)
+ 
+     val cc = lang match {
++      case AdaClassCompiler =>
++        new AdaClassCompiler(specs, spec, config)
+       case GraphvizClassCompiler =>
+         new GraphvizClassCompiler(specs, spec)
+       case GoCompiler =>
+diff --git a/shared/src/main/scala/io/kaitai/struct/languages/components/LanguageCompilerStatic.scala b/shared/src/main/scala/io/kaitai/struct/languages/components/LanguageCompilerStatic.scala
+index c8284f8..fa2bc32 100644
+--- a/shared/src/main/scala/io/kaitai/struct/languages/components/LanguageCompilerStatic.scala
++++ b/shared/src/main/scala/io/kaitai/struct/languages/components/LanguageCompilerStatic.scala
+@@ -9,6 +9,7 @@ trait LanguageCompilerStatic {
+ 
+ object LanguageCompilerStatic {
+   val NAME_TO_CLASS: Map[String, LanguageCompilerStatic] = Map(
++    "ada" -> AdaClassCompiler,
+     "construct" -> ConstructClassCompiler,
+     "cpp_stl" -> CppCompiler,
+     "csharp" -> CSharpCompiler,

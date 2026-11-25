@@ -154,3 +154,31 @@ bytes, lists, `null` (the presence function is false) and floats (within
 1e-6, relative for large values). The names of the generated code are taken
 from the compiler itself (`AdaClassCompiler.memberName` and the like), so the
 test generator follows the compiler when it changes how it names things.
+
+### Processed fields, imports, recursion, known differences, round trips
+
+- A field with `process` has an accessor that is a procedure. `AdaSG` gives it
+  an array on the heap (as large as the input for `xor` and `rol`/`ror`, 256
+  times the input plus 4 KiB for `zlib`) and compares `Target (First .. Last)`;
+  for a field of a type the `Result` is read, and everything inside it (strings,
+  bytes, repetitions, switches) refers to that array, not to the input.
+- Accessors of imported types are written with the package of the other
+  description; the program has a `with` for each package it uses.
+- A top-level type that contains itself is parsed with
+  `<Pkg>.Max_Depth`; a field of that type is read with its procedure.
+- A test whose top-level type has parameters is `not translated`, since a
+  `.kst` has no way to give them (the environment variable `ADA_SG_TOP_ARGS`,
+  for example `3`, supplies them for experiments).
+- `KNOWN_DIFFERENCES` at the top of `scripts/run-kaitai-suite.sh` lists tests
+  that fail for a documented reason (name and reason). If such a test fails it
+  is reported as `known difference` and does not make the script fail; if it
+  passes, it is `passed`.
+- `--round-trip` calls the compiler with `--read-write` and makes every test
+  program write the parsed value with `<Pkg>.Write` into an array as large as
+  the input and print `round trip: same`, `round trip: differs at <offset>` or
+  `round trip: not written (<status>)`; the last two are failures. The
+  documented exceptions of `docs/codegen.md` (unused bytes of a substream are
+  zeros, padding bytes, instances with a position) show up as `differs`. The
+  mode was tried only on `examples/write_model` (`ADA_SG_ROUND_TRIP=1
+  ADA_SG_TOP_ARGS=3` with a throw-away copy of the tests layout), not against
+  the compiler option, which did not exist yet.

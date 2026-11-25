@@ -44,7 +44,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
   private val top: ClassSpec = provider.allClasses.firstSpec
   private val cc = new AdaClassCompiler(provider.allClasses, top, RuntimeConfig())
   private val tr = new AdaTranslator(provider, cc)
-  private val topPkg = pkgOf(top)
+  private lazy val topPkg = pkgOf(top)
 
   override def indentStr: String = "   "
   override def fileName(name: String): String = s"test_$name.adb"
@@ -54,12 +54,20 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
 
   // ------------------------------------------------------------------ names
 
-  private def base(raw: String): String = cc.memberBase(NamedIdentifier(raw))
+  private def base(raw: String): String = cc.base(raw)
 
-  private def pkgOf(cs: ClassSpec): String = pkgOfNames(cs.name)
+  /** Packages of descriptions that the program uses: they need a `with` */
+  private val withPkgs = mutable.LinkedHashSet[String]()
 
-  private def pkgOfNames(names: List[String]): String =
+  private def pkgOf(cs: ClassSpec): String = {
+    withPkgs += base(cs.name.head)
+    cc.fullPackageOf(cs)
+  }
+
+  private def pkgOfNames(names: List[String]): String = {
+    withPkgs += base(names.head)
     (base(names.head) +: names.tail.map(n => base(n) + "_Type")).mkString(".")
+  }
 
   private def nt(msg: String): Nothing = throw new AdaNotTranslated(msg)
 
@@ -74,13 +82,14 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
   private case class ABool(code: String) extends AV
   /** A float: Ada expression of the raw bits and the width in bytes */
   private case class AFloat(bits: String, width: Int) extends AV
-  private case class ABytes(code: String) extends AV
-  private case class AStr(code: String, enc: String) extends AV
-  private case class AUser(cs: ClassSpec, code: String) extends AV
+  /** Bytes and strings are slices of `buf`, the array that the value refers to: the input, or the array of a processed field */
+  private case class ABytes(code: String, buf: String) extends AV
+  private case class AStr(code: String, enc: String, buf: String) extends AV
+  private case class AUser(cs: ClassSpec, code: String, buf: String) extends AV
   /** A repeated member */
-  private case class AArr(cs: ClassSpec, obj: String, a: AttrLikeSpec) extends AV
+  private case class AArr(cs: ClassSpec, obj: String, a: AttrLikeSpec, buf: String) extends AV
   /** A member whose type depends on a value */
-  private case class ASwitch(cs: ClassSpec, obj: String, a: AttrSpec, st: SwitchType) extends AV
+  private case class ASwitch(cs: ClassSpec, obj: String, a: AttrSpec, st: SwitchType, buf: String) extends AV
   /** The stream the root was parsed from */
   private case class AIo(code: String) extends AV
   /** An integer that the expression turns into its decimal string */
@@ -88,7 +97,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
   /** Condition that tells a member is absent, for `expected: null` */
   private case class AAbsent(cond: String) extends AV
 
-  private case class Step(guards: List[String], decls: List[String], stmts: List[String])
+  private case class Step(guards: List[String], decls: List[String], stmts: List[String], cleanup: List[String])
 
   /** What the evaluation of an expression collects: the steps that fetch values, and the conditions still to be checked */
   private class Ctx {
@@ -98,8 +107,8 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     def need(g: String): Unit = if (!guards.contains(g)) guards += g
     def name(prefix: String): String = { fresh += 1; s"$prefix$fresh" }
     /** A step that has to run after what has been checked so far */
-    def step(decls: List[String], stmts: List[String]): Unit = {
-      steps += Step(guards.toList, decls, stmts)
+    def step(decls: List[String], stmts: List[String], cleanup: List[String] = Nil): Unit = {
+      steps += Step(guards.toList, decls, stmts, cleanup)
       guards.clear()
     }
   }
@@ -114,6 +123,8 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
   // --------------------------------------------------------------- members
 
   private def findMember(cs: ClassSpec, name: String): MemberSpec = {
+    if (!name.matches("[a-z][a-z0-9_]*") && !name.matches("_unnamed[0-9]+"))
+      nt(s"`$name` of a value: parsed values keep no references to their parent, root or stream")
     cs.seq.find(a => a.id.humanReadable == name || a.id == NamedIdentifier(name))
       .orElse(cs.params.find(_.id == NamedIdentifier(name)))
       .orElse(cs.instances.get(InstanceIdentifier(name)))
@@ -126,14 +137,14 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
   }
 
   /** The value of Ada expression `code` that was read as `dt` (floats: the code gives the raw bits). */
-  private def valueOf(dt: DataType, code: String): AV = dt match {
+  private def valueOf(dt: DataType, code: String, buf: String): AV = dt match {
     case et: EnumType => AInt(code, adaInt(et.basedOn), et.enumSpec)
     case _: IntType => AInt(code, adaInt(dt), None)
     case _: BooleanType => ABool(code)
     case FloatMultiType(w, _) => AFloat(code, w.width)
-    case _: BytesType => ABytes(code)
-    case StrFromBytesType(_, enc, _) => AStr(code, enc)
-    case ut: UserType => AUser(ut.classSpec.get, code)
+    case _: BytesType => ABytes(code, buf)
+    case StrFromBytesType(_, enc, _) => AStr(code, enc, buf)
+    case ut: UserType => AUser(ut.classSpec.get, code, buf)
     case other => nt(s"value of type $other")
   }
 
@@ -152,7 +163,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     * Accessor of a member of `cs`, whose record is `obj`. With `absent`, the
     * condition that the member does not exist is returned instead.
     */
-  private def member(ctx: Ctx, cs: ClassSpec, obj: String, name: String, absent: Boolean = false): AV = {
+  private def member(ctx: Ctx, cs: ClassSpec, obj: String, name: String, buf: String, absent: Boolean = false): AV = {
     val pkg = pkgOf(cs)
     val m = findMember(cs, name)
     val nm = cc.memberName(cs, m.id)
@@ -186,24 +197,36 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
         }
         val r = presence(a.cond.ifExpr.isDefined, obj)
         if (r != null) return r
-        if (a.cond.repeat != NoRepeat) AArr(cs, obj, a)
-        else a.dataType match {
-          case st: SwitchType => switchOf(ctx, cs, obj, a, st)
-          case dt => scalar(pkg, nm, bs, dt, obj)
+        if (a.cond.repeat != NoRepeat) {
+          if (AdaTranslator.hasProcess(a.dataType)) nt(s"`$name` is a repeated field with `process`")
+          AArr(cs, obj, a, buf)
+        } else a.dataType match {
+          case st: SwitchType => switchOf(ctx, cs, obj, a, st, buf)
+          case dt if AdaTranslator.hasProcess(dt) => processed(ctx, cs, obj, a, dt, buf)
+          case ut: UserType if ut.classSpec.exists(_ eq cs) =>
+            // a field of the type itself is parsed again when asked for
+            val l = ctx.name("L")
+            val o = ctx.name("Outcome")
+            ctx.step(List(s"$l : ${pkg}.T;", s"$o : ${KT}Status_Kind;"), List(s"$pkg.$nm ($buf, $obj, $l, $o);"))
+            useType(KT + "Status_Kind")
+            ctx.need(s"$o = ${KT}Success")
+            ctx.need(s"$pkg.Valid ($l)")
+            AUser(cs, l, buf)
+          case dt => scalar(pkg, nm, bs, dt, obj, buf)
         }
       case p: ParamDefSpec =>
-        scalar(pkg, nm, bs, p.dataType, obj)
+        scalar(pkg, nm, bs, p.dataType, obj, buf)
       case v: ValueInstanceSpec =>
         val usesBuf = cc.valueInstanceUsesBuffer(cs, v)
-        val args = if (usesBuf) s"Buffer.all, $obj" else obj
+        val args = if (usesBuf) s"$buf, $obj" else obj
         val r = presence(cc.valueInstanceHasGuard(cs, v), args)
         if (r != null) return r
         v.dataType match {
           case et: EnumType => AInt(s"$pkg.${bs}_Value ($args)", "S64", et.enumSpec)
           case _: IntType => AInt(s"$pkg.$nm ($args)", "S64", None)
           case _: BooleanType => ABool(s"$pkg.$nm ($args)")
-          case _: BytesType => ABytes(s"$pkg.$nm ($args)")
-          case _: StrType => AStr(s"$pkg.$nm ($args)", instanceEncoding(cs, v))
+          case _: BytesType => ABytes(s"$pkg.$nm ($args)", buf)
+          case _: StrType => AStr(s"$pkg.$nm ($args)", instanceEncoding(cs, v), buf)
           case other => nt(s"value instance of type $other")
         }
       case p: ParseInstanceSpec =>
@@ -213,16 +236,53 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
         val o = ctx.name("Outcome")
         ctx.step(
           List(s"$l : ${storedAda(p.dataType)};", s"$o : ${KT}Status_Kind;"),
-          List(s"$pkg.$nm (Buffer.all, $obj, $l, $o);")
+          List(s"$pkg.$nm ($buf, $obj, $l, $o);")
         )
         useType(KT + "Status_Kind")
         ctx.need(s"$o = ${KT}Success")
-        val v = valueOf(p.dataType, l)
+        val v = valueOf(p.dataType, l, buf)
         v match {
-          case AUser(c, code) => ctx.need(s"${pkgOf(c)}.Valid ($code)")
+          case AUser(c, code, _) => ctx.need(s"${pkgOf(c)}.Valid ($code)")
           case _ =>
         }
         v
+    }
+  }
+
+  /**
+    * A field with `process`: the accessor is a procedure that undoes the processing into an array of the
+    * caller. The array is on the heap, as large as the input for xor and rotate, generously larger for zlib.
+    * What is read from a processed field of a type refers to that array.
+    */
+  private def processed(ctx: Ctx, cs: ClassSpec, obj: String, a: AttrSpec, dt: DataType, buf: String): AV = {
+    val pkg = pkgOf(cs)
+    val nm = cc.memberName(cs, a.id)
+    val zlib = dt match {
+      case b: BytesType => b.process.contains(ProcessZlib)
+      case ut: UserTypeFromBytes => ut.process.contains(ProcessZlib)
+      case _ => false
+    }
+    val work = ctx.name("Work")
+    val o = ctx.name("Outcome")
+    val size = if (zlib) s"$buf'Length * 256 + 4096" else s"$buf'Length + 1"
+    useType(KT + "Status_Kind")
+    val decls = List(s"$work : Buffer_Access := new ${KT}Bytes (1 .. $size);", s"$o : ${KT}Status_Kind;")
+    val cleanup = List(s"Free ($work);")
+    dt match {
+      case _: BytesType =>
+        val last = ctx.name("Last")
+        val sl = ctx.name("Item")
+        ctx.step(decls ++ List(s"$last : ${KT}Length;", s"$sl : ${KT}Slice;"),
+          List(s"$pkg.$nm ($buf, $obj, $work.all, $last, $o);", s"$sl := (First => $work.all'First, Last => $last);"), cleanup)
+        ctx.need(s"$o = ${KT}Success")
+        ABytes(sl, s"$work.all")
+      case ut: UserTypeFromBytes =>
+        val l = ctx.name("L")
+        ctx.step(decls ++ List(s"$l : ${pkgOf(ut.classSpec.get)}.T;"), List(s"$pkg.$nm ($buf, $obj, $work.all, $l, $o);"), cleanup)
+        ctx.need(s"$o = ${KT}Success")
+        ctx.need(s"${pkgOf(ut.classSpec.get)}.Valid ($l)")
+        AUser(ut.classSpec.get, l, s"$work.all")
+      case other => nt(s"process on $other")
     }
   }
 
@@ -239,10 +299,10 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     finally provider.nowClass = saved
   }
 
-  private def scalar(pkg: String, nm: String, bs: String, dt: DataType, obj: String): AV = dt match {
-    case _: EnumType => valueOf(dt, s"$pkg.${bs}_Value ($obj)")
-    case _: FloatType => valueOf(dt, s"$pkg.${bs}_Bits ($obj)")
-    case _ => valueOf(dt, s"$pkg.$nm ($obj)")
+  private def scalar(pkg: String, nm: String, bs: String, dt: DataType, obj: String, buf: String): AV = dt match {
+    case _: EnumType => valueOf(dt, s"$pkg.${bs}_Value ($obj)", buf)
+    case _: FloatType => valueOf(dt, s"$pkg.${bs}_Bits ($obj)", buf)
+    case _ => valueOf(dt, s"$pkg.$nm ($obj)", buf)
   }
 
   // switch: the cases of the switch with their variant names, as the class compiler names them
@@ -251,47 +311,21 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     case _ => false
   }
 
-  private def variants(st: SwitchType): List[(DataType, String)] = {
-    val out = ListBuffer[(DataType, String)]()
-    val used = mutable.Set[String]()
-    st.cases.toList.foreach { case (_, dt) =>
-      if (!out.exists(_._1 == dt)) {
-        val baseName = dt match {
-          case ut: UserType => base(ut.classSpec.get.name.last)
-          case _: BytesType => "Bytes"
-          case _: StrType => "Str"
-          case other => nt(s"switch with a case of type $other")
-        }
-        var n = baseName
-        var i = 2
-        while (used.contains(n) || n == "Kind") { n = s"${baseName}_$i"; i += 1 }
-        used += n
-        out += ((dt, n))
-      }
-    }
-    out.toList
-  }
+  private def variants(st: SwitchType): List[(DataType, String)] =
+    try cc.switchVariants(st) catch { case u: AdaUnsupported => nt(u.getMessage) }
 
-  private def switchOf(ctx: Ctx, cs: ClassSpec, obj: String, a: AttrSpec, st: SwitchType): AV = {
+  private def switchOf(ctx: Ctx, cs: ClassSpec, obj: String, a: AttrSpec, st: SwitchType, buf: String): AV = {
     val pkg = pkgOf(cs)
-    val cases = st.cases.toList
-    if (cases.forall(c => isIntCase(c._2))) {
-      // one component of the widest type
-      val infos = cases.map(c => AdaTranslator.intInfo(c._2 match { case EnumType(_, _, b) => b; case x => x }).get)
-      val signed = infos.exists(_._2 < 0)
-      val bitsOf = infos.map(i => i._1.drop(1).toInt)
-      val ada =
-        if (!signed) s"U${bitsOf.max}"
-        else if (infos.forall(_._2 < 0)) s"S${bitsOf.max}"
-        else "S64"
+    if (st.cases.values.forall(isIntCase)) {
+      val ada = try cc.switchIntType(st) catch { case u: AdaUnsupported => nt(u.getMessage) }
       if (a.cond.ifExpr.isEmpty && !st.hasElseCase)
         ctx.need(s"$pkg.${cc.presenceName(cs, a.id)} ($obj)")
       AInt(s"$pkg.${cc.memberName(cs, a.id)} ($obj)", ada, None)
-    } else ASwitch(cs, obj, a, st)
+    } else ASwitch(cs, obj, a, st, buf)
   }
 
   private def castTo(ctx: Ctx, v: AV, t: Ast.typeId): AV = v match {
-    case ASwitch(cs, obj, a, st) =>
+    case ASwitch(cs, obj, a, st, buf) =>
       val pkg = pkgOf(cs)
       val bs = cc.memberBase(a.id)
       val vs = variants(st)
@@ -308,22 +342,35 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
           useType(s"$pkg.${bs}_Kind")
           val code = s"$pkg.${bs}_As_$n ($obj)"
           dt match {
-            case ut: UserType => ctx.need(s"${pkgOf(ut.classSpec.get)}.Valid ($code)"); AUser(ut.classSpec.get, code)
-            case _: BytesType => ABytes(code)
-            case _ => AStr(code, "UTF-8")
+            case ut: UserType => ctx.need(s"${pkgOf(ut.classSpec.get)}.Valid ($code)"); AUser(ut.classSpec.get, code, buf)
+            case _: BytesType => ABytes(code, buf)
+            case _ => AStr(code, "UTF-8", buf)
           }
         case Nil => nt(s"cast to ${t.nameAsStr}: no such case in the switch")
         case _ => nt(s"cast to ${t.nameAsStr}: the switch has several cases of that type")
       }
-    case AUser(cs, _) if t.names.nonEmpty && resolveType(t).eq(cs) => v
+    case AUser(cs, _, _) if t.names.nonEmpty && resolveType(t).eq(cs) => v
     case _ => nt(s"cast `.as<${t.nameAsStr}>` of something that is not a switch")
   }
 
   private def resolveType(t: Ast.typeId): ClassSpec = {
     val ns = t.names.toList
+    def suffix(c: ClassSpec): Int = c.name.reverse.zip(ns.reverse).takeWhile(x => x._1 == x._2).size
+    // the path as written may name a type through a sibling (`a::chunk::chunk_body::x` for `a::chunk_body::x`)
+    def byName: ClassSpec = {
+      val all = ListBuffer[ClassSpec]()
+      provider.allClasses.forEachRec(c => all += c)
+      val cands = all.filter(_.name.last == ns.last).toList
+      val best = if (cands.isEmpty) 0 else cands.map(suffix).max
+      cands.filter(suffix(_) == best) match {
+        case List(c) => c
+        case _ => nt(s"unknown type ${t.nameAsStr}")
+      }
+    }
     provider.allClasses.get(ns.head) match {
       case Some(c0) =>
-        ns.tail.foldLeft(c0)((c, n) => c.types.getOrElse(n, nt(s"unknown type ${t.nameAsStr}")))
+        try ns.tail.foldLeft(c0)((c, n) => c.types.getOrElse(n, throw new NoSuchElementException(n)))
+        catch { case _: NoSuchElementException => byName }
       case None =>
         val saved = provider.nowClass
         provider.nowClass = top
@@ -344,25 +391,25 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
 
   private def eval(ctx: Ctx, e: Ast.expr, absent: Boolean = false): AV = e match {
     case Ast.expr.Name(Ast.identifier(RootName)) =>
-      AUser(top, "R")
+      AUser(top, "R", "Buffer.all")
     case Ast.expr.Attribute(Ast.expr.Name(Ast.identifier(RootName)), Ast.identifier(Identifier.IO)) =>
       AIo("S")
     case Ast.expr.Attribute(v, Ast.identifier(attr)) =>
       val last = absent
       if (last) {
         eval(ctx, v) match {
-          case AUser(cs, obj) => member(ctx, cs, obj, attr, absent = true)
+          case AUser(cs, obj, buf) => member(ctx, cs, obj, attr, buf, absent = true)
           case _ => nt("`null` expected for something that is not a member")
         }
       } else attribute(ctx, eval(ctx, v), attr)
     case Ast.expr.Subscript(v, i) =>
       eval(ctx, v) match {
-        case AArr(cs, obj, a) => element(ctx, cs, obj, a, index(ctx, i))
-        case ABytes(code) =>
+        case AArr(cs, obj, a, buf) => element(ctx, cs, obj, a, index(ctx, i), buf)
+        case ABytes(code, buf) =>
           val ix = index(ctx, i)
           ctx.need(s"$ix < ${KT}Size ($code)")
           useType(KT + "Length")
-          AInt(s"Buffer.all ($code.First + $ix)", "U8", None)
+          AInt(s"$buf ($code.First + $ix)", "U8", None)
         case _ => nt("subscript of something that is not an array")
       }
     case Ast.expr.CastToType(v, t) =>
@@ -376,7 +423,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
   }
 
   private def attribute(ctx: Ctx, v: AV, attr: String): AV = v match {
-    case AUser(cs, obj) => member(ctx, cs, obj, attr)
+    case AUser(cs, obj, buf) => member(ctx, cs, obj, attr, buf)
     case AIo(s) =>
       attr match {
         case "pos" => usedLibs += "Streams"; AInt(s"Kaitai.Streams.Pos ($s)", "Length", None)
@@ -384,34 +431,34 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
         case "eof" => usedLibs += "Streams"; ABool(s"Kaitai.Streams.Is_EOF ($s)")
         case _ => nt(s"`_io.$attr`")
       }
-    case AArr(cs, obj, a) =>
+    case AArr(cs, obj, a, _) =>
       attr match {
         case "size" =>
           val bs = cc.memberBase(a.id)
           AInt(s"${pkgOf(cs)}.${bs}_Count ($obj)", "Length", None)
         case _ => nt(s"`.$attr` of an array")
       }
-    case ABytes(code) =>
+    case ABytes(code, buf) =>
       attr match {
         case "length" | "size" => AInt(s"${KT}Size ($code)", "Length", None)
         case "first" =>
           ctx.need(s"not ${KT}Is_Empty ($code)")
-          AInt(s"Buffer.all ($code.First)", "U8", None)
+          AInt(s"$buf ($code.First)", "U8", None)
         case "last" =>
           ctx.need(s"not ${KT}Is_Empty ($code)")
-          AInt(s"Buffer.all ($code.Last)", "U8", None)
+          AInt(s"$buf ($code.Last)", "U8", None)
         case "min" | "max" =>
           usedLibs += "Byte_Arrays"
           ctx.need(s"not ${KT}Is_Empty ($code)")
-          AInt(s"Kaitai.Byte_Arrays.${attr.capitalize} (Buffer.all, $code)", "U8", None)
+          AInt(s"Kaitai.Byte_Arrays.${attr.capitalize} ($buf, $code)", "U8", None)
         case _ => nt(s"`.$attr` of bytes")
       }
-    case AStr(code, enc) =>
+    case AStr(code, enc, buf) =>
       attr match {
         case "length" =>
           cc.encodingName(enc, Nil) match {
             case "Kaitai.Strings.Single_Byte" | "Kaitai.Strings.US_ASCII" => AInt(s"${KT}Size ($code)", "Length", None)
-            case e => usedLibs += "Strings"; AInt(s"Kaitai.Strings.Character_Count (Buffer.all, $code, $e)", "Length", None)
+            case e => usedLibs += "Strings"; AInt(s"Kaitai.Strings.Character_Count ($buf, $code, $e)", "Length", None)
           }
         case _ => nt(s"`.$attr` of a string")
       }
@@ -421,7 +468,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     case _ => nt(s"`.$attr` of $v")
   }
 
-  private def element(ctx: Ctx, cs: ClassSpec, obj: String, a: AttrLikeSpec, ix: String): AV = {
+  private def element(ctx: Ctx, cs: ClassSpec, obj: String, a: AttrLikeSpec, ix: String, buf: String): AV = {
     val pkg = pkgOf(cs)
     val bs = cc.memberBase(a.id)
     val nm = cc.memberName(cs, a.id)
@@ -431,16 +478,16 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     AdaTranslator.fixedElement(dt) match {
       case Some(_) =>
         dt match {
-          case FloatMultiType(w, _) => AFloat(s"$pkg.${bs}_Bits (Buffer.all, $obj, $ix)", w.width)
-          case et: EnumType => AInt(s"$pkg.$nm (Buffer.all, $obj, $ix)", adaInt(et.basedOn), et.enumSpec)
-          case _ => AInt(s"$pkg.$nm (Buffer.all, $obj, $ix)", adaInt(dt), None)
+          case FloatMultiType(w, _) => AFloat(s"$pkg.${bs}_Bits ($buf, $obj, $ix)", w.width)
+          case et: EnumType => AInt(s"$pkg.$nm ($buf, $obj, $ix)", adaInt(et.basedOn), et.enumSpec)
+          case _ => AInt(s"$pkg.$nm ($buf, $obj, $ix)", adaInt(dt), None)
         }
       case None =>
         val e = ctx.name("E")
-        ctx.step(List(s"$e : ${storedAda(dt)};"), List(s"$pkg.Get_$bs (Buffer.all, $obj, $ix, $e);"))
-        val v = valueOf(dt, e)
+        ctx.step(List(s"$e : ${storedAda(dt)};"), List(s"$pkg.Get_$bs ($buf, $obj, $ix, $e);"))
+        val v = valueOf(dt, e, buf)
         v match {
-          case AUser(c, code) => ctx.need(s"${pkgOf(c)}.Valid ($code)")
+          case AUser(c, code, _) => ctx.need(s"${pkgOf(c)}.Valid ($code)")
           case _ =>
         }
         v
@@ -461,10 +508,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     "Length" -> (BigInt(0), (BigInt(1) << 63) - 1)
   )
 
-  private def aggregate(bytes: Seq[Int]): String =
-    if (bytes.isEmpty) "(1 .. 0 => 0)"
-    else if (bytes.size == 1) f"(1 => 16#${bytes.head}%02X#)"
-    else bytes.map(b => f"16#$b%02X#").mkString("(", ", ", ")")
+  private def aggregate(bytes: Seq[Int]): String = AdaTranslator.aggregate(bytes)
 
   private def adaString(s: String): String = "\"" + s.replace("\"", "\"\"") + "\""
 
@@ -543,17 +587,17 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
       val conv = if (w == 4) s"Long_Float (Kaitai.Floats.To_F32 ($bits))" else s"Kaitai.Floats.To_F64 ($bits)"
       val tol = BigDecimal("0.000001") * x.abs.max(BigDecimal(1))
       s"Kaitai.Floats.Is_Finite ($bits) and then abs ($conv - ${adaFloat(x)}) <= ${adaFloat(tol)}"
-    case (AStr(code, enc), Ast.expr.Str(s)) =>
+    case (AStr(code, enc, buf), Ast.expr.Str(s)) =>
       if (s.forall(c => c >= 32 && c <= 126) && isByteEncoding(enc)) {
         usedLibs += "Strings"
-        s"Kaitai.Strings.Equal_Literal (Buffer.all, $code, ${adaString(s)})"
+        s"Kaitai.Strings.Equal_Literal ($buf, $code, ${adaString(s)})"
       } else {
         usedLibs += "Byte_Arrays"
-        s"Kaitai.Byte_Arrays.Equal (Buffer.all, $code, ${aggregate(encodeStr(s, enc))})"
+        s"Kaitai.Byte_Arrays.Equal ($buf, $code, ${aggregate(encodeStr(s, enc))})"
       }
-    case (ABytes(code), _) if bytesConst(expected).isDefined =>
+    case (ABytes(code, buf), _) if bytesConst(expected).isDefined =>
       usedLibs += "Byte_Arrays"
-      s"Kaitai.Byte_Arrays.Equal (Buffer.all, $code, ${aggregate(bytesConst(expected).get)})"
+      s"Kaitai.Byte_Arrays.Equal ($buf, $code, ${aggregate(bytesConst(expected).get)})"
     case (AIntStr(i), Ast.expr.Str(s)) =>
       val canonical = scala.util.Try(BigInt(s)).toOption.filter(_.toString == s)
       canonical match {
@@ -610,8 +654,8 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
         elts.indices.foreach { k =>
           val e = ctx.name("E")
           decls += s"$e : ${storedAda(arr.a.dataType)};"
-          stmts += s"$pkg.Get_$bs (Buffer.all, ${arr.obj}, $k, $e);"
-          vals += valueOf(arr.a.dataType, e)
+          stmts += s"$pkg.Get_$bs (${arr.buf}, ${arr.obj}, $k, $e);"
+          vals += valueOf(arr.a.dataType, e, arr.buf)
         }
         ctx.step(decls.toList, stmts.toList)
         elts.zip(vals).map { case (e, v) => compare(v, e) }.mkString(" and then ") match {
@@ -627,9 +671,9 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     val bs = cc.memberBase(arr.a.id)
     val nm = cc.memberName(arr.cs, arr.a.id)
     arr.a.dataType match {
-      case FloatMultiType(w, _) => AFloat(s"$pkg.${bs}_Bits (Buffer.all, ${arr.obj}, $ix)", w.width)
-      case et: EnumType => AInt(s"$pkg.$nm (Buffer.all, ${arr.obj}, $ix)", adaInt(et.basedOn), et.enumSpec)
-      case dt => AInt(s"$pkg.$nm (Buffer.all, ${arr.obj}, $ix)", adaInt(dt), None)
+      case FloatMultiType(w, _) => AFloat(s"$pkg.${bs}_Bits (${arr.buf}, ${arr.obj}, $ix)", w.width)
+      case et: EnumType => AInt(s"$pkg.$nm (${arr.buf}, ${arr.obj}, $ix)", adaInt(et.basedOn), et.enumSpec)
+      case dt => AInt(s"$pkg.$nm (${arr.buf}, ${arr.obj}, $ix)", adaInt(dt), None)
     }
   }
 
@@ -697,7 +741,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
           val p = indentStr * l
           List(s"${p}declare") ++ s.decls.map(d => s"$p$indentStr$d") ++ List(s"${p}begin") ++
             s.stmts.map(x => s"$p$indentStr$x") ++
-            emit(rest, finalGuards, n, q, check, l + 1) ++ List(s"${p}end;")
+            emit(rest, finalGuards, n, q, check, l + 1) ++ s.cleanup.map(x => s"$p$indentStr$x") ++ List(s"${p}end;")
         })
     }
   }
@@ -722,8 +766,62 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     }
   }
 
+  /** Arguments for the parameters of the top-level type, for experiments with a description that has some */
+  private val topArgs: Option[String] = sys.env.get("ADA_SG_TOP_ARGS").filter(_.nonEmpty)
+
+  /** Set by the script with `--round-trip`: the program writes the parsed value again and compares it with the input */
+  private val roundTrip: Boolean = sys.env.get("ADA_SG_ROUND_TRIP").exists(v => v.nonEmpty && v != "0")
+
+  /** Writes R with the `Write` of the top-level type into an array as large as the input and compares */
+  private def roundTripLines(): List[String] = {
+    usedLibs += "Writers"
+    useType(KT + "U8")
+    val args = if (cc.hasBelongs(top)) "Buffer.all, R" else "R"
+    val i2 = indentStr * 3
+    val i3 = indentStr * 4
+    List(
+      s"${indentStr * 3}declare",
+      s"${i2}${indentStr}Target : Buffer_Access := new ${KT}Bytes (1 .. Size);",
+      s"${i2}${indentStr}W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target.all);",
+      s"${i2}begin",
+      s"${i3}$topPkg.Write ($args, Target.all, W);".replace(s"${i3}", i3),
+      s"${i3}if not Kaitai.Writers.OK (W) then",
+      s"${i3}${indentStr}Fail (\"round trip: not written (\" & ${KT}Status_Kind'Image (Kaitai.Writers.Status (W)) & \")\");",
+      s"${i3}else",
+      s"${i3}${indentStr}Round_Trip_Check : declare",
+      s"${i3}${indentStr}${indentStr}Offset : Natural := 0;",
+      s"${i3}${indentStr}${indentStr}Differs : Boolean := False;",
+      s"${i3}${indentStr}begin",
+      s"${i3}${indentStr}${indentStr}for I in 1 .. Size loop",
+      s"${i3}${indentStr}${indentStr}${indentStr}if I > Kaitai.Writers.Pos (W) or else Target (I) /= Buffer (I) then",
+      s"${i3}${indentStr}${indentStr}${indentStr}${indentStr}Offset := Natural (I) - 1;",
+      s"${i3}${indentStr}${indentStr}${indentStr}${indentStr}Differs := True;",
+      s"${i3}${indentStr}${indentStr}${indentStr}${indentStr}exit;",
+      s"${i3}${indentStr}${indentStr}${indentStr}end if;",
+      s"${i3}${indentStr}${indentStr}end loop;",
+      s"${i3}${indentStr}${indentStr}if Differs then",
+      s"${i3}${indentStr}${indentStr}${indentStr}Fail (\"round trip: differs at \" & Natural'Image (Offset));",
+      s"${i3}${indentStr}${indentStr}else",
+      s"${i3}${indentStr}${indentStr}${indentStr}Put_Line (\"round trip: same\");",
+      s"${i3}${indentStr}${indentStr}end if;",
+      s"${i3}${indentStr}end Round_Trip_Check;",
+      s"${i3}end if;",
+      s"${i3}Free (Target);",
+      s"${i2}end;"
+    )
+  }
+
+  /** The data type is, or chooses among, the type of the top-level class itself */
+  private def containsSelf(dt: DataType): Boolean = dt match {
+    case ut: UserType => ut.classSpec.exists(_ eq top)
+    case st: SwitchType => st.cases.values.exists(containsSelf)
+    case _ => false
+  }
+
   private def generate(): String = {
-    if (top.params.nonEmpty) nt("the top-level type has parameters, which the test cannot supply")
+    if (top.params.nonEmpty && topArgs.isEmpty)
+      nt("the top-level type has parameters, which a .kst cannot supply (ADA_SG_TOP_ARGS can, for experiments)")
+    withPkgs += base(top.name.head)
     val id = spec.id
     val body = ListBuffer[String]()
     spec.exception match {
@@ -756,9 +854,12 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
         body += s"${indentStr * 2}else"
         if (generated.isEmpty) body += s"${indentStr * 3}Put_Line (\"ok parse\");"
         generated.foreach { case (_, _, lines) => body ++= lines }
+        if (roundTrip) body ++= roundTripLines()
         body += s"${indentStr * 2}end if;"
     }
 
+    val recursive = top.seq.exists(a => containsSelf(a.dataType)) ||
+      top.instances.values.exists { case pi: ParseInstanceSpec => containsSelf(pi.dataType); case _ => false }
     val libs = (List("Streams", "Types") ++ usedLibs).distinct
     val sb = new StringBuilder
     def p(s: String): Unit = sb.append(s).append("\n")
@@ -772,7 +873,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     p("with Ada.Unchecked_Deallocation;")
     p("with Kaitai.Files;")
     libs.sorted.foreach(l => p(s"with Kaitai.$l;"))
-    p(s"with $topPkg;")
+    withPkgs.toList.sorted.foreach(w => p(s"with $w;"))
     p("")
     p(s"procedure Test_$id is")
     p("")
@@ -840,7 +941,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     p("      S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer.all);")
     p(s"      R : $topPkg.T;")
     p("   begin")
-    p(s"      $topPkg.Parse (Buffer.all, S, R);")
+    p(s"      $topPkg.Parse (Buffer.all, S, ${topArgs.map(_ + ", ").getOrElse("")}${if (recursive) topPkg + ".Max_Depth, " else ""}R);")
     body.foreach(l => p(l))
     p("   end;")
     p("   Free (Buffer);")

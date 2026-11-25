@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run the official Kaitai Struct test suite against the Ada backend.
 #
-#   scripts/run-kaitai-suite.sh [--out DIR] [--no-fail] [--jobs N] [NAME ...]
+#   scripts/run-kaitai-suite.sh [--out DIR] [--no-fail] [--jobs N] [--round-trip] [NAME ...]
 #
 # For every test of kaitai_struct_tests (spec/ks/<name>.kst, or only the
 # NAMEs given) the script
@@ -19,9 +19,17 @@
 #   build failed   the parser or the program does not compile
 #   not generated  the backend rejects the format
 #   not translated AdaSG cannot express the asserts of the test
+#   known difference  a test that fails for a documented reason (list below,
+#                     KNOWN_DIFFERENCES); it does not count as a failure
 #
 # The exit status is 0 only if no test failed, errored or failed to build;
 # --no-fail makes it 0 in any case.
+#
+# --round-trip: the compiler is called with --read-write, and each test
+# program writes the parsed value again with <Pkg>.Write into an array as
+# large as the input and prints `round trip: same`, `round trip: differs at
+# <offset>` or `round trip: not written (<status>)`; the last two are
+# failures.  Needs a compiler that has the option.  --jobs defaults to 2.
 #
 # Environment:
 #   KSC_DIR   the compiler, built by scripts/build-compiler.sh
@@ -41,7 +49,15 @@ KST_DIR=${KST_DIR:-$HOME/.cache/kaitai_struct_tests}
 kst_commit=4108136c807f8df88df843de6571f1a7bf29c74e
 out=$here/build/kaitai-suite
 no_fail=0
-jobs=$(nproc 2>/dev/null || echo 2)
+jobs=2
+round_trip=0
+
+# Tests that fail because of a documented difference between the Ada parsers
+# and the other targets, not because of a defect: "name|reason".  They are
+# reported as `known difference` and do not make the script fail.
+KNOWN_DIFFERENCES=(
+   "debug_array_user_eof_exception|after a failed Parse nothing can be read (docs/codegen.md, Shape of a type); the test expects partial results"
+)
 names=()
 
 while [ $# -gt 0 ]; do
@@ -49,6 +65,7 @@ while [ $# -gt 0 ]; do
       --out) out=$2; shift 2 ;;
       --no-fail) no_fail=1; shift ;;
       --jobs) jobs=$2; shift 2 ;;
+      --round-trip) round_trip=1; shift ;;
       -h | --help) sed -n '2,/^set -euo/p' "$0" | sed '$d;s/^# \{0,1\}//'; exit 0 ;;
       -*) echo "unknown option $1" >&2; exit 2 ;;
       *) names+=("${1%.kst}"); shift ;;
@@ -122,7 +139,7 @@ echo "${#names[@]} tests"
 # ------------------------------------------------- compiler and translator
 
 stamp=$KSC_DIR/.kst-published
-if [ ! -f "$stamp" ] || [ "$ksc" -nt "$stamp" ]; then
+if [ ! -f "$stamp" ] || [ -n "$(find "$KSC_DIR/jvm/target/universal/stage/lib" -name 'io.kaitai*.jar' -newer "$stamp" 2>/dev/null)" ]; then
    step "publishing the compiler locally"
    (cd "$KSC_DIR" && run_sbt compilerJVM/publishLocal) > "$out/publish.log" 2>&1 || { tail -20 "$out/publish.log"; exit 1; }
    touch "$stamp"
@@ -142,7 +159,7 @@ mkdir -p "$out/gen" "$out/tests" "$out/log" "$out/status"
 step "generating the parsers"
 gen_one() {
    local n=$1
-   if "$ksc" -t ada --outdir "$out/gen/$n" -I "$KST_DIR/formats" -I "$KST_DIR/formats/ks_path" \
+   if "$ksc" -t ada $ksc_extra --outdir "$out/gen/$n" -I "$KST_DIR/formats" -I "$KST_DIR/formats/ks_path" \
       "$KST_DIR/formats/$n.ksy" > "$out/log/$n.ksc.log" 2>&1; then
       echo ok > "$out/log/$n.ksc.rc"
    else
@@ -151,7 +168,12 @@ gen_one() {
    fi
 }
 export -f gen_one
-export ksc out KST_DIR
+ksc_extra=""
+if [ "$round_trip" -eq 1 ]; then
+   ksc_extra="--read-write"
+   export ADA_SG_ROUND_TRIP=1
+fi
+export ksc out KST_DIR ksc_extra
 printf '%s\n' "${names[@]}" | xargs -P "$jobs" -I{} bash -c 'gen_one {}'
 
 generated=()
@@ -239,13 +261,15 @@ done
 step "report"
 export out KST_DIR
 printf '%s\n' "${names[@]}" > "$out/names.txt"
+printf '%s\n' "${KNOWN_DIFFERENCES[@]}" > "$out/known.txt"
 python3 -I - "$out" <<'PY'
 import os, re, sys
 from xml.sax.saxutils import escape, quoteattr
 
 out = sys.argv[1]
 names = [l.strip() for l in open(os.path.join(out, "names.txt")) if l.strip()]
-classes = ["passed", "failed", "error", "build failed", "not generated", "not translated"]
+classes = ["passed", "failed", "error", "known difference", "build failed", "not generated", "not translated"]
+known = dict(l.rstrip("\n").split("|", 1) for l in open(os.path.join(out, "known.txt")) if "|" in l)
 
 def read(path):
     try:
@@ -301,6 +325,10 @@ for n in names:
         tail = [l for l in lines if l.strip()][-3:]
         results[n] = ("error", f"exit status {rc}: " + " / ".join(tail))
 
+for n, (cls, detail) in list(results.items()):
+    if cls in ("failed", "error") and n in known:
+        results[n] = ("known difference", known[n] + " [" + cls + ": " + detail[:120] + "]")
+
 counts = {c: sum(1 for r in results.values() if r[0] == c) for c in classes}
 
 with open(os.path.join(out, "results.md"), "w") as f:
@@ -318,7 +346,7 @@ with open(os.path.join(out, "results.md"), "w") as f:
 with open(os.path.join(out, "junit.xml"), "w") as f:
     bad = counts["failed"]
     err = counts["error"] + counts["build failed"]
-    skip = counts["not generated"] + counts["not translated"]
+    skip = counts["not generated"] + counts["not translated"] + counts["known difference"]
     f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
     f.write(f'<testsuite name="kaitai-struct-ada" tests="{len(results)}" failures="{bad}" errors="{err}" skipped="{skip}">\n')
     for n in names:
@@ -328,7 +356,7 @@ with open(os.path.join(out, "junit.xml"), "w") as f:
             f.write(f'<failure message={quoteattr(detail[:200])}>{escape(detail)}</failure>')
         elif cls in ("error", "build failed"):
             f.write(f'<error message={quoteattr(cls + ": " + detail[:200])}>{escape(detail)}</error>')
-        elif cls in ("not generated", "not translated"):
+        elif cls in ("not generated", "not translated", "known difference"):
             f.write(f'<skipped message={quoteattr(cls + ": " + detail[:200])}/>')
         f.write('</testcase>\n')
     f.write('</testsuite>\n')

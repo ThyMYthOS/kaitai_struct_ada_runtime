@@ -26,6 +26,7 @@ with Kaitai.Writers;
 with Params_Def;
 with Position_Abs;
 with Repeat_Eos_U4;
+with Repeat_N_Empty;
 with Repeat_N_Struct;
 with Repeat_Until_Complex;
 with Sample_Data;    use Sample_Data;
@@ -344,6 +345,54 @@ package body Examples_Tests is
       end loop;
       Check (Bad = 0, "every shorter input fails");
    end Test_Repeat_N_Struct;
+
+   --  A count from the data with elements that can be empty.  With a length of zero the hundred million elements
+   --  read nothing; a parser that went through all of them would not come back in the time a test has, least of
+   --  all on the simulated target.
+   procedure Test_Repeat_N_Empty is
+      use Repeat_N_Empty;
+      Many  : constant Bytes (1 .. 6) := (16#00#, 16#00#, 16#E1#, 16#F5#, 16#05#, 16#7F#);
+      Three : constant Bytes (1 .. 9) := (16#01#, 16#03#, 16#00#, 16#00#, 16#00#, 16#61#, 16#62#, 16#63#, 16#7F#);
+      S     : Stream := Open (Many);
+      This  : Repeat_N_Empty.T;
+      E     : Item_Type.T;
+   begin
+      Group ("examples repeat_n_empty");
+      Parse (Many, S, This);
+      Check (Valid (This) and then Is_EOF (S), "a hundred million empty elements parse at once");
+      if Valid (This) then
+         Check (Qty (This) = 100_000_000 and then Items_Count (This) = 100_000_000, "the count is what the data say");
+         Check (Tail (This) = 16#7F#, "the field after the repetition");
+         Get_Items (Many, This, 0, E);
+         Check (Item_Type.Valid (E) and then Is_Empty (Item_Type.Content (E)), "items[0] is empty");
+         Get_Items (Many, This, 2, E);
+         Check (Item_Type.Valid (E) and then Is_Empty (Item_Type.Content (E)), "items[2] is empty");
+      end if;
+
+      S := Open (Three);
+      Parse (Three, S, This);
+      Check (Valid (This) and then Is_EOF (S), "three elements of one byte");
+      if Valid (This) then
+         Check (Items_Count (This) = 3 and then Tail (This) = 16#7F#, "count and the field after");
+         Get_Items (Three, This, 0, E);
+         Check
+           (Item_Type.Valid (E)
+            and then Size (Item_Type.Content (E)) = 1
+            and then Three (Item_Type.Content (E).First) = 16#61#,
+            "items[0]");
+         Get_Items (Three, This, 2, E);
+         Check
+           (Item_Type.Valid (E)
+            and then Size (Item_Type.Content (E)) = 1
+            and then Three (Item_Type.Content (E).First) = 16#63#,
+            "items[2]");
+      end if;
+
+      --  the count says three, the data hold two
+      S := Open (Three (1 .. 7));
+      Parse (Three (1 .. 7), S, This);
+      Check (not Valid (This) and then Status (S) = End_Of_Stream, "too few elements");
+   end Test_Repeat_N_Empty;
 
    procedure Test_Repeat_Eos_U4 is
       use Repeat_Eos_U4;
@@ -1429,6 +1478,7 @@ package body Examples_Tests is
       Test_Bits_First_Type;
       Test_Term_Strz;
       Test_Repeat_N_Struct;
+      Test_Repeat_N_Empty;
       Test_Repeat_Eos_U4;
       Test_Repeat_Until_Complex;
       Test_Switch_Manual_Int;

@@ -25,6 +25,7 @@ with Kaitai.Writers;
 with Params_Def;
 with Position_Abs;
 with Repeat_Eos_U4;
+with Repeat_N_Empty;
 with Repeat_N_Struct;
 with Repeat_Until_Complex;
 with Sample_Data;
@@ -242,6 +243,9 @@ package body Fuzz_Targets is
 
          when Repeat_N_Struct_Parser           =>
             return Sample_Data.Repeat_N_Struct;
+
+         when Repeat_N_Empty_Parser            =>
+            return Sample_Data.Repeat_N_Empty;
 
          when Repeat_Eos_U4_Parser             =>
             return Sample_Data.Repeat_Eos_Struct;
@@ -529,6 +533,8 @@ package body Fuzz_Targets is
    procedure Run_Term_Strz is new Run_Parse_Only (Term_Strz.T, Term_Strz.Parse, Term_Strz.Valid);
    procedure Run_Repeat_N_Struct is new
      Run_Parse_Only (Repeat_N_Struct.T, Repeat_N_Struct.Parse, Repeat_N_Struct.Valid);
+   --  Only Parse: the count of a mutated input can be billions, and walking the elements is the caller's loop
+   procedure Run_Repeat_N_Empty is new Run_Parse_Only (Repeat_N_Empty.T, Repeat_N_Empty.Parse, Repeat_N_Empty.Valid);
    procedure Run_Repeat_Eos_U4 is new Run_Parse_Only (Repeat_Eos_U4.T, Repeat_Eos_U4.Parse, Repeat_Eos_U4.Valid);
    procedure Run_Repeat_Until_Complex is new
      Run_Parse_Only (Repeat_Until_Complex.T, Repeat_Until_Complex.Parse, Repeat_Until_Complex.Valid);
@@ -945,6 +951,9 @@ package body Fuzz_Targets is
 
          when Repeat_N_Struct_Parser           =>
             Run_Repeat_N_Struct (Input, Fields);
+
+         when Repeat_N_Empty_Parser            =>
+            Run_Repeat_N_Empty (Input, Fields);
 
          when Repeat_Eos_U4_Parser             =>
             Run_Repeat_Eos_U4 (Input, Fields);

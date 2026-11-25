@@ -161,6 +161,9 @@ package Sample_Data is
      (16#66#, 16#6F#, 16#6F#, 16#7C#, 16#62#, 16#61#, 16#72#, 16#7C#, 16#62#, 16#61#, 16#7A#, 16#40#);
 
    --  repeat_n_struct.bin
+   --  len = 1, qty = 3, three elements, tail
+   Repeat_N_Empty : constant Bytes (1 .. 9) := (16#01#, 16#03#, 16#00#, 16#00#, 16#00#, 16#61#, 16#62#, 16#63#, 16#7F#);
+
    Repeat_N_Struct : constant Bytes (1 .. 20) :=
      (16#02#,
       16#00#,

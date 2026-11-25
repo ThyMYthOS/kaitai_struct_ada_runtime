@@ -35,13 +35,17 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
   // ------------------------------------------------------------------- names
 
-  private def base(raw: String): String = {
+  def base(raw: String): String = {
     val parts = raw.split("_+").filter(_.nonEmpty).map(w => w.head.toUpper + w.tail)
     val n = parts.mkString("_")
     if (n.isEmpty) "X" else if (n.head.isDigit) "N" + n else n
   }
 
-  private def isReserved(n: String): Boolean = Reserved.contains(n.toLowerCase) || n.toLowerCase == topAdaName.toLowerCase
+  /** The names of the packages of other descriptions, which a name of the description must not take */
+  private lazy val importedNames: Set[String] = classSpecs.keys.map(k => base(k).toLowerCase).toSet
+
+  private def isReserved(n: String): Boolean =
+    Reserved.contains(n.toLowerCase) || n.toLowerCase == topAdaName.toLowerCase || importedNames.contains(n.toLowerCase)
 
   private def plain(raw: String): String = plainIn(provider.nowClass, raw)
 
@@ -116,14 +120,23 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
   private def typePkg(name: String): String = base(name) + "_Type"
 
-  override def packageOf(cs: ClassSpec): String = cs.name.tail.map(typePkg).mkString(".")
+  /** The package of a type: nested in the package of the description, or a package of another description */
+  override def packageOf(cs: ClassSpec): String =
+    if (cs.name.head == topClass.name.head) cs.name.tail.map(typePkg).mkString(".")
+    else fullPackageOf(cs)
+
+  /** The full name of the package of a type, also for the top-level type of the description being compiled */
+  def fullPackageOf(cs: ClassSpec): String = (base(cs.name.head) :: cs.name.tail.map(typePkg)).mkString(".")
 
   private def enumLit(spec: EnumSpec, label: String): String = s"${base(spec.name.last)}_${base(label)}"
   private def enumTy(spec: EnumSpec): String = s"${base(spec.name.last)}_Enum"
 
   override def enumTypeName(spec: EnumSpec): String = {
     val owner = spec.name.dropRight(1)
-    val prefix = if (owner.size <= 1) "" else owner.tail.map(typePkg).mkString(".") + "."
+    val prefix =
+      if (owner.head != topClass.name.head) (base(owner.head) :: owner.tail.map(typePkg)).mkString(".") + "."
+      else if (owner.size <= 1) ""
+      else owner.tail.map(typePkg).mkString(".") + "."
     prefix + enumTy(spec)
   }
 
@@ -287,7 +300,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
   private val belongsMemo = mutable.Map[String, Boolean]()
 
-  private def hasBelongs(cs: ClassSpec): Boolean = belongsMemo.getOrElseUpdate(cs.nameAsStr, {
+  def hasBelongs(cs: ClassSpec): Boolean = belongsMemo.getOrElseUpdate(cs.nameAsStr, {
     def dtHas(dt: DataType): Boolean = dt match {
       case _: BytesType | _: StrType => true
       case ut: UserTypeFromBytes if ut.process.isDefined => true
@@ -671,10 +684,10 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   private def failStmt(rc: RC, reason: String): String = s"${KS}Fail (${rc.s}, $KT$reason);"
 
   /** Statements that run only where all guards hold; otherwise the stream fails. */
-  private def guarded(gs: List[String], thenStmts: List[String], rc: RC, elseStmts: List[String] = Nil): List[String] =
+  private def guarded(gs: List[String], thenStmts: List[String], rc: RC, elseStmts: List[String] = Nil, init: Boolean = true): List[String] =
     if (gs.isEmpty) thenStmts
     else {
-      rc.scope.needsInit = true
+      if (init) rc.scope.needsInit = true
       List(s"if ${conjoin(gs)} then") ++ ind(thenStmts) ++ List("else") ++
         ind(failStmt(rc, "Arithmetic_Error") :: elseStmts) ++ List("end if;")
     }
@@ -764,7 +777,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     include: Boolean,
     pad: Option[Int]
   ): List[String] = {
-    val strip = pad.toList.map(p => s"$target := ${KB}Strip_Right (Buffer, $target, $p);")
+    // the padding is not stripped if it is the terminator: the terminator is applied to the whole
+    val strip = pad.filter(p => term.forall(t => p != unsignedByte(t.last))).toList.map(p => s"$target := ${KB}Strip_Right (Buffer, $target, $p);")
     val terminate = term.toList.map { t =>
       if (t.size == 1)
         s"$target := ${KB}Terminate_At (Buffer, $target, ${unsignedByte(t.head)}, ${if (include) "True" else "False"});"
@@ -907,7 +921,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       else {
         val v = rc.scope.fresh("Arg")
         rc.scope.decls += s"$v : $ada;"
-        pre ++= guarded(gs, List(s"$v := $code;"), rc, List(s"$v := ${defaultOf(ada)};"))
+        pre ++= guarded(gs, List(s"$v := $code;"), rc, List(s"$v := ${defaultOf(ada)};"), init = false)
         args += v
       }
     }
@@ -935,11 +949,11 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       else {
         val v = rc.scope.fresh("Arg")
         rc.scope.decls += s"$v : $ada;"
-        pre ++= guarded(gs, List(s"$v := $code;"), rc, List(s"$v := ${defaultOf(ada)};"))
+        pre ++= guarded(gs, List(s"$v := $code;"), rc, List(s"$v := ${defaultOf(ada)};"), init = false)
         args += v
       }
     }
-    if (isRecursive(callee)) args += (if (callee eq caller) "This.Depth - 1" else "Max_Depth")
+    if (isRecursive(callee)) args += (if (callee eq caller) "This.Depth - 1" else if (classFile(callee) == classFile(caller)) "Max_Depth" else base(classFile(callee)) + ".Max_Depth")
     (pre.toList, args.toList)
   }
 
@@ -971,9 +985,21 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         }
       case BytesEosType(None, false, None, None) =>
         List(s"${KS}Substream (Buffer, ${rc.s}, ${KS}Remaining (${rc.s}), $sub);")
-      case _ => throw new AdaUnsupported("user type with a terminator or padding")
+      case bt =>
+        // the bytes are cut at their terminator or padding; the value is parsed from what is left
+        val raw = rc.scope.fresh("Raw")
+        rc.scope.decls += s"$raw : ${KT}Slice;"
+        readBytes(bt, raw, rc, defaultTarget = true) ++ List(s"$sub := ${KS}Open (Buffer, $raw);")
     }
-    selfGuard(ut, pre ++ mk ++ List(s"${qualOf(ut.classSpec.get)}Parse (Buffer, $sub, ${(args :+ target).mkString(", ")});", s"${KS}Join (${rc.s}, $sub);"), target, rc)
+    // the substream of cut bytes does not know that the stream has failed before: the value is not valid then
+    val cut = ut.bytes match {
+      case BytesLimitType(_, None, false, None, None) | BytesEosType(None, false, None, None) => false
+      case _ => true
+    }
+    val none = if (cut) rc.scope.fresh("None") else ""
+    if (cut) rc.scope.decls += s"$none : ${userPkg(ut)}.T;"
+    val reset = if (cut) List(s"if not ${KS}OK (${rc.s}) then", s"   $target := $none;", "end if;") else Nil
+    selfGuard(ut, pre ++ mk ++ List(s"${qualOf(ut.classSpec.get)}Parse (Buffer, $sub, ${(args :+ target).mkString(", ")});", s"${KS}Join (${rc.s}, $sub);") ++ reset, target, rc)
   }
 
   // ---------------------------------------------------------------- validation
@@ -1021,8 +1047,6 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   override def compile: CompileLog.SpecSuccess = {
     if (config.readWrite)
       fail(topClass.path, "`--read-write`")
-    if (topClass.meta.imports.nonEmpty)
-      fail(topClass.meta.path, "imports")
     if (topClass.meta.isOpaque)
       fail(topClass.path, "opaque types")
     if (topAdaName == "Kaitai" || Reserved.contains(topAdaName.toLowerCase) || topAdaName.contains("__"))
@@ -1033,9 +1057,10 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val (spec, body) = genClass(topClass)
     val srcName = topClass.fileName.map(f => new java.io.File(f).getName).getOrElse(topClass.name.head + ".ksy")
     val header = List(s"--  Generated by the Kaitai Struct compiler from $srcName.  Do not edit.", "")
-    val specText = header ++ withClauses(spec, Nil) ++ spec
+    val specImports = importedWiths(spec)
+    val specText = header ++ specImports ++ withClauses(spec, Nil) ++ spec
     val specSet = usedLibs(spec.mkString("\n"))
-    val bodyText = header ++ withClauses(body, specSet.toList) ++ body
+    val bodyText = header ++ importedWiths(body, specImports) ++ withClauses(body, specSet.toList) ++ body
     val file = topClass.name.head
     CompileLog.SpecSuccess(
       "",
@@ -1044,6 +1069,15 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         CompileLog.FileSuccess(s"${file}.adb", bodyText.mkString("\n") + "\n")
       )
     )
+  }
+
+  /** `with` clauses for the packages of other descriptions that the lines use and that are not named yet */
+  private def importedWiths(lines: List[String], known: List[String] = Nil): List[String] = {
+    val clean = lines.map(l => l.takeWhile(_ != '-')).mkString("\n")
+    val ws = classSpecs.keys.toList.filter(_ != topClass.name.head).map(base).sorted.distinct
+      .filter(p => ("\\b" + p + "\\.").r.findFirstIn(clean).isDefined)
+      .map(p => s"with $p;").filterNot(known.contains)
+    if (ws.isEmpty) Nil else ws
   }
 
   private val LibPackages = List("Streams", "Types", "Arithmetic", "Decoding", "Strings", "Byte_Arrays", "Floats", "Processing", "Zlib")
@@ -1336,9 +1370,10 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       case None => stmts
       case Some(c) =>
         val t = T(c, rc)
-        rc.scope.needsInit = true
         val inner = hasName.map(h => s"This.$h := True;").toList ++ stmts
-        if (t.isLiteral && t.vt == VBool) return (if (t.code == "True") inner else Nil)
+        if (t.isLiteral && t.vt == VBool && t.code == "True") return inner
+        rc.scope.needsInit = true
+        if (t.isLiteral && t.vt == VBool) return Nil
         val ifs = List(s"if ${t.code} then") ++ ind(inner) ++ List("end if;")
         if (t.guards.isEmpty) ifs
         else List(s"if ${conjoin(t.guards)} then") ++ ind(ifs) ++ List("else", "   " + failStmt(rc, "Arithmetic_Error"), "end if;")
@@ -1478,7 +1513,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         val params = s"Buffer : ${KT}Bytes; This : T; Target : in out ${KT}Bytes; Last : out ${KT}Length; Outcome : out ${KT}Status_Kind"
         val post =
           if (isZlib)
-            s"Last >= Target'First - 1 and then Last <= Target'Last and then (if Outcome /= ${KT}Success then Last = Target'First - 1)"
+            s"Last >= Target'First - 1 and then Last - (Target'First - 1) <= ${KT}Length (Target'Length) and then (if Outcome /= ${KT}Success then Last = Target'First - 1)"
           else s"(if Outcome = ${KT}Success then Last = Target'First + ${KT}Size (${bs}_Raw (This)) - 1 else Last = Target'First - 1)"
         opTypes += "Status_Kind"
         o.pub ++= ind(List(
@@ -1576,7 +1611,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     rc.scope.decls += s"$el : T;"
     rc.scope.passesThis = true
     o.parse ++= wrapCond(a, if (hasName.isEmpty) None else Some(hasName),
-      List(s"This.${bs}_Io := S;", s"$helper (Buffer, S, This, $el);"), rc)
+      List(s"This.${bs}_Io := S;", s"$helper (Buffer, S, This, $el);", s"if not Valid ($el) then", "   " + failStmt(rc, "Limit_Exceeded"), "end if;"), rc)
   }
 
   private def genScalar(cs: ClassSpec, a: AttrSpec, dt: DataType, firstAlign: List[String], o: Out, rc: RC): Unit = {
@@ -1701,17 +1736,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
     if (allInt) {
       // one component of the widest type
-      val infos = cases.map(c => AdaTranslator.intInfo(c._2 match { case EnumType(_, _, b) => b; case x => x }).get)
-      val signed = infos.exists(_._2 < 0)
-      val bitsOf = infos.map(i => i._1.drop(1).toInt)
-      val hasU64 = infos.exists(i => i._1 == "U64" && i._3 > AdaTranslator.S64Max)
-      val adaPlain =
-        if (!signed) s"U${bitsOf.max}"
-        else if (infos.forall(_._2 < 0)) s"S${bitsOf.max}"
-        else if (infos.filter(_._2 >= 0).forall(i => i._3 < (BigInt(1) << 32)) && true) "S64"
-        else throw new AdaUnsupported("switch mixing signed and unsigned integers")
+      val adaPlain = switchIntType(st)
       val adaT = KT + adaPlain
-      if (signed && infos.exists(_._2 >= 0) && hasU64) throw new AdaUnsupported("switch mixing signed and unsigned integers")
       val needHas = elseCase.isEmpty && !hasCond(a)
       val hasN = if (hasCond(a)) hasName else if (needHas) s"${hasNm(bs)}" else ""
       var pre2 = pre
@@ -1734,23 +1760,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     }
 
     // variants
-    val variants = ListBuffer[(DataType, String)]()
-    val usedNames = mutable.Set[String]()
-    def variantOf(dt: DataType): String = variants.find(_._1 == dt).map(_._2).getOrElse {
-      val baseName = dt match {
-        case ut: UserType => base(ut.classSpec.get.name.last)
-        case _: BytesType => "Bytes"
-        case _: StrType => "Str"
-        case other => throw new AdaUnsupported(s"switch with case of type $other mixed with other types")
-      }
-      var n = baseName
-      var i = 2
-      while (usedNames.contains(n) || n == "Kind") { n = s"${baseName}_$i"; i += 1 }
-      usedNames += n
-      variants += ((dt, n))
-      n
-    }
-    cases.foreach(c => variantOf(c._2))
+    val variants = switchVariants(st)
+    def variantOf(dt: DataType): String = variants.find(_._1 == dt).get._2
     val kindT = s"${bs}_Kind"
     val varT = s"${bs}_Variant"
     val none = s"${bs}_Is_None"
@@ -1794,6 +1805,43 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         elseCase.toList.map(dt => (None, variantBranch(dt, nm, bs, variantOf(dt), rc))) ++
         (if (elseCase.isEmpty) List((None, List(s"This.$nm := (Kind => $none);"))) else Nil)
     o.parse ++= wrapCond(a, if (hasCond(a)) Some(hasName) else None, choose(branches), rc)
+  }
+
+  /** The variants of a switch that is not all integers, in order: the type of the case and the name `Is_<Name>` is built from. */
+  def switchVariants(st: SwitchType): List[(DataType, String)] = {
+    val variants = ListBuffer[(DataType, String)]()
+    val usedNames = mutable.Set[String]()
+    st.cases.toList.foreach { case (_, dt) =>
+      if (!variants.exists(_._1 == dt)) {
+        val baseName = dt match {
+          case ut: UserType => base(ut.classSpec.get.name.last)
+          case _: BytesType => "Bytes"
+          case _: StrType => "Str"
+          case other => throw new AdaUnsupported(s"switch with case of type $other mixed with other types")
+        }
+        var n = baseName
+        var i = 2
+        while (usedNames.contains(n) || n == "Kind") { n = s"${baseName}_$i"; i += 1 }
+        usedNames += n
+        variants += ((dt, n))
+      }
+    }
+    variants.toList
+  }
+
+  /** The Ada type, without package, of the component that holds a switch whose cases are all integers: the widest one. */
+  def switchIntType(st: SwitchType): String = {
+    val infos = st.cases.toList.map(c => AdaTranslator.intInfo(c._2 match { case EnumType(_, _, b) => b; case x => x }).get)
+    val signed = infos.exists(_._2 < 0)
+    val bitsOf = infos.map(i => i._1.drop(1).toInt)
+    val hasU64 = infos.exists(i => i._1 == "U64" && i._3 > AdaTranslator.S64Max)
+    val adaPlain =
+      if (!signed) s"U${bitsOf.max}"
+      else if (infos.forall(_._2 < 0)) s"S${bitsOf.max}"
+      else if (infos.filter(_._2 >= 0).forall(i => i._3 < (BigInt(1) << 32))) "S64"
+      else throw new AdaUnsupported("switch mixing signed and unsigned integers")
+    if (signed && infos.exists(_._2 >= 0) && hasU64) throw new AdaUnsupported("switch mixing signed and unsigned integers")
+    adaPlain
   }
 
   private def intBranch(dt: DataType, nm: String, adaT: String, adaPlain: String, hasName: String, rc: RC, a: AttrSpec): List[String] = {
@@ -2216,7 +2264,7 @@ object AdaClassCompiler extends LanguageCompilerStatic {
   val KStr = "Kaitai.Strings."
 
   /** Names of local variables of Parse, which a parameter must not take */
-  val ParamReserved: Set[String] = Set("sub", "bit", "element", "done", "value", "l", "result", "outcome", "position", "i", "start", "arg", "index", "kind")
+  val ParamReserved: Set[String] = Set("sub", "bit", "element", "done", "value", "l", "result", "outcome", "position", "i", "start", "arg", "index", "kind", "raw", "target", "storage", "last", "inflated", "none")
 
   val Reserved: Set[String] = Set(
     // Ada reserved words

@@ -1,12 +1,15 @@
 with Bits_Byte_Aligned;
 with Bits_Enum;
 with Bits_Simple;
+with Bytes_Pad_Term_Equal;
 with Default_Endian_Expr_Is_Le;
 with Enum_0;
 with Expr_1;
+with Expr_Sizeof_Type_0;
 with Fixed_Struct;
 with Hello_World;
 with If_Struct;
+with Imports0;
 with Instance_Std;
 with Kaitai.Streams; use Kaitai.Streams;
 with Kaitai.Types;   use Kaitai.Types;
@@ -19,6 +22,7 @@ with Sample_Data;    use Sample_Data;
 with Str_Encodings;
 with Switch_Manual_Int;
 with Term_Strz;
+with Term_Struct;
 with Test_Support;   use Test_Support;
 with Valid_Fail_Eq_Int;
 
@@ -591,6 +595,71 @@ package body Examples_Tests is
       end if;
    end Test_Bits_Byte_Aligned;
 
+   procedure Test_Bytes_Pad_Term_Equal is
+      use Bytes_Pad_Term_Equal;
+      Data : Bytes renames Sample_Data.Str_Pad_Term;
+      S    : Stream := Open (Data);
+      This : Bytes_Pad_Term_Equal.T;
+   begin
+      Group ("examples bytes_pad_term_equal");
+      Parse (Data, S, This);
+      Check (Valid (This) and then Is_EOF (S), "parses");
+      if Valid (This) then
+         Check (Text (Data, S1 (This)) = "str1", "padding that is the terminator is not stripped first");
+         Check (Text (Data, S2 (This)) = "str2foo@", "terminator included, other padding");
+         Check (Text (Data, S3 (This)) = "str", "terminator that is the padding");
+         Check (Text (Data, S4 (This)) = "str4baz@.", "terminator included, and the same padding");
+      end if;
+   end Test_Bytes_Pad_Term_Equal;
+
+   procedure Test_Expr_Sizeof_Type_0 is
+      use Expr_Sizeof_Type_0;
+      S    : Stream := Open (Sample_Fixed_Struct);
+      This : Expr_Sizeof_Type_0.T;
+   begin
+      Group ("examples expr_sizeof_type_0");
+      Parse (Sample_Fixed_Struct, S, This);
+      Check (Valid (This), "parses");
+      if Valid (This) then
+         Check (Sizeof_Block (This) = 7, "the size of a type is in bytes");
+      end if;
+   end Test_Expr_Sizeof_Type_0;
+
+   procedure Test_Term_Struct is
+      use Term_Struct;
+      Data : Bytes renames Sample_Term_Strz;
+      S    : Stream := Open (Data);
+      This : Term_Struct.T;
+   begin
+      Group ("examples term_struct");
+      Parse (Data, S, This);
+      Check (Valid (This) and then Is_EOF (S), "parses");
+      if Valid (This) then
+         Check (Text (Data, Bytes_Wrapper_Type.Value (S1 (This))) = "foo", "s1");
+         Check (Text (Data, Bytes_Wrapper_Type.Value (S2 (This))) = "bar", "s2, terminator not consumed");
+         Check (Text (Data, Bytes_Wrapper_Type.Value (S3 (This))) = "|baz@", "s3, terminator included");
+      end if;
+
+      S := Open (Data (1 .. 11));
+      Parse (Data (1 .. 11), S, This);
+      Check (not Valid (This) and then Status (S) = End_Of_Stream, "a missing terminator is rejected");
+   end Test_Term_Struct;
+
+   procedure Test_Imports0 is
+      use Imports0;
+      S    : Stream := Open (Sample_Fixed_Struct);
+      This : Imports0.T;
+   begin
+      Group ("examples imports0");
+      Parse (Sample_Fixed_Struct, S, This);
+      Check (Valid (This) and then Pos (S) = 2, "parses");
+      if Valid (This) then
+         Check (Two (This) = 16#50#, "two");
+         Check (Hello_World.One (Hw (This)) = 16#41#, "a field of the type of another description");
+         Check (Has_Hw_One (This) and then Hw_One (This) = 16#41#, "an instance that uses it");
+      end if;
+   end Test_Imports0;
+
    procedure Run is
    begin
       Test_Hello_World;
@@ -612,6 +681,10 @@ package body Examples_Tests is
       Test_Str_Encodings;
       Test_Bits_Enum;
       Test_Bits_Byte_Aligned;
+      Test_Bytes_Pad_Term_Equal;
+      Test_Expr_Sizeof_Type_0;
+      Test_Term_Struct;
+      Test_Imports0;
    end Run;
 
 end Examples_Tests;

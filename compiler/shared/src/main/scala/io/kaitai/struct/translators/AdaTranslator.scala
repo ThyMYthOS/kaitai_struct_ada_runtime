@@ -95,6 +95,12 @@ object AdaTranslator {
     case EnumType(_, _, b) => fixedElement(b)
     case _ => None
   }
+  /** Aggregate of bytes, as the translator writes a literal array */
+  def aggregate(bytes: Seq[Int]): String =
+    if (bytes.isEmpty) "(1 .. 0 => 0)"
+    else if (bytes.size == 1) f"(1 => 16#${bytes.head}%02X#)"
+    else bytes.map(b => f"16#$b%02X#").mkString("(", ", ", ")")
+
   /** The field is kept as the bytes of the input, because it has `process` */
   def hasProcess(dt: DataType): Boolean = dt match {
     case b: BytesType => b.process.isDefined
@@ -219,26 +225,24 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     case Ast.expr.BitSizeOfType(t) => sizeOf(t, 1)
   }
 
-  private def aggregate(bytes: Seq[Int]): String =
-    if (bytes.isEmpty) "(1 .. 0 => 0)"
-    else if (bytes.size == 1) f"(1 => 16#${bytes.head}%02X#)"
-    else bytes.map(b => f"16#$b%02X#").mkString("(", ", ", ")")
 
   private def sizeOf(t: Ast.typeId, factor: Int): ATr = {
-    val bytes: Option[BigInt] =
+    // the size in bits; the sizes of the compiler front end are in bits
+    val bits: Option[BigInt] =
       if (!t.absolute && t.names.size == 1) {
         DataType.pureFromString(Some(t.names.head)) match {
-          case Int1Type(_) => Some(1)
-          case IntMultiType(_, w, _) => Some(w.width)
-          case FloatMultiType(w, _) => Some(w.width)
+          case Int1Type(_) => Some(8)
+          case IntMultiType(_, w, _) => Some(w.width * 8)
+          case FloatMultiType(w, _) => Some(w.width * 8)
           case _: UserType =>
             userSize(t)
           case _ => None
         }
       } else userSize(t)
-    bytes match {
+    bits match {
       case Some(b) =>
-        val n = if (factor == 8) b else b * 8
+        // a size in bytes counts a begun byte as a whole one
+        val n = if (factor == 8) (b + 7) / 8 else b
         ATr(n.toString, 0, Nil, VInt, n, n, isLiteral = true)
       case None => unsupported(s"size of type ${t.nameAsStr}")
     }
@@ -738,6 +742,10 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
 
   private def translateIf(c: ATr, a: ATr, b: ATr): ATr = {
     if (c.vt != VBool) unsupported("conditional on something that is not a boolean")
+    // a condition that is a literal chooses the branch
+    val simple = (a.vt, b.vt) match { case ((VInt | VEnum(_) | VBool), (VInt | VEnum(_) | VBool)) => true; case _ => false }
+    if (c.isLiteral && simple)
+      return (if (c.code == "True") a else b)
     val ga = conj(a.guards)
     val gb = conj(b.guards)
     val cond = c.code

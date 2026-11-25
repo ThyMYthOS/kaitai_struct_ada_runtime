@@ -27,9 +27,9 @@ name, which descriptions have all the time (`header` of type `header`).
 A name gets the suffix `_Field` if it is
 - a reserved word of Ada,
 - used by the generated code itself (`T`, `Parse`, `Valid`, `Belongs_To`,
-  `Next`, `Has_Element`, `Remaining`, `Max_Depth`, `Is_Valid`, `Io`, and the
+  `Next`, `Has_Element`, `Remaining`, `Max_Depth`, `Depth`, `Is_Valid`, `Io`, and the
   names `This`, `Buffer`, `S`, `Order` of parameters),
-- `Kaitai`, or an identifier of package Standard that the code uses
+- `Kaitai`, the name of the package of an imported description, or an identifier of package Standard that the code uses
   (`Boolean`, `True`, `False`, `Natural`, `Positive`, `Integer`, `String`,
   `Character`, `Standard`),
 - the name of the enclosing top-level package.
@@ -42,7 +42,8 @@ description whose own id is `kaitai` or a reserved word is rejected.
 
 Names that the generated code derives from an identifier keep their form:
 `Has_X`, `X_Count`, `X_First`, `X_Cursor`, `X_Value`, `X_Bits`, `X_Case`,
-`X_Kind`, `X_As_Y`, `X_Is_Y`, `Get_X`, `X_Type`, `X_Enum`, the literals of an
+`X_Kind`, `X_As_Y`, `X_Is_Y`, `X_Raw`, `Get_X`, `Parent_X`, `Root_X`, `X_Type`,
+`X_Enum`, the literals of an
 enumeration. If one of them would equal a name that comes directly from an
 identifier of the description in the same declarative region, the name from
 the description gets the suffix `_Field`. A parameter `has_trailer` next to a
@@ -408,20 +409,34 @@ procedure Packed
 `Secret` is for a byte array: the result is `Target (Target'First .. Last)`.
 `Packed` is for a field of a type: the bytes are processed into `Storage`
 and the value is parsed from there, so that what it refers to lies in
-`Storage`. Both report `Capacity_Exceeded` if the array is too small.
+`Storage`. Both report `Capacity_Exceeded` if the array is too small. The
+bytes that `Secret_Raw` delivers are those after `terminator` and `pad-right`
+were applied, as in the other targets.
+
+| In the description | In the accessor |
+|---|---|
+| `xor(k)` with an integer | `Processing.Xor_One`; a key outside 0 .. 255 gives `Arithmetic_Error` |
+| `xor(k)` with bytes, a field or a literal | `Processing.Xor_Many`, the key taken from `Buffer`; an empty key gives `Arithmetic_Error` |
+| `rol(n)` | `Processing.Rotate_Left (…, n)` |
+| `ror(n)` | `Processing.Rotate_Left (…, 8 - n)` |
+| `zlib` | `Zlib.Inflate`; `Target_Full` is `Capacity_Exceeded`, `Corrupt` is `Illegal_Sequence` |
 
 A value inside processed bytes is therefore parsed only when it is asked
 for, and an error in it shows only then. `Parse` cannot use such a value;
-the compiler rejects a description in which a later field depends on one.
+the compiler rejects a description in which an expression, a `valid`, a
+`switch-on` or another field depends on one. A custom process, a process of
+a string, of a repeated field, of a field whose type depends on a value, and
+of a parse instance are rejected.
 
 `examples/extras` shows this and the next two sections.
 
 ## Types that contain themselves
 
 `Parse` of such a type has a parameter `Depth`, the number of levels of
-nesting that are accepted below the value. It is passed on reduced by one,
-and at zero the stream fails with `Limit_Exceeded`. `Depth` is what proves
-that the recursion ends:
+nesting that are accepted below the value. It comes after the parameters of
+the description and the references to the parent and the root. It is passed
+on reduced by one, and at zero the stream fails with `Limit_Exceeded`.
+`Depth` is what proves that the recursion ends:
 
 ```ada
 procedure Parse (Buffer : Bytes; S : in out Stream; Depth : Natural; This : out T)
@@ -432,7 +447,7 @@ The procedure that parses one element has the variant
 `(Decreases => This.Depth, Decreases => 0)`, so that the call from `Parse`
 to it counts as a step down as well. Where the type is used from outside,
 `Depth` is the constant `Max_Depth` of the library-level package, 8 unless
-the compiler is told otherwise.
+the compiler is told otherwise with `--ada-max-depth N`.
 
 Every level takes room on the stack, and the proof does not cover the size
 of the stack. Measured for `examples/extras` on a Cortex-M4 with run-time
@@ -443,22 +458,46 @@ well within that stack. `-fstack-usage` tells what a level costs for a
 given type.
 
 A field of its own type is not held in `T`, which Ada does not allow. Like a
-repetition it is parsed again when asked for. A type that contains itself
-only through a repetition needs nothing more, since repetitions are not held
+repetition it is parsed again when asked for: `T` keeps the stream as it was
+before the field, and a procedure `X (Buffer, This, Result, Outcome)` parses
+it, like the accessor of a parse instance. A type that contains itself only
+through a repetition needs nothing more, since repetitions are not held
 either.
+
+Types that contain each other, a field whose type depends on a value and
+can be the type itself, and a `valid` on a field of its own type are
+rejected.
 
 ## References to the parent and the root
 
 A value has no reference to the value it is part of. Where a type uses
 `_parent.x` or `_root.x.y`, the value of that expression becomes a parameter
 of its `Parse`, named `Parent_X` or `Root_X_Y`, after the parameters of the
-description. It is kept in `T` like those. The parser of the parent passes
-it; if it does not have it itself, as for `_root`, it gets the same parameter
-and hands it on.
+description. It is kept in `T` like those and has no accessor. `_parent.
+_parent.x` is `Parent_Parent_X`. Where the name is the end of a chain, the
+rest of the chain is applied to the parameter: `_parent.name.length` uses
+`Parent_Name`. Only integers, booleans and enumerations can be passed.
+
+The parser of the parent passes the value, computed from its own field, or
+value instance with its guards, at every place where it calls the parser: in
+`Parse`, in the procedures that parse one element, and in the accessors of
+parse instances. A type that needs `_parent._parent.x` and `_root.x` of a
+type it uses, gets the parameters `Parent_X` and `Root_X` itself and hands
+them on. The top-level type of a description has `_root` as itself: `_root.x`
+is its field `x`.
 
 The value is taken when the parser of the parent calls. A reference to a
-field that is parsed later, which other targets resolve when an instance is
-asked for, is rejected by the compiler.
+field that is parsed later than the field with the call, to a parse instance,
+or to a type that is not passed by value is rejected by the compiler. So is
+`_parent` in the top-level type of a description, which has no parent.
+`_root` means the top-level type of the description in which the type is
+written; a type of another description that uses `_root` is rejected. So is
+`_root.x` in a description whose top-level type contains itself: for the
+nested value it would have to be the field of the outermost value, which the
+nested value does not know.
+The key `parent`, which gives one use of a type another parent or none, is
+rejected on a field whose type uses `_parent`: here the value always comes
+from the type that has the field.
 
 ## Rules of the compiler
 
@@ -505,8 +544,7 @@ Where the rules above are silent, the compiler does the following.
   from `Open (Buffer)`. `pos` is required. An instance with `if` has `Has_X`.
   The result is an `out` parameter of the type of the value; the postcondition
   says `Within (Result, Buffer)` for a slice.
-- An expression of a repeated field, `_index`, `_parent`, `_root` other than
-  `_root._io`, floats, string operations other than comparison with a
+- An expression of a repeated field, `_index`, `_parent._io`, floats, string operations other than comparison with a
   literal or another string, `.length`, `.to_i`, and array subscripts are
   supported only as the translator lists in `compiler/README.md`; whatever is
   not supported is a compile error with the path of the attribute.
@@ -517,6 +555,18 @@ Where the rules above are silent, the compiler does the following.
 - A string in `ASCII`, `UTF-8`, `UTF-16LE` or `UTF-16BE` is checked; every
   other encoding is `Single_Byte`, which accepts everything. The encodings
   `UTF-16` without byte order, `UTF-32` and the like are rejected.
+- A field of a type with `terminator` or `pad-right` (alone or with `size`,
+  `size-eos`) reads the bytes as a field of bytes does, cuts them, and
+  parses the value from `Open (Buffer, Item)` of the slice, then `Join`. If
+  the stream had failed before, the value is the empty one, since the
+  substream does not know of the failure.
+- A type of another description is `Foo.T` with `Foo.Parse`, where `Foo` is
+  the id of that description in the form of the other package names; its
+  nested types are `Foo.Bar_Type`, its enumerations `Foo.Baz_Enum`. The
+  top-level type has no `_Type` suffix. The unit has `with Foo;` for each
+  such package it uses. The compiler writes the files of every description of
+  the compilation, the imported ones included. A type that the compiler is
+  told to treat as opaque is rejected.
 - `contents` is a constant `X_Expected` of the body, compared by
   `Read_Contents`. `valid` is checked after the read and fails the stream
   with the matching `Validation_*` status.
@@ -525,7 +575,8 @@ Where the rules above are silent, the compiler does the following.
 
 - There are no `_io`, `_parent` and `_root` references in the parsed values.
   What a type needs from its parent or the root is passed to its parser as a
-  parameter, and has to be parsed by then.
+  parameter, and has to be parsed by then. `_root` means the top-level type
+  of the description in which the type is written.
 - The bytes of a field with `process` are processed when the field is asked
   for, not when it is parsed.
 - A type that contains itself can be nested only up to a fixed depth.

@@ -13,7 +13,7 @@ upstream tree and are copied over a checkout of the compiler.
 |---|---|
 | `shared/src/main/scala/io/kaitai/struct/AdaClassCompiler.scala` | the emitter; it walks the `ClassSpec` tree itself and writes `<id>.ads` and `<id>.adb` |
 | `shared/src/main/scala/io/kaitai/struct/translators/AdaTranslator.scala` | translation of expressions to Ada, with the conditions under which they are defined |
-| `upstream.patch` | the edits of existing upstream files: the registry (`LanguageCompilerStatic`), `Main.scala`, and `project/plugins.sbt` (`sbt-scalajs-crossproject` 1.3.2 instead of 1.0.0, which is no longer found) |
+| `upstream.patch` | the edits of existing upstream files: the registry (`LanguageCompilerStatic`), `Main.scala`, the option `--ada-max-depth` (`RuntimeConfig.scala`, `JavaMain.scala`), and `project/plugins.sbt` (`sbt-scalajs-crossproject` 1.3.2 instead of 1.0.0, which is no longer found) |
 
 Pinned upstream: `kaitai-io/kaitai_struct_compiler` at commit
 `963fd6b3c633e87ed197c5a065f5c8a7d31c1328`.
@@ -42,12 +42,21 @@ as raw bits with the accessor pair, bytes and strings with `size`,
 `size-eos`, `terminator` (also several bytes), `pad-right`, `include`,
 `consume`, `eos-error`, string encodings, `contents`, `valid` (`eq`, `min`,
 `max`, range, `any-of`, `in-enum`, `expr`), `if`, enumerations, `switch-on`
-with structures or with integers, `size` and `size-eos` substreams,
+with structures or with integers, `size`, `size-eos`, `terminator` and
+`pad-right` on fields of a type (the value is parsed from the cut bytes),
 `repeat: expr/eos/until` (structures and byte/string elements with a cursor,
 integers and floats of a fixed size as a slice), value instances (integer,
 boolean, enumeration, bytes, string), parse instances with `pos`, `size` and
 `io: _root._io`, parameters of integer, boolean or enumeration type, nested
 types by path, doc strings as comments.
+
+`_parent` and `_root` (as parameters of `Parse`, for integers, booleans and
+enumerations, chains such as `_parent._parent.x` included), `process` (`xor`
+with a byte or a bytes key, `rol`, `ror`, `zlib`; the accessor undoes it into
+an array of the caller), types that contain themselves (directly or through a
+repetition, with `Depth`; `--ada-max-depth N` sets `Max_Depth`, default 8),
+imports (a type of another description is `<Package>.T`; all files of a
+compilation are written).
 
 Expressions: integer arithmetic in S64 with the guards of `Kaitai.Arithmetic`
 (dropped where interval arithmetic shows they hold), comparisons, `and`,
@@ -58,15 +67,21 @@ of bytes, comparison of bytes and strings with literals, `sizeof`.
 ## What is rejected
 
 Each of these is a compile error that names the construct and the path of
-the attribute: `_parent` and `_root` (except `_root._io` and `_parent` in the
-byte order switch), recursive types, `process`, imports and opaque types,
-floating-point arithmetic, string concatenation, `substring`, `reverse`,
-`to_s`, array subscripts and arrays in expressions beyond `.size`,
-`_index`, parameters of other types, `repeat` on parse instances or on
-switch fields, `valid` on repeated fields, encodings `UTF-16` without byte
+the attribute: types that contain each other (also through imports; only a
+type that contains itself is supported), `_parent` in the top-level type of a
+description, `_root` in a type of another description that is used from
+elsewhere or in a description whose top-level type contains itself, the
+key `parent` on a field whose type uses `_parent`, `_parent`/`_root` values
+that are not integers, booleans or enumerations, `process` that is custom, on a string, on a repeated field, on
+a switch field or on a parse instance, and an expression or `valid` that
+depends on a processed value, opaque types, floating-point arithmetic,
+string concatenation, `substring`, `reverse`, `to_s`, array subscripts and
+arrays in expressions beyond `.size`, `_index`, casts, parameters of other
+types, `repeat` on parse instances or on switch fields, `valid` on repeated
+fields, parse instances used in expressions, encodings `UTF-16` without byte
 order, `UTF-32` and the like, and `--read-write`.
 
-`compiler/SURVEY.md` lists what happens to the 334 formats of the Kaitai
+`compiler/SURVEY.md` lists what happens to the formats of the Kaitai
 Struct test suite.
 
 ## Running the Kaitai Struct test suite

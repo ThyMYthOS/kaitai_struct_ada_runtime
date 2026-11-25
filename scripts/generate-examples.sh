@@ -47,7 +47,12 @@ for ksy in examples/*/*.ksy; do
    name=$(basename "$ksy" .ksy)
    dir=$(dirname "$ksy")
    case " $HANDWRITTEN " in *" $name "*) continue ;; esac
-   "$KSC" -t ada --outdir "$dir" "$ksy" 2>&1 | grep -v '^Picked up' || true
+   # The compiler also writes the files of the descriptions that this one
+   # imports; those belong to examples of their own
+   tmp=$(mktemp -d)
+   "$KSC" -t ada --outdir "$tmp" "$ksy" 2>&1 | grep -v '^Picked up' || true
+   cp "$tmp/$name.ads" "$tmp/$name.adb" "$dir/"
+   rm -rf "$tmp"
    files="$files $dir/$name.ads $dir/$name.adb"
 done
 

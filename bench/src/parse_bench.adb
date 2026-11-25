@@ -19,6 +19,7 @@ with Ada.Text_IO;      use Ada.Text_IO;
 with Bench_Data;
 with Bench_Support;    use Bench_Support;
 with Bench_Types;      use Bench_Types;
+with Bit_Runs;         use Bit_Runs;
 with Kaitai.Types;     use Kaitai.Types;
 with Stream_Runs;      use Stream_Runs;
 
@@ -68,7 +69,27 @@ procedure Parse_Bench is
       Status8_Returned_V,
       Generated_Fields4_V,
       Generated_Term_V,
-      Generated_Nested_V);
+      Generated_Nested_V,
+      Bits_Flat_V1_V,
+      Bits_Flat_V2_V,
+      Bits_Flat_V3_V,
+      Bits_Flat_V3a_V,
+      Bits_Flat_V4_V,
+      Bits_Le_V1_V,
+      Bits_Le_V2_V,
+      Bits_Le_V3_V,
+      Bits_Le_V3a_V,
+      Bits_Le_V4_V,
+      Bits_Mixed_V1_V,
+      Bits_Mixed_V2_V,
+      Bits_Mixed_V3_V,
+      Bits_Mixed_V3a_V,
+      Bits_Mixed_V4_V,
+      Bits_Nested_V1_V,
+      Bits_Nested_V2_V,
+      Bits_Nested_V3_V,
+      Bits_Nested_V3a_V,
+      Bits_Nested_V4_V);
 
    type Group is
      (Term_G,
@@ -86,7 +107,11 @@ procedure Parse_Bench is
       Rotate_G,
       Status1_G,
       Status4_G,
-      Status8_G);
+      Status8_G,
+      Bits_Flat_G,
+      Bits_Le_G,
+      Bits_Mixed_G,
+      Bits_Nested_G);
 
    Groups : constant array (Variant) of Group :=
      [Kaitai_Term_V              => Term_G,
@@ -129,7 +154,27 @@ procedure Parse_Bench is
       Status8_Returned_V         => Status8_G,
       Generated_Fields4_V        => Fields4_G,
       Generated_Term_V           => Term_G,
-      Generated_Nested_V         => Nested_G];
+      Generated_Nested_V         => Nested_G,
+      Bits_Flat_V1_V             => Bits_Flat_G,
+      Bits_Flat_V2_V             => Bits_Flat_G,
+      Bits_Flat_V3_V             => Bits_Flat_G,
+      Bits_Flat_V3a_V            => Bits_Flat_G,
+      Bits_Flat_V4_V             => Bits_Flat_G,
+      Bits_Le_V1_V               => Bits_Le_G,
+      Bits_Le_V2_V               => Bits_Le_G,
+      Bits_Le_V3_V               => Bits_Le_G,
+      Bits_Le_V3a_V              => Bits_Le_G,
+      Bits_Le_V4_V               => Bits_Le_G,
+      Bits_Mixed_V1_V            => Bits_Mixed_G,
+      Bits_Mixed_V2_V            => Bits_Mixed_G,
+      Bits_Mixed_V3_V            => Bits_Mixed_G,
+      Bits_Mixed_V3a_V           => Bits_Mixed_G,
+      Bits_Mixed_V4_V            => Bits_Mixed_G,
+      Bits_Nested_V1_V           => Bits_Nested_G,
+      Bits_Nested_V2_V           => Bits_Nested_G,
+      Bits_Nested_V3_V           => Bits_Nested_G,
+      Bits_Nested_V3a_V          => Bits_Nested_G,
+      Bits_Nested_V4_V           => Bits_Nested_G];
 
    subtype Name is String (1 .. 24);
 
@@ -174,7 +219,27 @@ procedure Parse_Bench is
       "status8_returned        ",
       "generated_fields4       ",
       "generated_term          ",
-      "generated_nested        "];
+      "generated_nested        ",
+      "bits_flat_v1            ",
+      "bits_flat_v2            ",
+      "bits_flat_v3            ",
+      "bits_flat_v3a           ",
+      "bits_flat_v4            ",
+      "bits_le_v1              ",
+      "bits_le_v2              ",
+      "bits_le_v3              ",
+      "bits_le_v3a             ",
+      "bits_le_v4              ",
+      "bits_mixed_v1           ",
+      "bits_mixed_v2           ",
+      "bits_mixed_v3           ",
+      "bits_mixed_v3a          ",
+      "bits_mixed_v4           ",
+      "bits_nested_v1          ",
+      "bits_nested_v2          ",
+      "bits_nested_v3          ",
+      "bits_nested_v3a         ",
+      "bits_nested_v4          "];
 
    Failed : Boolean := False;
 
@@ -265,7 +330,27 @@ begin
                     when Status8_Returned_V         => Run_Status8_Returned (Fields (1 .. 8 * Length (Records))),
                     when Generated_Fields4_V        => Run_Generated_Fields4 (Fields (1 .. 4 * Length (Records))),
                     when Generated_Term_V           => Run_Generated_Term (Term (1 .. Term_Used)),
-                    when Generated_Nested_V         => Run_Generated_Nested (Nested (1 .. Nested_Used)));
+                    when Generated_Nested_V         => Run_Generated_Nested (Nested (1 .. Nested_Used)),
+                    when Bits_Flat_V1_V             => Run_Bits_Flat_V1 (Fields (1 .. 4 * Length (Records))),
+                    when Bits_Flat_V2_V             => Run_Bits_Flat_V2 (Fields (1 .. 4 * Length (Records))),
+                    when Bits_Flat_V3_V             => Run_Bits_Flat_V3 (Fields (1 .. 4 * Length (Records))),
+                    when Bits_Flat_V3a_V            => Run_Bits_Flat_V3a (Fields (1 .. 4 * Length (Records))),
+                    when Bits_Flat_V4_V             => Run_Bits_Flat_V4 (Fields (1 .. 4 * Length (Records))),
+                    when Bits_Le_V1_V               => Run_Bits_Le_V1 (Fields (1 .. 4 * Length (Records))),
+                    when Bits_Le_V2_V               => Run_Bits_Le_V2 (Fields (1 .. 4 * Length (Records))),
+                    when Bits_Le_V3_V               => Run_Bits_Le_V3 (Fields (1 .. 4 * Length (Records))),
+                    when Bits_Le_V3a_V              => Run_Bits_Le_V3a (Fields (1 .. 4 * Length (Records))),
+                    when Bits_Le_V4_V               => Run_Bits_Le_V4 (Fields (1 .. 4 * Length (Records))),
+                    when Bits_Mixed_V1_V            => Run_Bits_Mixed_V1 (Fields (1 .. 4 * Length (Records))),
+                    when Bits_Mixed_V2_V            => Run_Bits_Mixed_V2 (Fields (1 .. 4 * Length (Records))),
+                    when Bits_Mixed_V3_V            => Run_Bits_Mixed_V3 (Fields (1 .. 4 * Length (Records))),
+                    when Bits_Mixed_V3a_V           => Run_Bits_Mixed_V3a (Fields (1 .. 4 * Length (Records))),
+                    when Bits_Mixed_V4_V            => Run_Bits_Mixed_V4 (Fields (1 .. 4 * Length (Records))),
+                    when Bits_Nested_V1_V           => Run_Bits_Nested_V1 (Fields (1 .. 3 * Length (Records))),
+                    when Bits_Nested_V2_V           => Run_Bits_Nested_V2 (Fields (1 .. 3 * Length (Records))),
+                    when Bits_Nested_V3_V           => Run_Bits_Nested_V3 (Fields (1 .. 3 * Length (Records))),
+                    when Bits_Nested_V3a_V          => Run_Bits_Nested_V3a (Fields (1 .. 3 * Length (Records))),
+                    when Bits_Nested_V4_V           => Run_Bits_Nested_V4 (Fields (1 .. 3 * Length (Records))));
                Times (V) (R) := Elapsed_NS (Watch) / Long_Float (Records);
             end if;
          end loop;

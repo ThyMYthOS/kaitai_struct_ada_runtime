@@ -43,6 +43,7 @@ for rts in "${@:-light-stm32f4}"; do
          "substream kaitai_substream kaitai_substream_local substream_classic" \
          "nested nested_local nested_outer_only nested_direct generated_nested" \
          "fields fields1_local fields1_direct fields2_local fields2_direct fields3_local fields3_direct fields4_local fields4_direct fields8_local fields8_direct calls_both_local calls_inner_local calls_direct status1_sticky status1_returned status4_sticky status4_returned status8_sticky status8_returned generated_fields4" \
+         "fields bits_flat_v1 bits_flat_v2 bits_flat_v3 bits_flat_v3a bits_flat_v4 bits_le_v1 bits_le_v2 bits_le_v3 bits_le_v3a bits_le_v4 bits_mixed_v1 bits_mixed_v2 bits_mixed_v3 bits_mixed_v3a bits_mixed_v4 bits_nested_v1 bits_nested_v2 bits_nested_v3 bits_nested_v3a bits_nested_v4" \
          "process kaitai_xor_one xor_one_classic kaitai_xor_many xor_many_classic_mod xor_many_classic_counter kaitai_rotate rotate_classic"; do
          set -- $(simulate "bin/$rts/$mode/target_none_${group%% *}")
          base=$1

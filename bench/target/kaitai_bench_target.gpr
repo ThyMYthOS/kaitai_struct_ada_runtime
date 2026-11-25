@@ -102,7 +102,27 @@ project Kaitai_Bench_Target is
       "target_status8_returned.adb",
       "target_generated_fields4.adb",
       "target_generated_term.adb",
-      "target_generated_nested.adb");
+      "target_generated_nested.adb",
+      "target_bits_flat_v1.adb",
+      "target_bits_flat_v2.adb",
+      "target_bits_flat_v3.adb",
+      "target_bits_flat_v3a.adb",
+      "target_bits_flat_v4.adb",
+      "target_bits_le_v1.adb",
+      "target_bits_le_v2.adb",
+      "target_bits_le_v3.adb",
+      "target_bits_le_v3a.adb",
+      "target_bits_le_v4.adb",
+      "target_bits_mixed_v1.adb",
+      "target_bits_mixed_v2.adb",
+      "target_bits_mixed_v3.adb",
+      "target_bits_mixed_v3a.adb",
+      "target_bits_mixed_v4.adb",
+      "target_bits_nested_v1.adb",
+      "target_bits_nested_v2.adb",
+      "target_bits_nested_v3.adb",
+      "target_bits_nested_v3a.adb",
+      "target_bits_nested_v4.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use Switches;

@@ -60,7 +60,11 @@ for mode in checked inlined proven; do
          calls_direct kaitai_xor_one xor_one_classic kaitai_xor_many \
          xor_many_classic_mod xor_many_classic_counter kaitai_rotate rotate_classic \
          status1_sticky status1_returned status4_sticky status4_returned status8_sticky status8_returned \
-         generated_fields4 generated_term generated_nested; do
+         generated_fields4 generated_term generated_nested \
+         bits_flat_v1 bits_flat_v2 bits_flat_v3 bits_flat_v3a bits_flat_v4 \
+         bits_le_v1 bits_le_v2 bits_le_v3 bits_le_v3a bits_le_v4 \
+         bits_mixed_v1 bits_mixed_v2 bits_mixed_v3 bits_mixed_v3a bits_mixed_v4 \
+         bits_nested_v1 bits_nested_v2 bits_nested_v3 bits_nested_v3a bits_nested_v4; do
       total=$(count ./bin/$mode/parse_bench "$RECORDS" 1 $variant)
       printf "%-26s%s\n" $variant "$(per "$total" "$base" "$RECORDS")"
    done

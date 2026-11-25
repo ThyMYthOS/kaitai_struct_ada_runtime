@@ -4,8 +4,8 @@ The generator was run over all 334 `.ksy` files of `kaitai_struct_tests/formats`
 
 | Result | Formats |
 |---|---|
-| generated | 215 |
-| rejected by the Ada backend with a clear error | 114 |
+| generated | 213 |
+| rejected by the Ada backend with a clear error | 116 |
 | failed before the backend (the front end of the compiler rejected the input) | 5 |
 | crashed (stack trace or internal error) | 0 |
 
@@ -44,6 +44,8 @@ The generator was run over all 334 `.ksy` files of `kaitai_struct_tests/formats`
 | 1 | `_io` in a value instance | expr_io_eof |
 | 1 | `_parent` used as a value | nav_parent_recursive |
 | 1 | `_root` in a description whose top-level type contains itself | nav_root_recursive |
+| 1 | `valid` on a field whose type depends on a value | valid_switch |
+| 1 | a type that starts with a bit field, used where the stream may be inside a byte | default_bit_endian_mod |
 | 1 | `process` in a field whose type depends on a value | process_coerce_switch |
 | 1 | a field whose type depends on a value and can be the type itself | recursive_one |
 | 1 | array literal that is not a list of bytes | expr_calc_array_ops |
@@ -70,8 +72,8 @@ The `imports_abs*` formats import files from directories (`common/`, `for_abs_im
 
 Every generated parser (and every imported description that came with it) was compiled with `-gnat2012 -gnata -gnatwa -gnatwe` and the style switches of the repository, and run through `gnatprove --level=1` with the switches of the examples (`--checks-as-errors=on`), by the same script.
 
-- Compiled without a message: **215 of 215**.
-- Proved without a message (no unproved check, no warning): **215 of 215**.
+- Compiled without a message: **213 of 213**.
+- Proved without a message (no unproved check, no warning): **213 of 213**.
 - No parser has a message or an unproved check.
 
 The formats that are examples (`examples/`) are proved by `scripts/check.sh prove` as well.
@@ -83,17 +85,17 @@ option that makes it generate `Write` for every type.
 
 | Result | Formats |
 |---|---|
-| generated | 204 |
-| rejected by the Ada backend with a clear error | 125 |
+| generated | 203 |
+| rejected by the Ada backend with a clear error | 126 |
 | failed before the backend | 5 |
 | crashed | 0 |
 
-All 204 parsers, with their `Write`, compile without a message and are
-proved without a message (no unproved check, no warning). Of the 215 formats that generate without the option,
-11 are rejected with it:
+All 203 parsers, with their `Write`, compile without a message and are
+proved without a message (no unproved check, no warning). Of the 213 formats that generate without the option,
+10 are rejected with it:
 
 | Count | Reason | Formats |
 |---|---|---|
-| 4 | a field whose type is an integer of different kinds, chosen by a value | non_standard, switch_integers, switch_multi_bool_ops, valid_switch |
+| 3 | a field whose type is an integer of different kinds, chosen by a value | non_standard, switch_integers, switch_multi_bool_ops |
 | 5 | a terminator of more than one byte | str_pad_term_utf16, term_strz_utf16_v1, term_strz_utf16_v2, term_strz_utf16_v3, term_strz_utf16_v4 |
 | 2 | a value cut from bytes with a size and a terminator or padding | struct_pad_term, struct_pad_term_equal |

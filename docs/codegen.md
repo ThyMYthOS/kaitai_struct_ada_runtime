@@ -555,6 +555,14 @@ Where the rules above are silent, the compiler does the following.
 - A string in `ASCII`, `UTF-8`, `UTF-16LE` or `UTF-16BE` is checked; every
   other encoding is `Single_Byte`, which accepts everything. The encodings
   `UTF-16` without byte order, `UTF-32` and the like are rejected.
+- Strings are compared with a literal or with each other byte by byte, and
+  `to_i` reads the digits byte by byte. For a string in UTF-16 that is not
+  the comparison of the characters, so comparisons, `to_i` and a `switch-on`
+  of such a string are rejected. So is the comparison of two strings in
+  different encodings, unless both are ASCII or UTF-8, and `.length` of a
+  string in Shift_JIS, Big5 or EUC-KR, whose characters the library cannot
+  count.
+- `valid` on a field whose type is chosen by `switch-on` is rejected.
 - A field of a type with `terminator` or `pad-right` (alone or with `size`,
   `size-eos`) reads the bytes as a field of bytes does, cuts them, and
   parses the value from `Open (Buffer, Item)` of the slice, then `Join`. If
@@ -599,6 +607,16 @@ Where the rules above are silent, the compiler does the following.
 - An expression that overflows 64 bits makes the stream fail with
   `Arithmetic_Error`. Integer division rounds down, as the tests of Kaitai
   Struct ask for.
+- A type whose first field is a bit field starts at a byte boundary, since
+  its `Parse` begins with `Align_To_Byte`. In the other targets such a type
+  goes on in the byte that bit fields before it left open. Both are the same
+  where the stream is at a byte boundary when the type is parsed. The
+  compiler therefore accepts such a type as a field only directly after a
+  field that is read as whole bytes and has no condition and no repetition,
+  and not repeated itself; every other use in a sequence is rejected, also
+  where the bit fields before it happen to fill their bytes. Instances with
+  a position are not affected. The `Parse` of the top-level type is meant
+  for a stream at a byte boundary.
 
 ## Writing
 

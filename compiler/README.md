@@ -79,7 +79,17 @@ string concatenation, `substring`, `reverse`, `to_s`, array subscripts and
 arrays in expressions beyond `.size` and subscripts of repetitions of other elements, `_index`, casts, parameters of other
 types, `repeat` on parse instances or on switch fields, `valid` on other repeated
 fields, parse instances used in expressions, encodings `UTF-16` without byte
-order, `UTF-32` and the like.
+order, `UTF-32` and the like, `valid` on a field whose type is chosen by
+`switch-on`, comparisons and `to_i` of strings in UTF-16, comparisons of
+strings in different encodings other than ASCII and UTF-8, and `.length` of
+strings in Shift_JIS, Big5 or EUC-KR.
+
+A type whose first field is a bit field starts at a byte boundary here,
+while in the other targets it goes on in the byte that bit fields before it
+left open. Such a type is accepted as a field only where the stream is
+certainly at a byte boundary (directly after a field of whole bytes without
+condition or repetition); other uses are rejected (see "What differs" in
+`docs/codegen.md`).
 
 ## Writing
 

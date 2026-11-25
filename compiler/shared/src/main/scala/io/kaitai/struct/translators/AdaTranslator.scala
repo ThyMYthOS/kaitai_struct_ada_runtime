@@ -83,6 +83,12 @@ trait AdaTranslatorEnv {
 }
 
 object AdaTranslator {
+  /** Encodings with characters of several bytes for which the library has no decoder */
+  val MultiByte: Set[String] = Set("SHIFT_JIS", "BIG5", "EUC-KR", "EUC-JP", "GBK", "GB2312", "GB18030")
+
+  /** Encodings in which equal strings are equal bytes also across the two */
+  val AsciiOrUtf8: Set[String] = Set("ASCII", "US-ASCII", "UTF-8")
+
   val S64Min: BigInt = -(BigInt(1) << 63)
   val S64Max: BigInt = (BigInt(1) << 63) - 1
   val Half: (BigInt, BigInt) = (-(BigInt(1) << 31), (BigInt(1) << 31) - 1)
@@ -482,12 +488,15 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         val b = useBuffer()
         attr match {
           case "length" =>
+            if (AdaTranslator.MultiByte.contains(enc.toUpperCase))
+              unsupported(s"`.length` of a string in $enc, whose characters the library cannot count")
             val e = env.encodingName(enc, Nil)
             if (e == "Single_Byte" || e == "US_ASCII")
               int(s"Kaitai.Types.S64 (Kaitai.Types.Size (${v.code}))", 0, v.guards, 0, S64Max, ub = true)
             else
               int(s"Kaitai.Types.S64 (Kaitai.Strings.Character_Count ($b, ${v.code}, $e))", 0, v.guards, 0, S64Max, ub = true)
           case "to_i" =>
+            byteWise(enc, "`.to_i`")
             toInteger(v, ATr("10", 0, Nil, VInt, 10, 10, isLiteral = true))
           case _ => unsupported(s"`.$attr` of a string")
         }
@@ -547,7 +556,9 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     case Ast.expr.Attribute(obj, Ast.identifier("to_i")) if args.size == 1 =>
       val v = translate(obj)
       v.vt match {
-        case VStr(_) => toInteger(v, translate(args.head))
+        case VStr(enc) =>
+          byteWise(enc, "`.to_i`")
+          toInteger(v, translate(args.head))
         case _ => unsupported("`to_i` with an argument on something but a string")
       }
     case Ast.expr.Attribute(_, Ast.identifier(m)) => unsupported(s"method `$m`")
@@ -745,11 +756,17 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         ATr(s"${wrapOp(l, 1)} $opStr ${wrapOp(r, 1)}", 2, dedupe(g), VBool, usesBuffer = ub)
       case (VBool, VBool) =>
         ATr(s"${wrapOp(l, 1)} $opStr ${wrapOp(r, 1)}", 2, dedupe(g), VBool, usesBuffer = ub)
-      case (VStr(_), VStrLit(s)) if isEq =>
+      case (VStr(enc), VStrLit(s)) if isEq =>
+        byteWise(enc, "comparison")
         ATr(negate(strLiteral(l, s)), 2, dedupe(g), VBool, usesBuffer = true)
-      case (VStrLit(s), VStr(_)) if isEq =>
+      case (VStrLit(s), VStr(enc)) if isEq =>
+        byteWise(enc, "comparison")
         ATr(negate(strLiteral(r, s)), 2, dedupe(g), VBool, usesBuffer = true)
-      case (VStr(_), VStr(_)) if isEq =>
+      case (VStr(e1), VStr(e2)) if isEq =>
+        byteWise(e1, "comparison")
+        byteWise(e2, "comparison")
+        if (e1.toUpperCase != e2.toUpperCase && !(AdaTranslator.AsciiOrUtf8.contains(e1.toUpperCase) && AdaTranslator.AsciiOrUtf8.contains(e2.toUpperCase)))
+          unsupported(s"comparison of a string in $e1 with a string in $e2")
         val b = useBuffer()
         ATr(negate(s"Kaitai.Byte_Arrays.Equal ($b, ${l.code}, ${bytesCode(r)})"), 2, dedupe(g), VBool, usesBuffer = true)
       case (VStrLit(a), VStrLit(b)) if isEq =>
@@ -777,6 +794,13 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
       case (a, bb) => unsupported(s"comparison of $a with $bb")
     }
   }
+
+  /**
+    * Strings are compared, and their digits are read, byte by byte. That is the comparison of the characters only
+    * where a character of the literal is one byte, which it is not in UTF-16.
+    */
+  private def byteWise(enc: String, what: String): Unit =
+    if (enc.toUpperCase.startsWith("UTF-16")) unsupported(s"$what of a string in $enc")
 
   private def strLiteral(s: ATr, lit: String): String = {
     val b = useBuffer()

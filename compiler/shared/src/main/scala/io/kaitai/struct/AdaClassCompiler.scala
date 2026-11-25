@@ -243,7 +243,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     def usesParent(c: ClassSpec, seen: ListBuffer[ClassSpec]): Boolean =
       !seen.exists(_ eq c) && {
         seen += c
-        outsideExprs(c).exists(containsParent) || userTypesOf(c).exists(u => usesParent(u, seen))
+        outsideExprs(c).exists(containsParent) ||
+        (c.meta.endian match { case Some(ce: CalcEndian) => containsParent(ce.on); case _ => false }) ||
+        userTypesOf(c).exists(u => usesParent(u, seen))
       }
     def forced(dt: DataType): List[ClassSpec] = dt match {
       case ut: UserType if ut.forcedParent.isDefined => ut.classSpec.toList
@@ -256,6 +258,43 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         forced(a.dataType).foreach { u =>
           if (usesParent(u, ListBuffer()))
             fail(c.path, s"the key `parent` on a field of type ${u.nameAsStr}, which uses `_parent`")
+        }
+      }
+    }
+  }
+
+  /** `Parse` of the type begins with `Align_To_Byte`: the condition of `firstAlign` in `genSeqAttr`. */
+  private def startsWithBits(c: ClassSpec): Boolean = c.seq.headOption.exists { a =>
+    a.cond.repeat == NoRepeat && (a.dataType match {
+      case _: BitsType | _: BitsType1 => true
+      case EnumType(_, _, _: BitsType) => true
+      case _ => false
+    })
+  }
+
+  /**
+    * A type whose first field is a bit field starts at a byte boundary here. In the other targets it goes on in the
+    * byte that bit fields before it left open. Both are the same where the stream is at a byte boundary when the type
+    * is parsed, which is certain after a field that is read as whole bytes without a condition or a repetition. Any
+    * other use of such a type in a sequence is rejected. An instance with a position is not such a use.
+    */
+  private def checkBitStart(): Unit = {
+    def inStream(dt: DataType): List[ClassSpec] = dt match {
+      case ut: UserTypeInstream => ut.classSpec.toList
+      case st: SwitchType => st.cases.values.toList.flatMap(inStream)
+      case _ => Nil
+    }
+    def aligns(a: AttrSpec): Boolean =
+      a.cond.repeat == NoRepeat && a.cond.ifExpr.isEmpty && (a.dataType match {
+        case _: BitsType | _: BitsType1 | EnumType(_, _, _: BitsType) => false
+        case _: UserTypeInstream | _: SwitchType => false
+        case _ => true
+      })
+    allClasses.foreach { c =>
+      c.seq.zipWithIndex.foreach { case (a, i) =>
+        inStream(a.dataType).filter(startsWithBits).foreach { u =>
+          if (a.cond.repeat != NoRepeat || i == 0 || !aligns(c.seq(i - 1)))
+            fail(c.path, s"type ${u.nameAsStr} starts with a bit field and is used where the stream may be inside a byte")
         }
       }
     }
@@ -1058,6 +1097,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       fail(topClass.meta.path ++ List("id"), s"description id `${topClass.name.head}` is a reserved name in Ada")
     checkRecursion()
     checkParentKey()
+    checkBitStart()
     refsOf(topClass)
     val (spec, body) = genClass(topClass)
     val srcName = topClass.fileName.map(f => new java.io.File(f).getName).getOrElse(topClass.name.head + ".ksy")
@@ -1882,6 +1922,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val nm = plain(idRaw(a.id))
     val bs = base(idRaw(a.id))
     val cases = st.cases.toList
+    if (a.valid.isDefined) unsupported("`valid` on a field whose type depends on a value")
     if (cases.exists(c => AdaTranslator.hasProcess(c._2))) unsupported("`process` in a field whose type depends on a value")
     if (cases.exists { case (_, ut: UserType) => ut.classSpec.get eq cs; case _ => false })
       unsupported("a field whose type depends on a value and can be the type itself")

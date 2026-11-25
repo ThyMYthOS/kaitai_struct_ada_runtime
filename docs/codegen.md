@@ -566,10 +566,17 @@ Where the rules above are silent, the compiler does the following.
   UTF-16BE (a character beyond U+FFFF as a surrogate pair); in any other encoding it encodes the ASCII characters and
   rejects a literal with any other character. A character that the encoding cannot hold (an accented letter in an
   ASCII string) is rejected as well, and so is a literal that is not valid text. Two strings are compared if they are
-  in the same encoding, or both in ASCII or UTF-8; the ordering `<`, `>` is not translated. `to_i` of a string in
+  in the same encoding, or both in ASCII or UTF-8. The ordering `<`, `<=`, `>`, `>=` of strings (also `valid` with `min`
+  and `max`) is `Byte_Arrays.Compare (…) = Less` and the like, for strings in ASCII, UTF-8 and ISO-8859-1, where the order of
+  the bytes is the order of the code points; for other encodings it is rejected. `to_i` of a string in
   UTF-16 and the comparison of strings in different encodings are rejected, as is `.length` of a string in Shift_JIS,
   Big5 or EUC-KR, whose characters the library cannot count. The `.length` of a literal counts characters, not UTF-16
   units.
+- `"text".to_i` and `"text".to_i(base)` of a literal are computed by the compiler: the number, or, where the text is
+  not a number in that base (`"9173abc".to_i`), no value, which every target reports as a conversion error. Here the
+  expression is never defined, so an instance has `Has_X` that is `False`. A text that the targets read differently
+  (white space, an underscore between figures, a prefix `0x`, characters beyond ASCII) and a value beyond 64 bits are
+  rejected.
 - `valid` on a field whose type is chosen by `switch-on` is checked after the cases, on the value that was read, like
   `valid` on a field of the integer type of the cases: `if S64 (This.B) /= 17217 then Fail (S, Validation_Not_Equal);`. It
   is supported where all cases are integers (the value is held in the component of the widest type) and there is a `_`

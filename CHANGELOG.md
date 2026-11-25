@@ -18,6 +18,10 @@
   Comparison of UTF-16 strings with a literal or with each other is no longer rejected
   (str_literals_latin1). expr_str_encodings and valid_eq_str_encodings use SJIS and
   IBM437 and stay rejected.
+- Compiler: `"text".to_i` of a literal is computed by the compiler (a text that is no
+  number is a conversion error in every target and makes the expression undefined), and
+  strings in ASCII, UTF-8 and ISO-8859-1 are ordered (`<`, `>`, `valid` with `min` and
+  `max`) with `Byte_Arrays.Compare` (expr_to_i_trailing, valid_fail_range_str).
 
 ## 0.1.0 (2026-11-25)
 

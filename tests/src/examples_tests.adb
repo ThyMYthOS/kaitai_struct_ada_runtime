@@ -8,6 +8,7 @@ with Enum_0;
 with Expr_1;
 with Expr_Sizeof_Type_0;
 with Expr_Sizeof_Value_Sized;
+with Expr_To_I_Trailing;
 with Fixed_Struct;
 with Hello_World;
 with If_Struct;
@@ -27,6 +28,7 @@ with Str_Eos_Pad_Term;
 with Str_Encodings;
 with Str_Literal_Encodings;
 with Str_Literals_Latin1;
+with Str_Ordering;
 with Subscripts;
 with Switch_Bytearray;
 with Switch_Else_Only;
@@ -36,6 +38,7 @@ with Term_Strz4;
 with Term_Struct;
 with Test_Support;   use Test_Support;
 with Valid_Fail_Eq_Int;
+with Valid_Fail_Range_Str;
 with Valid_Fail_Repeat_Eq_Int;
 with Valid_Switch;
 
@@ -1138,6 +1141,76 @@ package body Examples_Tests is
       Check (not Valid (This) and then Status (S) = Validation_Not_Equal, "valid with a literal in UTF-16LE");
    end Test_Str_Literal_Encodings;
 
+   procedure Test_Expr_To_I_Trailing is
+      use Expr_To_I_Trailing;
+      S    : Stream := Open (Sample_Term_Strz);
+      This : Expr_To_I_Trailing.T;
+   begin
+      Group ("examples expr_to_i_trailing");
+      Parse (Sample_Term_Strz, S, This);
+      Check (Valid (This), "parses");
+      if Valid (This) then
+         Check (not Has_To_I_R10 (This), "letters after the figures are a conversion error in base 10");
+         Check (To_I_R16 (This) = 16#9173ABC#, "the same letters are figures in base 16");
+         Check (not Has_To_I_Garbage (This), "characters that are no figures are a conversion error");
+      end if;
+   end Test_Expr_To_I_Trailing;
+
+   procedure Test_Valid_Fail_Range_Str is
+      use Valid_Fail_Range_Str;
+      Data : Bytes := Sample_Data.Fixed_Struct;
+      S    : Stream := Open (Data);
+      This : Valid_Fail_Range_Str.T;
+   begin
+      Group ("examples valid_fail_range_str");
+      Parse (Data, S, This);
+      Check (not Valid (This) and then Status (S) = Validation_Greater_Than, "PA is above P1");
+      Data (2) := Character'Pos ('1');
+      S := Open (Data);
+      Parse (Data, S, This);
+      Check (Valid (This), "P1 is the upper end of the range");
+      Data (2) := 0;
+      S := Open (Data);
+      Parse (Data, S, This);
+      Check (Valid (This), "P and a byte 0 is above P and below P1");
+      Data (1) := Character'Pos ('O');
+      S := Open (Data);
+      Parse (Data, S, This);
+      Check (not Valid (This) and then Status (S) = Validation_Less_Than, "O is below P");
+   end Test_Valid_Fail_Range_Str;
+
+   procedure Test_Str_Ordering is
+      use Str_Ordering;
+      Data : Bytes := (16#C2#, 16#A3#, 16#C2#, 16#A3#);
+      S    : Stream := Open (Data);
+      This : Str_Ordering.T;
+   begin
+      Group ("examples str_ordering");
+      Parse (Data, S, This);
+      Check (Valid (This), "parses");
+      if Valid (This) then
+         Check (not A_Lt_B (Data, This) and then A_Le_B (Data, This), "equal strings");
+         Check (not A_Gt_Pound (Data, This) and then Pound_Ge_B (Data, This), "equal to the literal");
+         Check (Literals (This), "two literals");
+      end if;
+      Data (4) := 16#A4#;
+      S := Open (Data);
+      Parse (Data, S, This);
+      Check (Valid (This) and then A_Lt_B (Data, This) and then A_Le_B (Data, This), "the second byte decides");
+      Check (not Pound_Ge_B (Data, This), "the literal is below the string");
+      Data (1) := 16#61#;
+      Data (2) := 16#62#;
+      S := Open (Data);
+      Parse (Data, S, This);
+      Check
+        (Valid (This) and then A_Lt_B (Data, This) and then not A_Gt_Pound (Data, This), "ab is below the pound sign");
+      Data (1) := 16#C3#;
+      Data (2) := 16#80#;
+      S := Open (Data);
+      Parse (Data, S, This);
+      Check (Valid (This) and then A_Gt_Pound (Data, This), "a larger character");
+   end Test_Str_Ordering;
+
    procedure Run is
    begin
       Test_Hello_World;
@@ -1180,6 +1253,9 @@ package body Examples_Tests is
       Test_Valid_Switch;
       Test_Str_Literals_Latin1;
       Test_Str_Literal_Encodings;
+      Test_Expr_To_I_Trailing;
+      Test_Valid_Fail_Range_Str;
+      Test_Str_Ordering;
    end Run;
 
 end Examples_Tests;

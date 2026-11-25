@@ -512,6 +512,7 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         }
       case VStrLit(s) =>
         attr match {
+          case "to_i" => literalToInt(s, 10)
           case "length" =>
             val n = codePoints(s).size
             ATr(n.toString, 0, Nil, VInt, n, n, isLiteral = true)
@@ -564,6 +565,36 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     )
   }
 
+  /**
+    * `"text".to_i(base)` of a literal is known to the compiler. A text that is a number gives the number. Any other text
+    * is a conversion error in every target, so the expression has no value: it is not defined, like a division by zero,
+    * and its guard is `False`. A text that the targets read differently (white space, an underscore between digits,
+    * characters that are not ASCII, a prefix such as `0x` that only some of them take) is rejected.
+    */
+  private def literalToInt(text: String, base: Int): ATr = {
+    def digit(c: Char): Int =
+      if (c >= '0' && c <= '9') c - '0'
+      else if (c >= 'a' && c <= 'z') c - 'a' + 10
+      else if (c >= 'A' && c <= 'Z') c - 'A' + 10
+      else -1
+    val ambiguous = text.exists(c => c > 127 || c <= ' ' || c == 127) ||
+      text.indices.exists(i => text(i) == '_' && i > 0 && i + 1 < text.length && digit(text(i - 1)) >= 0 && digit(text(i + 1)) >= 0)
+    if (ambiguous)
+      unsupported("`to_i` of a string literal with white space, non-ASCII characters or an underscore between digits, which the targets read differently")
+    val sign = if (text.startsWith("-") || text.startsWith("+")) 1 else 0
+    val body = text.drop(sign)
+    if (body.length > 2 && body(0) == '0' && "xXoObB".contains(body(1)) && (digit(body(1)) < 0 || digit(body(1)) >= base))
+      unsupported("`to_i` of a string literal with a prefix such as `0x`, which only some targets take")
+    if (body.isEmpty || body.exists(c => digit(c) < 0 || digit(c) >= base)) {
+      ATr("0", 0, List("False"), VInt, 0, 0, isLiteral = false)
+    } else {
+      val v0 = body.foldLeft(BigInt(0))((acc, c) => acc * base + digit(c))
+      val v = if (text.startsWith("-")) -v0 else v0
+      if (v < S64Min || v > S64Max) unsupported(s"`to_i` of a string literal whose value $v does not fit into 64 bits")
+      ATr(v.toString, if (v < 0) 1 else 0, Nil, VInt, v, v, isLiteral = true)
+    }
+  }
+
   private def translateCall(func: Ast.expr, args: Seq[Ast.expr]): ATr = func match {
     case Ast.expr.Attribute(obj, Ast.identifier("to_i")) if args.size == 1 =>
       val v = translate(obj)
@@ -571,6 +602,11 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         case VStr(enc) =>
           byteWise(enc, "`.to_i`")
           toInteger(v, translate(args.head))
+        case VStrLit(lit) =>
+          val b = translate(args.head)
+          if (!b.isLiteral || b.lo < 2 || b.lo > 36)
+            unsupported("`to_i` of a string literal with a base that is not a literal between 2 and 36")
+          literalToInt(lit, b.lo.toInt)
         case _ => unsupported("`to_i` with an argument on something but a string")
       }
     case Ast.expr.Attribute(_, Ast.identifier(m)) => unsupported(s"method `$m`")
@@ -800,8 +836,51 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
           }
           ATr(s"Kaitai.Byte_Arrays.Compare (${bytesCode(l)}, ${bytesCode(r)}) $order", 2, dedupe(g), VBool, usesBuffer = true)
         }
+      case (VStr(enc), VStrLit(lit)) =>
+        orderable(enc)
+        ATr(orderCode(op, bytesCode(l), aggregate(encodeLiteral(lit, enc))), 2, dedupe(g), VBool, usesBuffer = true)
+      case (VStrLit(lit), VStr(enc)) =>
+        orderable(enc)
+        ATr(orderCode(op, aggregate(encodeLiteral(lit, enc)), bytesCode(r)), 2, dedupe(g), VBool, usesBuffer = true)
+      case (VStr(e1), VStr(e2)) =>
+        orderable(e1)
+        orderable(e2)
+        if (e1.toUpperCase != e2.toUpperCase && !(AdaTranslator.AsciiOrUtf8.contains(e1.toUpperCase) && AdaTranslator.AsciiOrUtf8.contains(e2.toUpperCase)))
+          unsupported(s"comparison of a string in $e1 with a string in $e2")
+        useBuffer()
+        ATr(orderCode(op, bytesCode(l), bytesCode(r)), 2, dedupe(g), VBool, usesBuffer = true)
+      case (VStrLit(a), VStrLit(b)) =>
+        val ca = codePoints(a)
+        val cb = codePoints(b)
+        val c = ca.zipAll(cb, -1, -1).map { case (x, y) => x.compare(y) }.find(_ != 0).getOrElse(0)
+        val res = op match {
+          case Ast.cmpop.Lt => c < 0
+          case Ast.cmpop.LtE => c <= 0
+          case Ast.cmpop.Gt => c > 0
+          case _ => c >= 0
+        }
+        ATr(if (res) "True" else "False", 0, Nil, VBool, isLiteral = true)
       case (a, bb) => unsupported(s"comparison of $a with $bb")
     }
+  }
+
+  /**
+    * Strings in these encodings are ordered like their bytes, because the byte order of UTF-8 is the order of the code
+    * points and every byte of ISO-8859-1 is a code point. For other encodings it is not.
+    */
+  private def orderable(enc: String): Unit =
+    if (!Set("ASCII", "US-ASCII", "UTF-8", "ISO-8859-1", "ISO8859-1", "LATIN1", "ISO_8859-1").contains(enc.toUpperCase))
+      unsupported(s"ordering of a string in $enc, whose byte order is not the order of its characters")
+
+  private def orderCode(op: Ast.cmpop, left: String, right: String): String = {
+    ops += "Byte_Arrays.Order"
+    val order = op match {
+      case Ast.cmpop.Lt => "= Kaitai.Byte_Arrays.Less"
+      case Ast.cmpop.LtE => "/= Kaitai.Byte_Arrays.Greater"
+      case Ast.cmpop.Gt => "= Kaitai.Byte_Arrays.Greater"
+      case _ => "/= Kaitai.Byte_Arrays.Less"
+    }
+    s"Kaitai.Byte_Arrays.Compare ($left, $right) $order"
   }
 
   /**

@@ -45,7 +45,10 @@ package Fuzz_Targets is
       Switch_Else_Only_Parser,
       Valid_Switch_Parser,
       Str_Literals_Latin1_Parser,
-      Str_Literal_Encodings_Parser);
+      Str_Literal_Encodings_Parser,
+      Expr_To_I_Trailing_Parser,
+      Valid_Fail_Range_Str_Parser,
+      Str_Ordering_Parser);
 
    --  An input the parser accepts.  Round selects one where there are
    --  several.

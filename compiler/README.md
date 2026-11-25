@@ -61,7 +61,7 @@ compilation are written).
 Expressions: integer arithmetic in S64 with the guards of `Kaitai.Arithmetic`
 (dropped where interval arithmetic shows they hold), comparisons, `and`,
 `or`, `not`, `?:`, enumeration labels, fields of nested values, `.size` of
-repetitions, `_io.size/pos/eof`, `.length`, `.to_i`, `.min/.max/.first/.last`
+repetitions, `_io.size/pos/eof`, `.length`, `.to_i` (of a literal as well: computed by the compiler), `.min/.max/.first/.last`
 of bytes, subscripts of bytes and of repetitions of integers of a fixed size, comparison of bytes and strings with literals (of any characters in the encodings above), `sizeof` and `_sizeof` (also `x._sizeof`).
 
 ## What is rejected
@@ -81,7 +81,7 @@ types, `repeat` on parse instances or on switch fields, `valid` on other repeate
 fields, parse instances used in expressions, encodings `UTF-16` without byte
 order, `UTF-32` and the like, `valid` on a field whose type is chosen by
 `switch-on` unless all its cases are integers and it has a `_` case (`in-enum` never), `to_i` of strings in UTF-16, comparisons of
-strings in different encodings other than ASCII and UTF-8, string literals with a character that the compiler cannot encode (it encodes ASCII, UTF-8, ISO-8859-1, UTF-16LE and UTF-16BE, and only ASCII characters in other encodings such as SJIS or IBM437), the ordering of strings, and `.length` of
+strings in different encodings other than ASCII and UTF-8, string literals with a character that the compiler cannot encode (it encodes ASCII, UTF-8, ISO-8859-1, UTF-16LE and UTF-16BE, and only ASCII characters in other encodings such as SJIS or IBM437), the ordering of strings in other encodings than ASCII, UTF-8 and ISO-8859-1, and `.length` of
 strings in Shift_JIS, Big5 or EUC-KR.
 
 A type whose first field is a bit field starts at a byte boundary here,

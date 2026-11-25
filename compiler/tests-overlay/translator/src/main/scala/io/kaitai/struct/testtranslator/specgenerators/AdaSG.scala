@@ -702,6 +702,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     val ctx = new Ctx
     val (actual, source) = a match {
       case TestEquals(act, _) => (act, src(act))
+      case TestException(act, ConversionError) => (act, src(act))
       case TestException(act, _) => nt(s"assert ${n} expects an exception of the access to `${src(act)}`")
     }
     val check = a match {
@@ -718,7 +719,12 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
               case (v, _) => compare(v, exp)
             }
         }
-      case _ => ""
+      case TestException(act, _) =>
+        // a conversion that fails (`"abc".to_i`) has no value here: the instance is not defined
+        eval(ctx, act, absent = true) match {
+          case AAbsent(c) => c
+          case _ => nt("an exception expected, but the member is always defined")
+        }
     }
     val q = adaString(source)
     emit(ctx.steps.toList, ctx.guards.toList, n, q, check, 3)

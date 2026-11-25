@@ -8,6 +8,7 @@ with Enum_0;
 with Expr_1;
 with Expr_Sizeof_Type_0;
 with Expr_Sizeof_Value_Sized;
+with Expr_To_I_Trailing;
 with Extras;
 with Fixed_Struct;
 with Hello_World;
@@ -27,6 +28,7 @@ with Str_Encodings;
 with Str_Eos_Pad_Term;
 with Str_Literal_Encodings;
 with Str_Literals_Latin1;
+with Str_Ordering;
 with Subscripts;
 with Switch_Bytearray;
 with Switch_Else_Only;
@@ -35,6 +37,7 @@ with Term_Struct;
 with Term_Strz;
 with Term_Strz4;
 with Valid_Fail_Eq_Int;
+with Valid_Fail_Range_Str;
 with Valid_Fail_Repeat_Eq_Int;
 with Valid_Switch;
 with Write_Model;
@@ -133,6 +136,12 @@ package body Fuzz_Targets is
    --  is valid
    Str_Literal_Encodings_Data : constant Bytes :=
      (16#A3#, 16#C2#, 16#A3#, 16#A3#, 0, 16#AC#, 16#20#, 16#D8#, 16#3D#, 16#DE#, 0, 16#61#, 16#0A#, 16#61#, 0);
+
+   --  Two strings of two bytes in UTF-8: the pound sign and "ab"
+   Str_Ordering_Data : constant Bytes := (16#C2#, 16#A3#, 16#61#, 16#62#);
+
+   --  Two bytes that are within the range of the string "P" .. "P1" ("P1")
+   Range_Str_Data : constant Bytes := (16#50#, 16#31#, 0, 0);
 
    --  Two values that are 0x12345678, and none: the parser accepts no others
    Repeat_Eq_Int_Data : constant Bytes := (16#12#, 16#34#, 16#56#, 16#78#, 16#12#, 16#34#, 16#56#, 16#78#);
@@ -252,6 +261,15 @@ package body Fuzz_Targets is
 
          when Str_Literal_Encodings_Parser     =>
             return Str_Literal_Encodings_Data;
+
+         when Expr_To_I_Trailing_Parser        =>
+            return Sample_Data.Term_Strz;
+
+         when Valid_Fail_Range_Str_Parser      =>
+            return Range_Str_Data;
+
+         when Str_Ordering_Parser              =>
+            return Str_Ordering_Data;
       end case;
    end Seed;
 
@@ -764,6 +782,41 @@ package body Fuzz_Targets is
       end if;
    end Run_Str_Literal_Encodings;
 
+   procedure Run_Expr_To_I_Trailing (Input : Bytes; Fields : out Natural) is
+      S : Stream := Open (Input);
+      R : Expr_To_I_Trailing.T;
+   begin
+      Fields := 0;
+      Expr_To_I_Trailing.Parse (Input, S, R);
+      pragma Assert (Expr_To_I_Trailing.Valid (R) = OK (S));
+      if Expr_To_I_Trailing.Valid (R) then
+         Fields := 1;
+         Count (Fields, not Expr_To_I_Trailing.Has_To_I_R10 (R));
+         Count (Fields, Expr_To_I_Trailing.To_I_R16 (R) = 16#9173ABC#);
+         Count (Fields, not Expr_To_I_Trailing.Has_To_I_Garbage (R));
+      end if;
+   end Run_Expr_To_I_Trailing;
+
+   procedure Run_Valid_Fail_Range_Str is new
+     Run_Parse_Only (Valid_Fail_Range_Str.T, Valid_Fail_Range_Str.Parse, Valid_Fail_Range_Str.Valid);
+
+   procedure Run_Str_Ordering (Input : Bytes; Fields : out Natural) is
+      S : Stream := Open (Input);
+      R : Str_Ordering.T;
+   begin
+      Fields := 0;
+      Str_Ordering.Parse (Input, S, R);
+      pragma Assert (Str_Ordering.Valid (R) = OK (S));
+      if Str_Ordering.Valid (R) then
+         Fields := 1;
+         Count (Fields, Str_Ordering.A_Lt_B (Input, R));
+         Count (Fields, Str_Ordering.A_Le_B (Input, R));
+         Count (Fields, Str_Ordering.A_Gt_Pound (Input, R));
+         Count (Fields, Str_Ordering.Pound_Ge_B (Input, R));
+         Count (Fields, Str_Ordering.Literals (R));
+      end if;
+   end Run_Str_Ordering;
+
    procedure Run (T : Target; Input : Bytes; Argument : U16; Fields : out Natural) is
    begin
       case T is
@@ -877,6 +930,15 @@ package body Fuzz_Targets is
 
          when Str_Literal_Encodings_Parser     =>
             Run_Str_Literal_Encodings (Input, Fields);
+
+         when Expr_To_I_Trailing_Parser        =>
+            Run_Expr_To_I_Trailing (Input, Fields);
+
+         when Valid_Fail_Range_Str_Parser      =>
+            Run_Valid_Fail_Range_Str (Input, Fields);
+
+         when Str_Ordering_Parser              =>
+            Run_Str_Ordering (Input, Fields);
       end case;
    end Run;
 

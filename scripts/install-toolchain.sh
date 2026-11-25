@@ -10,6 +10,7 @@
 #   GPRbuild     build tool
 #   GNATprove    proof tool for SPARK
 #   gnatformat   formatter
+#   GNATdoc      reports declarations without documentation
 #   Renode       simulator for low-end targets
 #   Valgrind     counts instructions for the benchmarks
 #
@@ -30,6 +31,7 @@ GNAT_VERSION=16.1.0
 GPRBUILD_VERSION=26.0.1
 GNATPROVE_VERSION=16.1.0
 GNATFORMAT_VERSION=26.0.0
+GNATDOC_VERSION=26.0.0
 RENODE_VERSION=1.16.1
 
 # Crates whose dependencies Alire has to fetch
@@ -97,7 +99,7 @@ if ! sha256sum --check --status "$hashes" 2>/dev/null; then
    quiet alr -n toolchain --select "gnat_native=$GNAT_VERSION" "gprbuild=$GPRBUILD_VERSION"
 
    installed=$(alr -n install --info 2>/dev/null || true)
-   for tool in "gnatprove=$GNATPROVE_VERSION" "gnatformat_bin=$GNATFORMAT_VERSION"; do
+   for tool in "gnatprove=$GNATPROVE_VERSION" "gnatformat_bin=$GNATFORMAT_VERSION" "gnatdoc_bin=$GNATDOC_VERSION"; do
       case "$installed" in
          *"$tool"*) ;;
          *) quiet alr -n install "$tool" ;;

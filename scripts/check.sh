@@ -14,6 +14,8 @@
 #   target   the tests pass on a simulated STM32F4, with a light and an
 #            embedded run-time library
 #   bench    the benchmarks build and their checksums agree
+#   doc      every declaration in a visible part of the library has a
+#            documentation comment
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -88,7 +90,23 @@ step_bench() {
    )
 }
 
-[ $# -gt 0 ] || set -- format build test fuzz prove target bench
+step_doc() {
+   # GNATdoc tells what has no documentation.  It looks for the comment
+   # directly before a declaration, which is where this repository has it.
+   # scripts/doc-warnings.py keeps the warnings for the visible parts of the
+   # given specifications and fails if a declaration is among them.
+   tmp=$(mktemp -d)
+   run_gnatdoc() {
+      alr exec -- gnatdoc --style=leading --warnings --backend=rst -O "$tmp/out" -P "$1" >>"$tmp/log" 2>&1 ||
+         { cat "$tmp/log" >&2; exit 1; }
+   }
+   run_gnatdoc kaitai_struct.gpr
+   run_gnatdoc kaitai_struct_files.gpr
+   scripts/doc-warnings.py "$tmp/log" src/*.ads files/*.ads
+   rm -rf "$tmp"
+}
+
+[ $# -gt 0 ] || set -- format build test fuzz prove target bench doc
 for step in "$@"; do
    echo "== $step"
    cd "$root"

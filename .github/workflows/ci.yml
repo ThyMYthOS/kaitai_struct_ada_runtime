@@ -64,6 +64,9 @@ jobs:
       - name: Benchmarks
         run: scripts/check.sh bench
 
+      - name: Documentation
+        run: scripts/check.sh doc
+
   # The parsers under examples/ are what the compiler backend in compiler/
   # generates.  The job builds the Kaitai Struct compiler with that backend
   # and compares.

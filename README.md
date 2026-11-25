@@ -150,6 +150,7 @@ scripts/check.sh prove    # a single step
 | `prove` | GNATprove proves all checks of the library and of the parsers under `examples/` |
 | `target` | the tests pass on a simulated STM32F4 with a light and an embedded run-time library |
 | `bench` | the benchmarks build and agree on their results |
+| `doc` | GNATdoc finds a documentation comment for every declaration that a user of the library sees |
 
 A second CI job builds the compiler and checks that `examples/` is what it
 generates.

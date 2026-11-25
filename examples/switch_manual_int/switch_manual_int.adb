@@ -80,7 +80,7 @@ is
 
    procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Opcodes_Cursor; Element : out Opcode_Type.T)
    is
-      pragma Unreferenced (This);
+      pragma Warnings (Off, This);
    begin
       Opcode_Type.Parse (Buffer, Position.Io, Element);
       Position.Left := (if Opcode_Type.Valid (Element) then Position.Left - 1 else 0);

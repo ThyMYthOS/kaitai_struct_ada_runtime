@@ -59,7 +59,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     def memberNames(id: Identifier, dt: DataType, isInstance: Boolean): Unit = {
       val b = base(idRaw(id))
       List("Has_", "Get_", "Parse_").foreach(pre => out += (pre + b).toLowerCase)
-      List("_count", "_first", "_cursor", "_value", "_bits", "_case", "_kind", "_variant", "_expected", "_io", "_is_none")
+      List("_count", "_first", "_cursor", "_value", "_bits", "_case", "_kind", "_variant", "_expected", "_io", "_is_none", "_raw")
         .foreach(suf => out += (b + suf).toLowerCase)
       out += s"parse_${b}_element".toLowerCase
       dt match {
@@ -79,6 +79,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     cs.seq.foreach(a => memberNames(a.id, a.dataType, false))
     cs.instances.foreach { case (id, i) => memberNames(id, i.dataType, true) }
     cs.types.keys.foreach(t => out += (base(t) + "_type").toLowerCase)
+    refsOf(cs).foreach(r => out += r.adaName.toLowerCase)
+    if (isRecursive(cs)) out += "depth"
     cs.enums.foreach { case (n, e) =>
       val en = base(n) + "_Enum"
       out += en.toLowerCase; out += s"is_$en".toLowerCase; out += s"to_$en".toLowerCase; out += "to_integer"
@@ -195,12 +197,65 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       }
   }
 
-  private def checkRecursion(cs: ClassSpec, stack: List[ClassSpec]): Unit = {
-    if (stack.exists(_ eq cs))
-      fail(cs.path, s"recursive type ${cs.nameAsStr}")
-    userTypesOf(cs).foreach(u => checkRecursion(u, cs :: stack))
-    cs.types.values.foreach(t => checkRecursion(t, cs :: stack))
+  /** All classes of the compilation: the nested types, the types that they use, also those of imported descriptions. */
+  private lazy val allClasses: List[ClassSpec] = {
+    val seen = ListBuffer[ClassSpec]()
+    def visit(c: ClassSpec): Unit =
+      if (!seen.exists(_ eq c)) {
+        seen += c
+        c.types.values.foreach(visit)
+        userTypesOf(c).foreach(visit)
+      }
+    visit(topClass)
+    seen.toList
   }
+
+  private def reaches(from: ClassSpec, target: ClassSpec): Boolean = {
+    val seen = ListBuffer[ClassSpec]()
+    def go(c: ClassSpec): Boolean =
+      userTypesOf(c).exists { u =>
+        (u eq target) || (!seen.exists(_ eq u) && { seen += u; go(u) })
+      }
+    go(from)
+  }
+
+  /** The type contains itself (in a field, a repetition, or an instance). */
+  private def isRecursive(cs: ClassSpec): Boolean = userTypesOf(cs).exists(_ eq cs)
+
+  /**
+    * The key `parent` gives one use of a type another parent, or none. Here the type that has the field passes the
+    * values of `_parent`, so the key is rejected where the type of the field, or a type that it uses, needs them.
+    */
+  private def checkParentKey(): Unit = {
+    def usesParent(c: ClassSpec, seen: ListBuffer[ClassSpec]): Boolean =
+      !seen.exists(_ eq c) && {
+        seen += c
+        outsideExprs(c).exists(containsParent) || userTypesOf(c).exists(u => usesParent(u, seen))
+      }
+    def forced(dt: DataType): List[ClassSpec] = dt match {
+      case ut: UserType if ut.forcedParent.isDefined => ut.classSpec.toList
+      case st: SwitchType => st.cases.values.toList.flatMap(forced)
+      case _ => Nil
+    }
+    allClasses.foreach { c =>
+      val attrs: List[AttrLikeSpec] = c.seq ++ c.instances.values.toList.collect { case p: ParseInstanceSpec => p }
+      attrs.foreach { a =>
+        forced(a.dataType).foreach { u =>
+          if (usesParent(u, ListBuffer()))
+            fail(c.path, s"the key `parent` on a field of type ${u.nameAsStr}, which uses `_parent`")
+        }
+      }
+    }
+  }
+
+  /** Only a type that contains itself is supported, no group of types that contain each other. */
+  private def checkRecursion(): Unit =
+    allClasses.foreach { c =>
+      userTypesOf(c).filterNot(_ eq c).foreach { u =>
+        if (reaches(u, c))
+          fail(c.path, s"types ${c.nameAsStr} and ${u.nameAsStr} contain each other (only a type that contains itself is supported)")
+      }
+    }
 
   /** The class `target` seen from the level of the children of `parent`: the child that contains it. */
   private def childContaining(parent: ClassSpec, target: ClassSpec): Option[ClassSpec] = {
@@ -235,7 +290,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   private def hasBelongs(cs: ClassSpec): Boolean = belongsMemo.getOrElseUpdate(cs.nameAsStr, {
     def dtHas(dt: DataType): Boolean = dt match {
       case _: BytesType | _: StrType => true
-      case ut: UserType => hasBelongs(ut.classSpec.get)
+      case ut: UserTypeFromBytes if ut.process.isDefined => true
+      case ut: UserType => (ut.classSpec.get eq cs) || hasBelongs(ut.classSpec.get)
       case st: SwitchType => st.cases.values.exists(dtHas)
       case _ => false
     }
@@ -290,6 +346,265 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     case Some(_: CalcEndian) | Some(InheritedEndian) => true
     case _ => false
   }
+
+  // ------------------------------------------------------- outside references
+
+  private def unsupported(msg: String): Nothing = throw new AdaUnsupported(msg)
+
+  /**
+    * The value of `_parent.x` (hops = 1), `_parent._parent.x` (hops = 2) or `_root.x`, which the parser of a
+    * type gets from outside as a parameter. `path` names the member `x` and, for a value inside a nested
+    * value, the members on the way to it.
+    */
+  case class Ref(root: Boolean, hops: Int, path: List[String]) {
+    def source: String = (if (root) "_root" else List.fill(hops)("_parent").mkString(".")) + path.map("." + _).mkString
+    def raw: String = (if (root) "root" else List.fill(hops)("parent").mkString("_")) + "_" + path.mkString("_")
+    def adaName: String = base(raw)
+  }
+
+  private val refTypes = mutable.Map[(String, Ref), DataType]()
+
+  private def classFile(cs: ClassSpec): String = cs.name.head
+
+  /** The class that `_root` means in `cs`: the top-level type of the description of `cs`. */
+  private def rootOf(cs: ClassSpec): ClassSpec = classSpecs.get(classFile(cs)).getOrElse(topClass)
+
+  private lazy val usersMemo: Map[String, List[ClassSpec]] = {
+    val m = mutable.LinkedHashMap[String, ListBuffer[ClassSpec]]()
+    allClasses.foreach { c =>
+      userTypesOf(c).foreach { u =>
+        if (classFile(u) == classFile(c)) {
+          val l = m.getOrElseUpdate(u.nameAsStr, ListBuffer())
+          if (!l.exists(_ eq c)) l += c
+        }
+      }
+    }
+    m.map(kv => kv._1 -> kv._2.toList).toMap
+  }
+
+  /** The types of the same description that have a field of the type. */
+  private def usersOf(cs: ClassSpec): List[ClassSpec] = usersMemo.getOrElse(cs.nameAsStr, Nil)
+
+  private def ancestors(cs: ClassSpec, hops: Int): List[ClassSpec] = {
+    var cur = List(cs)
+    for (_ <- 1 to hops) {
+      val next = ListBuffer[ClassSpec]()
+      cur.flatMap(usersOf).foreach(c => if (!next.exists(_ eq c)) next += c)
+      cur = next.toList
+    }
+    cur
+  }
+
+  private def memberOpt(cs: ClassSpec, name: String): Option[MemberSpec] =
+    try Some(provider.resolveMember(cs, name)) catch { case _: Throwable => None }
+
+  private def chainOf(e: Ast.expr): Option[(String, List[String])] = e match {
+    case Ast.expr.Name(Ast.identifier(n)) if n == Identifier.PARENT || n == Identifier.ROOT => Some((n, Nil))
+    case Ast.expr.Attribute(v, Ast.identifier(a)) => chainOf(v).map(c => (c._1, c._2 :+ a))
+    case _ => None
+  }
+
+  /** From class `from`, follow the members of `rest` as far as the value of a member that is not a nested value. */
+  private def resolvePath(from: ClassSpec, rest: List[String]): Option[(List[String], DataType)] = {
+    var c = from
+    var consumed = List[String]()
+    var remaining = rest
+    while (remaining.nonEmpty) {
+      val m = memberOpt(c, remaining.head).getOrElse(return None)
+      consumed = consumed :+ remaining.head
+      remaining = remaining.tail
+      val repeated = m match { case a: AttrLikeSpec => a.cond.repeat != NoRepeat; case _ => false }
+      m.dataType match {
+        case ut: UserType if remaining.nonEmpty && !repeated && ut.classSpec.isDefined => c = ut.classSpec.get
+        case dt => return Some((consumed, dt))
+      }
+    }
+    None
+  }
+
+  /** The reference that the chain starts with, its type, and how many names of the chain it covers. */
+  private def refPrefix(cs: ClassSpec, base: String, attrs: List[String]): (Ref, DataType, Int) =
+    if (base == Identifier.ROOT) {
+      val root = rootOf(cs)
+      resolvePath(root, attrs) match {
+        case Some((p, dt)) => (Ref(root = true, 0, p), dt, p.size)
+        case None => unsupported(s"`_root.${attrs.mkString(".")}`: no such member in type ${root.nameAsStr}")
+      }
+    } else {
+      val hops = 1 + attrs.takeWhile(_ == Identifier.PARENT).size
+      val rest = attrs.dropWhile(_ == Identifier.PARENT)
+      val cands = ancestors(cs, hops)
+      if (cands.isEmpty)
+        unsupported(s"`${List.fill(hops)("_parent").mkString(".")}` in type ${cs.nameAsStr}, which no type of the description has as a field")
+      cands.view.flatMap(c => resolvePath(c, rest)).headOption match {
+        case Some((p, dt)) => (Ref(root = false, hops, p), dt, hops - 1 + p.size)
+        case None => unsupported(s"`${(List.fill(hops)("_parent") ++ rest).mkString(".")}`: no such member in the type that has the field")
+      }
+    }
+
+  private def procExprs(p: Option[ProcessExpr]): List[Ast.expr] = p match {
+    case Some(ProcessXor(k)) => List(k)
+    case Some(ProcessRotate(_, k)) => List(k)
+    case Some(ProcessCustom(_, args)) => args.toList
+    case _ => Nil
+  }
+
+  private def dtExprs(dt: DataType): List[Ast.expr] = dt match {
+    case BytesLimitType(size, _, _, _, proc) => size :: procExprs(proc)
+    case BytesEosType(_, _, _, proc) => procExprs(proc)
+    case BytesTerminatedType(_, _, _, _, proc) => procExprs(proc)
+    case StrFromBytesType(bt, _, _) => dtExprs(bt)
+    case ut: UserTypeFromBytes => ut.args.toList ++ dtExprs(ut.bytes) ++ procExprs(ut.process)
+    case ut: UserType => ut.args.toList
+    case st: SwitchType => st.on :: st.cases.toList.flatMap { case (k, v) => k :: dtExprs(v) }
+    case _ => Nil
+  }
+
+  private def validExprs(v: Option[ValidationSpec]): List[Ast.expr] = v match {
+    case Some(ValidationEq(e)) => List(e)
+    case Some(ValidationMin(e)) => List(e)
+    case Some(ValidationMax(e)) => List(e)
+    case Some(ValidationRange(lo, hi)) => List(lo, hi)
+    case Some(ValidationAnyOf(vs)) => vs.toList
+    case Some(ValidationExpr(e)) => List(e)
+    case _ => Nil
+  }
+
+  private def attrExprs(a: AttrLikeSpec): List[Ast.expr] =
+    a.cond.ifExpr.toList ++ (a.cond.repeat match {
+      case RepeatExpr(e) => List(e)
+      case RepeatUntil(e) => List(e)
+      case _ => Nil
+    }) ++ dtExprs(a.dataType) ++ (a match {
+      case at: AttrSpec => validExprs(at.valid)
+      case p: ParseInstanceSpec => validExprs(p.valid) ++ p.pos.toList ++ p.io.toList
+      case _ => Nil
+    })
+
+  /** Every expression written in the type, except the calculation of a byte order that mentions `_parent` */
+  private def outsideExprs(cs: ClassSpec): List[Ast.expr] =
+    cs.seq.flatMap(attrExprs) ++ cs.instances.values.toList.flatMap {
+      case v: ValueInstanceSpec => v.value :: v.ifExpr.toList
+      case p: ParseInstanceSpec => attrExprs(p)
+    } ++ (cs.meta.endian match {
+      case Some(ce: CalcEndian) if !containsParent(ce.on) => ce.on :: ce.cases.keys.toList
+      case _ => Nil
+    })
+
+  private def scanRefs(cs: ClassSpec, expr: Ast.expr): List[(Ref, DataType)] = {
+    val out = ListBuffer[(Ref, DataType)]()
+    def walk(e: Ast.expr): Unit = chainOf(e) match {
+      case Some((base, attrs)) =>
+        if (base == Identifier.ROOT && attrs.headOption.contains(Identifier.IO)) ()
+        else if (attrs.isEmpty) unsupported(s"`$base` used as a value")
+        else if (base == Identifier.PARENT && attrs.headOption.contains(Identifier.IO)) unsupported("`_parent._io`")
+        else if (base == Identifier.ROOT && isRecursive(rootOf(cs)))
+          // The value that a nested top-level value would need is the one of the outermost value, not its own.
+          unsupported("`_root` in a description whose top-level type contains itself")
+        else if (base == Identifier.ROOT && (rootOf(cs) eq cs)) ()
+        else {
+          val (r, dt, _) = refPrefix(cs, base, attrs)
+          out += ((r, dt))
+        }
+      case None =>
+        e match {
+          case Ast.expr.Attribute(v, _) => walk(v)
+          case Ast.expr.BinOp(l, _, r) => walk(l); walk(r)
+          case Ast.expr.Compare(l, _, r) => walk(l); walk(r)
+          case Ast.expr.BoolOp(_, vs) => vs.foreach(walk)
+          case Ast.expr.UnaryOp(_, v) => walk(v)
+          case Ast.expr.IfExp(a, b, c) => walk(a); walk(b); walk(c)
+          case Ast.expr.Call(f, args) => walk(f); args.foreach(walk)
+          case Ast.expr.Subscript(a, b) => walk(a); walk(b)
+          case Ast.expr.List(es) => es.foreach(walk)
+          case Ast.expr.CastToType(v, _) => walk(v)
+          case Ast.expr.EnumById(_, v, _) => walk(v)
+          case _ =>
+        }
+    }
+    walk(expr)
+    out.toList
+  }
+
+  private def refParamType(dt: DataType, r: Ref): String = dt match {
+    case _: IntType | _: EnumType | _: BooleanType => intAda(dt)
+    case other => unsupported(s"`${r.source}` has the type $other; only integers, booleans and enumerations can be passed")
+  }
+
+  private lazy val refsMemo: Map[String, List[Ref]] = {
+    val refs = mutable.LinkedHashMap[String, ListBuffer[Ref]]()
+    allClasses.foreach(c => refs(c.nameAsStr) = ListBuffer())
+    def add(c: ClassSpec, r: Ref, dt: DataType): Boolean =
+      if (refs(c.nameAsStr).contains(r)) false
+      else {
+        guard(c.path)(refParamType(dt, r))
+        refs(c.nameAsStr) += r
+        refTypes((c.nameAsStr, r)) = dt
+        true
+      }
+    allClasses.foreach { c =>
+      guard(c.path) {
+        outsideExprs(c).foreach(e => scanRefs(c, e).foreach { case (r, dt) => add(c, r, dt) })
+      }
+    }
+    var changed = true
+    while (changed) {
+      changed = false
+      allClasses.foreach { c =>
+        userTypesOf(c).foreach { b =>
+          refs(b.nameAsStr).toList.foreach { r =>
+            val dt = refTypes((b.nameAsStr, r))
+            if (r.root) {
+              if (!(rootOf(c) eq c) && (rootOf(c) eq rootOf(b))) changed |= add(c, r, dt)
+            } else if (r.hops > 1) changed |= add(c, r.copy(hops = r.hops - 1), dt)
+          }
+        }
+      }
+    }
+    allClasses.foreach { c =>
+      if ((rootOf(c) eq c) && refs(c.nameAsStr).exists(!_.root))
+        fail(c.path, s"`${refs(c.nameAsStr).filter(!_.root).head.source}` in the top-level type of a description, which has no parent")
+    }
+    refs.map(kv => kv._1 -> kv._2.toList).toMap
+  }
+
+  private def refsOf(cs: ClassSpec): List[Ref] = refsMemo.getOrElse(cs.nameAsStr, Nil)
+
+  override def outsideRef(cs: ClassSpec, e: Ast.expr): Option[Either[(String, DataType), Ast.expr]] =
+    chainOf(e).flatMap { case (base, attrs) =>
+      if (attrs.isEmpty) None
+      else if (attrs.head == Identifier.IO) None
+      else if (base == Identifier.ROOT && (rootOf(cs) eq cs))
+        Some(Right(attrs.tail.foldLeft[Ast.expr](Ast.expr.Name(Ast.identifier(attrs.head)))((v, a) => Ast.expr.Attribute(v, Ast.identifier(a)))))
+      else {
+        val (r, dt, n) = refPrefix(cs, base, attrs)
+        if (n == attrs.size) Some(Left((r.adaName, dt))) else None
+      }
+    }
+
+  /** Names of the seq fields of `cs` that the value of `e` depends on, instances taken apart. */
+  private def memberDeps(cs: ClassSpec, e: Ast.expr, seen: Set[String] = Set()): Set[String] = e match {
+    case Ast.expr.Name(Ast.identifier(n)) if !n.startsWith("_") =>
+      memberOpt(cs, n) match {
+        case Some(v: ValueInstanceSpec) if !seen.contains(n) =>
+          (v.value :: v.ifExpr.toList).flatMap(x => memberDeps(cs, x, seen + n)).toSet
+        case Some(_: AttrSpec) => Set(n)
+        case _ => Set()
+      }
+    case Ast.expr.Attribute(v, _) => memberDeps(cs, v, seen)
+    case Ast.expr.BinOp(l, _, r) => memberDeps(cs, l, seen) ++ memberDeps(cs, r, seen)
+    case Ast.expr.Compare(l, _, r) => memberDeps(cs, l, seen) ++ memberDeps(cs, r, seen)
+    case Ast.expr.BoolOp(_, vs) => vs.flatMap(memberDeps(cs, _, seen)).toSet
+    case Ast.expr.UnaryOp(_, v) => memberDeps(cs, v, seen)
+    case Ast.expr.IfExp(a, b, c) => memberDeps(cs, a, seen) ++ memberDeps(cs, b, seen) ++ memberDeps(cs, c, seen)
+    case Ast.expr.Call(f, args) => memberDeps(cs, f, seen) ++ args.flatMap(memberDeps(cs, _, seen))
+    case Ast.expr.Subscript(a, b) => memberDeps(cs, a, seen) ++ memberDeps(cs, b, seen)
+    case Ast.expr.List(es) => es.flatMap(memberDeps(cs, _, seen)).toSet
+    case _ => Set()
+  }
+
+  /** Position in the seq of the field that is being generated; larger than any for an instance. */
+  private var curSeqIdx: Int = Int.MaxValue
 
   // ------------------------------------------------------------ output helpers
 
@@ -389,6 +704,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
   private def userPkg(ut: UserType): String = packageOf(ut.classSpec.get)
 
+  /** Prefix for a name of the package of `cs`: none inside the package itself */
+  private def qualOf(cs: ClassSpec): String = if (cs eq provider.nowClass) "" else packageOf(cs) + "."
+
   /** Ada type of the stored value of a non-repeated, non-switch type */
   private def storedType(dt: DataType, path: List[String]): (String, Option[String]) = dt match {
     case _: IntType | _: EnumType | _: BooleanType =>
@@ -457,7 +775,6 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   }
 
   private def readBytes(bt: BytesType, target: String, rc: RC, defaultTarget: Boolean): List[String] = {
-    if (bt.process.isDefined) throw new AdaUnsupported("`process`")
     bt match {
       case BytesLimitType(size, term, include, pad, _) =>
         val t = T(size, rc)
@@ -485,6 +802,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       dt match {
         case _: IntType | _: EnumType | _: FloatType | _: BooleanType => readInt(dt, target, rc)
         case bt: BytesType => readBytes(bt, target, rc, defaultTarget)
+        case StrFromBytesType(bt, _, _) if bt.process.isDefined => throw new AdaUnsupported("`process` on a string")
         case StrFromBytesType(bt, enc, _) =>
           val read = readBytes(bt, target, rc, defaultTarget)
           val e = encodingName(enc, rc.path)
@@ -593,12 +911,48 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         args += v
       }
     }
+    val caller = provider.nowClass
+    refsOf(callee).foreach { r =>
+      val dt = refTypes((callee.nameAsStr, r))
+      val ada = refParamType(dt, r)
+      val p = ParamDefSpec(callee.path, NamedIdentifier(r.raw), dt)
+      if (r.root && (rootOf(callee) ne rootOf(caller)))
+        unsupported(s"type ${callee.nameAsStr} of another description uses `_root`")
+      val own = if (r.root) rootOf(caller) eq caller else r.hops == 1
+      val t: ATr =
+        if (own) {
+          val expr = r.path.tail.foldLeft[Ast.expr](Ast.expr.Name(Ast.identifier(r.path.head)))((v, a) => Ast.expr.Attribute(v, Ast.identifier(a)))
+          memberDeps(caller, expr).foreach { n =>
+            val j = caller.seq.indexWhere(a => idRaw(a.id) == n)
+            if (j >= curSeqIdx)
+              unsupported(s"`${r.source}` of type ${callee.nameAsStr} is the field `$n`, which is parsed after the field that needs it")
+          }
+          T(expr, rc)
+        } else tr.fromValue(dt, s"This.${(if (r.root) r else r.copy(hops = r.hops - 1)).adaName}", Nil)
+      val (code, extra) = convertArg(t, ada, p)
+      val gs = t.guards ++ extra
+      if (gs.isEmpty) args += code
+      else {
+        val v = rc.scope.fresh("Arg")
+        rc.scope.decls += s"$v : $ada;"
+        pre ++= guarded(gs, List(s"$v := $code;"), rc, List(s"$v := ${defaultOf(ada)};"))
+        args += v
+      }
+    }
+    if (isRecursive(callee)) args += (if (callee eq caller) "This.Depth - 1" else "Max_Depth")
     (pre.toList, args.toList)
   }
 
+  /** The call of the parser of the type from a type that contains itself: it asks for levels that are left. */
+  private def selfGuard(ut: UserType, call: List[String], target: String, rc: RC): List[String] =
+    if (!(ut.classSpec.get eq provider.nowClass) || !isRecursive(ut.classSpec.get)) call
+    else
+      List("if This.Depth > 0 then") ++ ind(call) ++ List("else") ++
+        ind(List(failStmt(rc, "Limit_Exceeded"), s"$target := (others => <>);")) ++ List("end if;")
+
   private def userCall(ut: UserTypeInstream, target: String, rc: RC): List[String] = {
     val (pre, args) = callArgs(ut, rc)
-    pre ++ List(s"${userPkg(ut)}.Parse (Buffer, ${rc.s}, ${(args :+ target).mkString(", ")});")
+    selfGuard(ut, pre ++ List(s"${qualOf(ut.classSpec.get)}Parse (Buffer, ${rc.s}, ${(args :+ target).mkString(", ")});"), target, rc)
   }
 
   private def userCallSub(ut: UserTypeFromBytes, target: String, rc: RC): List[String] = {
@@ -619,7 +973,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         List(s"${KS}Substream (Buffer, ${rc.s}, ${KS}Remaining (${rc.s}), $sub);")
       case _ => throw new AdaUnsupported("user type with a terminator or padding")
     }
-    pre ++ mk ++ List(s"${userPkg(ut)}.Parse (Buffer, $sub, ${(args :+ target).mkString(", ")});", s"${KS}Join (${rc.s}, $sub);")
+    selfGuard(ut, pre ++ mk ++ List(s"${qualOf(ut.classSpec.get)}Parse (Buffer, $sub, ${(args :+ target).mkString(", ")});", s"${KS}Join (${rc.s}, $sub);"), target, rc)
   }
 
   // ---------------------------------------------------------------- validation
@@ -673,7 +1027,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       fail(topClass.path, "opaque types")
     if (topAdaName == "Kaitai" || Reserved.contains(topAdaName.toLowerCase) || topAdaName.contains("__"))
       fail(topClass.meta.path ++ List("id"), s"description id `${topClass.name.head}` is a reserved name in Ada")
-    checkRecursion(topClass, Nil)
+    checkRecursion()
+    checkParentKey()
+    refsOf(topClass)
     val (spec, body) = genClass(topClass)
     val srcName = topClass.fileName.map(f => new java.io.File(f).getName).getOrElse(topClass.name.head + ".ksy")
     val header = List(s"--  Generated by the Kaitai Struct compiler from $srcName.  Do not edit.", "")
@@ -690,7 +1046,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     )
   }
 
-  private val LibPackages = List("Streams", "Types", "Arithmetic", "Decoding", "Strings", "Byte_Arrays", "Floats")
+  private val LibPackages = List("Streams", "Types", "Arithmetic", "Decoding", "Strings", "Byte_Arrays", "Floats", "Processing", "Zlib")
 
   private def usedLibs(text: String): Set[String] = {
     val clean = text.split("\n").map(l => l.takeWhile(_ != '-')).mkString("\n")
@@ -714,6 +1070,14 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val pkgName = if (isTop) topAdaName else typePkg(cs.name.last)
     val specB = ListBuffer[String]()
     val bodyB = ListBuffer[String]()
+
+    if (isTop && allClasses.exists(c => classFile(c) == classFile(topClass) && isRecursive(c))) {
+      specB ++= wrapComment(
+        "How deep values of a type that contains itself may be nested. Every level takes room on the stack while it is parsed, and nothing checks on a light run-time library that the stack is large enough."
+      )
+      specB += s"Max_Depth : constant := ${config.adaMaxDepth};"
+      specB += ""
+    }
 
     // enumerations
     cs.enums.values.foreach { e => specB ++= genEnum(e); specB += "" }
@@ -739,7 +1103,14 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     // ---- T and its public interface
     val orderPar = if (hasOrderParam(cs)) List(s"Order : ${KT}Byte_Order") else Nil
     val paramDecls = cs.params.map(p => s"${paramName(idRaw(p.id))} : ${guard(p.path)(paramAda(p))}")
-    val parseParams = (List(s"Buffer : ${KT}Bytes", s"S : in out ${KS}Stream") ++ orderPar ++ paramDecls :+ "This : out T").mkString("; ")
+    val refDecls = refsOf(cs).map(r => s"${r.adaName} : ${refParamType(refTypes((cs.nameAsStr, r)), r)}")
+    val depthDecl = if (isRecursive(cs)) List("Depth : Natural") else Nil
+    val parseParams = (List(s"Buffer : ${KT}Bytes", s"S : in out ${KS}Stream") ++ orderPar ++ paramDecls ++ refDecls ++ depthDecl :+ "This : out T").mkString("; ")
+    val parseNotes =
+      (if (refsOf(cs).isEmpty) Nil
+       else wrapComment(refsOf(cs).map(r => s"${r.adaName} is ${r.source}").mkString(", ") + ".")) ++
+        (if (!isRecursive(cs)) Nil
+         else wrapComment("Depth is the number of levels of nesting that are accepted below this value; deeper ones make the stream fail with Limit_Exceeded."))
     val belongsOk = hasBelongs(cs)
 
     specB += "type T is private;"
@@ -750,11 +1121,13 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       specB += s"function Belongs_To (This : T; Buffer : ${KT}Bytes) return Boolean;"
       specB += ""
     }
+    specB ++= parseNotes
     specB += s"procedure Parse ($parseParams)"
     specB += "with"
     specB += s"  Pre  => ${KS}Is_Valid (S, Buffer),"
     specB += s"  Post => ${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Old, S) and then Valid (This) = ${KS}OK (S)" +
-      (if (belongsOk) " and then Belongs_To (This, Buffer);" else ";")
+      (if (belongsOk) " and then Belongs_To (This, Buffer)" else "") + (if (isRecursive(cs)) "," else ";")
+    if (isRecursive(cs)) specB += "  Subprogram_Variant => (Decreases => Depth, Decreases => 1);"
     specB += ""
     specB ++= o.pub
     specB += "private"
@@ -764,7 +1137,12 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val ioComp = if (hasIo(cs)) List(s"Io : ${KS}Stream;") else Nil
     val orderComp = if (storesOrder(cs)) List(s"Order : ${KT}Byte_Order := ${KT}Little_Endian;") else Nil
     val paramComps = cs.params.flatMap(p => paramComponent(p))
-    val comps = List("Is_Valid : Boolean := False;") ++ ioComp ++ orderComp ++ paramComps ++ o.comps.toList
+    val refComps = refsOf(cs).map { r =>
+      val t = refParamType(refTypes((cs.nameAsStr, r)), r)
+      s"${r.adaName} : $t := ${defaultOf(t)};"
+    }
+    val depthComp = if (isRecursive(cs)) List("Depth : Natural := 0;") else Nil
+    val comps = List("Is_Valid : Boolean := False;") ++ ioComp ++ orderComp ++ paramComps ++ refComps ++ depthComp ++ o.comps.toList
     specB += "   type T is record"
     specB ++= ind(comps, 2)
     specB += "   end record;"
@@ -891,9 +1269,11 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     // sequence
     cs.seq.zipWithIndex.foreach { case (a, i) =>
       val rcA = rc.copy(path = a.path)
+      curSeqIdx = i
       guard(a.path)(genSeqAttr(cs, a, i == 0, o, rcA))
     }
     // instances
+    curSeqIdx = Int.MaxValue
     cs.instances.values.foreach { inst =>
       provider.nowClass = cs
       inst match {
@@ -1001,6 +1381,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     a.valid.foreach { v =>
       if (a.cond.repeat != NoRepeat) throw new AdaUnsupported("`valid` on a repeated field")
     }
+    if (a.cond.repeat != NoRepeat && AdaTranslator.hasProcess(a.dataType)) throw new AdaUnsupported("`process` on a repeated field")
     a.cond.repeat match {
       case NoRepeat =>
         a.dataType match {
@@ -1012,7 +1393,198 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     }
   }
 
+  // -------------------------------------------------------------- processing
+
+  /**
+    * A field with `process`: the bytes of the input are kept, and the accessor `X` undoes the processing into
+    * an array of the caller; for a field of a type it parses the value from there.
+    */
+  private def genProcessed(cs: ClassSpec, a: AttrSpec, dt: DataType, o: Out, rc: RC): Unit = {
+    val nm = plain(idRaw(a.id))
+    val bs = base(idRaw(a.id))
+    val (proc, bytesT, userT): (ProcessExpr, BytesType, Option[UserType]) = dt match {
+      case b: BytesType => (b.process.get, b, None)
+      case ut: UserTypeFromBytes => (ut.process.get, ut.bytes, Some(ut))
+      case _ => unsupported("`process` on a string")
+    }
+    proc match {
+      case ProcessCustom(name, _) => unsupported(s"custom `process: ${name.mkString(".")}`")
+      case _ =>
+    }
+    if (a.valid.isDefined) unsupported("`valid` on a field with `process`")
+    val (pre, hasName) = condParts(cs, a, o)
+    val raw = s"This.$nm"
+    o.comps += s"$nm : ${KT}Slice;"
+    o.belongs += s"${KT}Within ($raw, Buffer)"
+    opTypes += "Length"
+    val what = if (userT.isDefined) s"$nm: kept as it is in the input. $nm undoes the processing into Storage and parses the value from there, so that what the value refers to lies in Storage and not in Buffer."
+               else s"$nm: kept as it is in the input. $nm undoes the processing and writes the result to an array of the caller."
+    accessor(o, s"${bs}_Raw", KT + "Slice", pre, None, raw, comment = docLines(a.doc) ++ wrapComment(what))
+    o.parse ++= wrapCond(a, if (hasName.isEmpty) None else Some(hasName), readBytes(bytesT, raw, rc, defaultTarget = false), rc)
+
+    // the procedure
+    val sc = new Scope
+    val rcP = RC("Sub", if (storesOrder(cs)) "This.Order" else "", sc, a.path)
+    val rcKey = RC("Unavailable_Stream", if (storesOrder(cs)) "This.Order" else "", sc, a.path)
+    val src = s"Buffer ($raw.First .. $raw.Last)"
+    val isZlib = proc == ProcessZlib
+    val zlibKinds = "Kaitai.Zlib."
+    // the call of the processing from src into dst, and the conditions under which it is defined
+    def processCall(dst: String): (List[String], List[String]) = proc match {
+      case ProcessXor(key) =>
+        val t = T(key, rcKey)
+        t.vt match {
+          case VInt | VEnum(_) =>
+            val (code, extra) = convertArg(t, KT + "U8", ParamDefSpec(a.path, NamedIdentifier("key"), Int1Type(false)))
+            (List(s"Kaitai.Processing.Xor_One ($src, $code, $dst);"), t.guards ++ extra)
+          case VBytes =>
+            (List(s"Kaitai.Processing.Xor_Many ($src, Buffer (${t.atom}.First .. ${t.atom}.Last), $dst);"),
+             t.guards ++ List(s"not ${KT}Is_Empty (${t.code})"))
+          case VBytesLit(bs0) =>
+            if (bs0.isEmpty) unsupported("`xor` with an empty key")
+            (List(s"Kaitai.Processing.Xor_Many ($src, ${t.code}, $dst);"), t.guards)
+          case other => unsupported(s"`xor` with a key of $other")
+        }
+      case ProcessRotate(left, amount) =>
+        val t = T(amount, rcKey)
+        t.vt match {
+          case VInt | VEnum(_) =>
+            if (t.isLiteral) {
+              val n = (((t.lo % 8) + 8) % 8).toInt
+              val k = if (left) n else (8 - n) % 8
+              (List(s"Kaitai.Processing.Rotate_Left ($src, $k, $dst);"), Nil)
+            } else {
+              val m = s"Kaitai.Arithmetic.Modulo (${t.code}, 8)"
+              val k = if (left) s"Integer ($m)" else s"Integer (8 - $m)"
+              (List(s"Kaitai.Processing.Rotate_Left ($src, $k, $dst);"), t.guards)
+            }
+          case other => unsupported(s"`rol`/`ror` with an amount of $other")
+        }
+      case _ => unsupported("`process`")
+    }
+    val outcomeOfZlib = List(
+      "case Inflated is",
+      s"   when ${zlibKinds}Done =>",
+      "      Outcome := Kaitai.Types.Success;",
+      s"   when ${zlibKinds}Corrupt =>",
+      "      Outcome := Kaitai.Types.Illegal_Sequence;",
+      s"   when ${zlibKinds}Target_Full =>",
+      "      Outcome := Kaitai.Types.Capacity_Exceeded;",
+      "end case;"
+    )
+    userT match {
+      case None =>
+        val dst = "Target (Target'First .. Last)"
+        val params = s"Buffer : ${KT}Bytes; This : T; Target : in out ${KT}Bytes; Last : out ${KT}Length; Outcome : out ${KT}Status_Kind"
+        val post =
+          if (isZlib)
+            s"Last >= Target'First - 1 and then Last <= Target'Last and then (if Outcome /= ${KT}Success then Last = Target'First - 1)"
+          else s"(if Outcome = ${KT}Success then Last = Target'First + ${KT}Size (${bs}_Raw (This)) - 1 else Last = Target'First - 1)"
+        opTypes += "Status_Kind"
+        o.pub ++= ind(List(
+          s"procedure $nm ($params)", "with",
+          s"  Pre  => $pre and then Belongs_To (This, Buffer) and then Target'First >= 1,",
+          s"  Post => $post;", ""))
+        val stmts: List[String] =
+          if (isZlib)
+            List(s"${zlibKinds}Inflate ($src, Target, Last, Inflated);") ++ outcomeOfZlib
+          else {
+            val (call, gs) = processCall(dst)
+            val work =
+              if (gs.isEmpty) call ++ List(s"Outcome := ${KT}Success;")
+              else List(s"if ${conjoin(gs)} then") ++ ind(call ++ List(s"Outcome := ${KT}Success;")) ++
+                List("else", s"   Last := Target'First - 1;", s"   Outcome := ${KT}Arithmetic_Error;", "end if;")
+            List(
+              s"if ${KT}Size ($raw) > Target'Length then",
+              "   Last := Target'First - 1;",
+              s"   Outcome := ${KT}Capacity_Exceeded;",
+              s"elsif ${KT}Is_Empty ($raw) then",
+              "   Last := Target'First - 1;",
+              s"   Outcome := ${KT}Success;",
+              "else",
+              s"   Last := Target'First + (${KT}Size ($raw) - 1);") ++ ind(work) ++ List("end if;")
+          }
+        val decls = (if (isZlib) List(s"Inflated : ${zlibKinds}Result_Kind;") else Nil) ++ sc.decls.toList
+        val unref = if (stmts.exists(_.contains("Buffer"))) Nil else List("pragma Warnings (Off, Buffer);")
+        o.bodyAfter ++= List(s"procedure $nm ($params) is") ++ ind(decls ++ unref) ++ List("begin") ++ ind(stmts) ++ List(s"end $nm;", "")
+      case Some(ut) =>
+        val pkg = qualOf(ut.classSpec.get)
+        val belongsOk = hasBelongs(ut.classSpec.get)
+        val params = s"Buffer : ${KT}Bytes; This : T; Storage : in out ${KT}Bytes; Result : out ${userPkg(ut)}.T; Outcome : out ${KT}Status_Kind"
+        opTypes += "Status_Kind"
+        o.pub ++= ind(List(
+          s"procedure $nm ($params)", "with",
+          s"  Pre  => $pre and then Belongs_To (This, Buffer) and then Storage'First >= 1,",
+          s"  Post => $pkg" + s"Valid (Result) = (Outcome = ${KT}Success)" + (if (belongsOk) s" and then ${pkg}Belongs_To (Result, Storage);" else ";"), ""))
+        val dst = "Storage (Storage'First .. Last)"
+        val (pcs, args) = callArgs(ut, rcP)
+        val parseStmts = List(s"Sub := ${KS}Open (Storage (Storage'First .. Last));") ++ pcs ++
+          List(s"${pkg}Parse (Storage, Sub, ${(args :+ "Result").mkString(", ")});", s"Outcome := ${KS}Status (Sub);")
+        val stmts: List[String] =
+          if (isZlib)
+            List(s"${zlibKinds}Inflate ($src, Storage, Last, Inflated);", "case Inflated is", s"   when ${zlibKinds}Done =>") ++ ind(parseStmts, 2) ++
+              List(s"   when ${zlibKinds}Corrupt =>", "      Result := None;", s"      Outcome := ${KT}Illegal_Sequence;",
+                s"   when ${zlibKinds}Target_Full =>", "      Result := None;", s"      Outcome := ${KT}Capacity_Exceeded;", "end case;")
+          else {
+            val (call, gs) = processCall(dst)
+            val work = List(s"if not ${KT}Is_Empty ($raw) then") ++ ind(call) ++ List("end if;") ++ parseStmts
+            val guardedWork =
+              if (gs.isEmpty) work
+              else List(s"if ${conjoin(gs)} then") ++ ind(work) ++ List("else", "   Result := None;", s"   Outcome := ${KT}Arithmetic_Error;", "end if;")
+            List(s"if ${KT}Size ($raw) > Storage'Length then", "   Result := None;", s"   Outcome := ${KT}Capacity_Exceeded;", "else",
+              s"   Last := Storage'First + ${KT}Size ($raw) - 1;") ++ ind(guardedWork) ++ List("end if;")
+          }
+        val decls = List(s"Last : ${KT}Length;", s"Sub : ${KS}Stream;", s"None : ${userPkg(ut)}.T;") ++
+          (if (isZlib) List(s"Inflated : ${zlibKinds}Result_Kind;") else Nil) ++ sc.decls.toList
+        o.bodyAfter ++= List(s"procedure $nm ($params) is") ++ ind(decls) ++ List("begin") ++ ind(stmts) ++ List(s"end $nm;", "")
+    }
+    if (o.bodyAfter.exists(_.contains("Unavailable_Stream"))) unsupported("`_io` in an argument of a processed field")
+  }
+
+  /** A field of the type of the record itself: not kept, parsed again when asked for. */
+  private def genSelfField(cs: ClassSpec, a: AttrSpec, ut: UserType, o: Out, rc: RC): Unit = {
+    val nm = plain(idRaw(a.id))
+    val bs = base(idRaw(a.id))
+    val (pre, hasName) = condParts(cs, a, o)
+    if (a.valid.isDefined) unsupported("`valid` on a field of its own type")
+    opTypes += "Status_Kind"
+    o.comps += s"${bs}_Io : ${KS}Stream;"
+    o.belongs += s"${KS}Is_Valid (This.${bs}_Io, Buffer)"
+    o.pub ++= ind(docLines(a.doc) ++ List(s"--  $nm: not kept, but parsed again when asked for", ""))
+    o.pub ++= ind(List(
+      s"procedure $nm (Buffer : ${KT}Bytes; This : T; Result : out T; Outcome : out ${KT}Status_Kind)",
+      "with",
+      s"  Pre  => $pre and then Belongs_To (This, Buffer),",
+      s"  Post => Valid (Result) = (Outcome = ${KT}Success) and then Belongs_To (Result, Buffer);", ""))
+    val helper = s"Parse_${bs}_Element"
+    val elScope = new Scope
+    val inHelperRc = RC("S", if (storesOrder(cs)) "This.Order" else "", elScope, a.path)
+    val elemStmts = readValue(ut, "Element", inHelperRc, defaultTarget = true)
+    val helperSpec = s"procedure $helper (Buffer : ${KT}Bytes; S : in out ${KS}Stream; This : T; Element : out T)"
+    o.bodyBefore ++= List(s"--  Parse the field $nm", helperSpec, "with", s"  Pre  => ${KS}Is_Valid (S, Buffer),",
+      s"  Post => ${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Old, S) and then Valid (Element) = ${KS}OK (S) and then Belongs_To (Element, Buffer),",
+      "  Subprogram_Variant => (Decreases => This.Depth, Decreases => 0);", "")
+    o.bodyBefore ++= List(s"$helperSpec is") ++ ind(elScope.decls.toList) ++ List("begin") ++ ind(elemStmts) ++ List(s"end $helper;", "")
+    o.bodyAfter ++= List(
+      s"procedure $nm (Buffer : ${KT}Bytes; This : T; Result : out T; Outcome : out ${KT}Status_Kind) is",
+      s"   L : ${KS}Stream := This.${bs}_Io;",
+      "begin",
+      s"   $helper (Buffer, L, This, Result);",
+      s"   Outcome := ${KS}Status (L);",
+      s"end $nm;", "")
+    val el = rc.scope.fresh("Element")
+    rc.scope.decls += s"$el : T;"
+    rc.scope.passesThis = true
+    o.parse ++= wrapCond(a, if (hasName.isEmpty) None else Some(hasName),
+      List(s"This.${bs}_Io := S;", s"$helper (Buffer, S, This, $el);"), rc)
+  }
+
   private def genScalar(cs: ClassSpec, a: AttrSpec, dt: DataType, firstAlign: List[String], o: Out, rc: RC): Unit = {
+    dt match {
+      case ut: UserType if ut.classSpec.get eq cs => return genSelfField(cs, a, ut, o, rc)
+      case _ =>
+    }
+    if (AdaTranslator.hasProcess(dt)) return genProcessed(cs, a, dt, o, rc)
     val nm = plain(idRaw(a.id))
     val bs = base(idRaw(a.id))
     val (stored, default) = storedType(dt, a.path)
@@ -1054,6 +1626,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val nm = plain(idRaw(a.id))
     val bs = base(idRaw(a.id))
     val cases = st.cases.toList
+    if (cases.exists(c => AdaTranslator.hasProcess(c._2))) unsupported("`process` in a field whose type depends on a value")
+    if (cases.exists { case (_, ut: UserType) => ut.classSpec.get eq cs; case _ => false })
+      unsupported("a field whose type depends on a value and can be the type itself")
     val elseCase = cases.find(_._1 == SwitchType.ELSE_CONST).map(_._2)
     val labeled = cases.filter(_._1 != SwitchType.ELSE_CONST)
     val allInt = cases.forall(c => isIntCase(c._2))
@@ -1341,11 +1916,13 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val bs = base(idRaw(a.id))
     val isSlice = !dt.isInstanceOf[UserType]
     opTypes += "Length"
+    val selfElem = dt match { case ut: UserType => ut.classSpec.get eq cs; case _ => false }
     val (elT, elPkg, elBelongs) = dt match {
-      case ut: UserType => (userPkg(ut) + ".T", userPkg(ut), hasBelongs(ut.classSpec.get))
+      case ut: UserType if selfElem => ("T", "", true)
+      case ut: UserType => (userPkg(ut) + ".T", userPkg(ut) + ".", hasBelongs(ut.classSpec.get))
       case _ => (KT + "Slice", "", true)
     }
-    def valid(x: String) = if (isSlice) s"${KS}OK (S)" else s"$elPkg.Valid ($x)"
+    def valid(x: String) = if (isSlice) s"${KS}OK (S)" else s"${elPkg}Valid ($x)"
     val cur = s"${bs}_Cursor"
     o.comps += s"${bs}_Io : ${KS}Stream;"
     o.comps += s"${bs}_Count : ${KT}Length := 0;"
@@ -1362,10 +1939,10 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       s"procedure Next (Buffer : ${KT}Bytes; This : T; Position : in out $cur; Element : out $elT)",
       "with", "  Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),",
       "  Post =>", "    Belongs_To (Position, Buffer) and then Remaining (Position) < Remaining (Position'Old)" +
-        (if (elBelongs) s"\n    and then ${if (isSlice) KT + "Within" else elPkg + ".Belongs_To"} (Element, Buffer);" else ";"), "",
+        (if (elBelongs) s"\n    and then ${if (isSlice) KT + "Within" else elPkg + "Belongs_To"} (Element, Buffer);" else ";"), "",
       s"procedure Get_$bs (Buffer : ${KT}Bytes; This : T; Index : ${KT}Length; Element : out $elT)",
       s"with Pre => $pre and then Belongs_To (This, Buffer) and then Index < ${bs}_Count (This)" +
-        (if (elBelongs) s", Post => ${if (isSlice) KT + "Within" else elPkg + ".Belongs_To"} (Element, Buffer);" else ";"), ""
+        (if (elBelongs) s", Post => ${if (isSlice) KT + "Within" else elPkg + "Belongs_To"} (Element, Buffer);" else ";"), ""
     ))
     o.privFuncs += s"function ${bs}_Count (This : T) return ${KT}Length"
     o.privFuncs += s"is (This.${bs}_Count);"
@@ -1394,16 +1971,17 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val helper = s"Parse_${bs}_Element"
     val helperParams = s"Buffer : ${KT}Bytes; S : in out ${KS}Stream; " + (if (usesThis) "This : T; " else "") + s"Element : out $elT"
     val callThis = if (usesThis) "This, " else ""
-    val postElem = s"${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Old, S) and then (if ${valid("Element")} then ${KS}OK (S))" +
-      (if (elBelongs) s" and then ${if (isSlice) KT + "Within" else elPkg + ".Belongs_To"} (Element, Buffer)" else "")
+    val postElem = s"${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Old, S)" + (if (isSlice) "" else s" and then (if ${valid("Element")} then ${KS}OK (S))") +
+      (if (elBelongs) s" and then ${if (isSlice) KT + "Within" else elPkg + "Belongs_To"} (Element, Buffer)" else "")
     def elemCall(stream: String): String =
       if (needsHelper) s"$helper (Buffer, $stream, ${callThis}Element);"
       else s"${elemStmts0.head.replace("(Buffer, S,", s"(Buffer, $stream,")}"
     if (needsHelper) {
-      o.bodyBefore ++= List(s"--  Parse one element of $nm", s"procedure $helper ($helperParams)", "with", s"  Pre  => ${KS}Is_Valid (S, Buffer),", s"  Post => $postElem;", "")
+      o.bodyBefore ++= List(s"--  Parse one element of $nm", s"procedure $helper ($helperParams)", "with", s"  Pre  => ${KS}Is_Valid (S, Buffer),") ++
+        (if (selfElem) List(s"  Post => $postElem,", "  Subprogram_Variant => (Decreases => This.Depth, Decreases => 0);", "") else List(s"  Post => $postElem;", ""))
       val declLines = elScope.decls.toList
       val body = elemStmts0
-      val unref = if (body.exists(_.contains("Buffer"))) Nil else List("pragma Unreferenced (Buffer);")
+      val unref = if (body.exists(_.contains("Buffer"))) Nil else List("pragma Warnings (Off, Buffer);")
       o.bodyBefore ++= List(s"procedure $helper ($helperParams) is") ++ ind(declLines ++ unref) ++ List("begin") ++ ind(body) ++ List(s"end $helper;", "")
     }
     if (isSlice && elemStmts0.isEmpty) throw new AdaUnsupported("empty element")
@@ -1411,13 +1989,13 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     // Next and Get_
     val nextBody = List(
       s"procedure Next (Buffer : ${KT}Bytes; This : T; Position : in out $cur; Element : out $elT) is"
-    ) ++ (if (usesThis) Nil else List("   pragma Unreferenced (This);")) ++ List(
+    ) ++ (if (usesThis) Nil else List("   pragma Warnings (Off, This);")) ++ List(
       "begin",
       "   " + elemCall("Position.Io"),
       s"   Position.Left := (if ${valid("Element").replace("OK (S)", "OK (Position.Io)")} then Position.Left - 1 else 0);",
       "end Next;", ""
     )
-    val within = if (isSlice) s"${KT}Within (Result, Buffer)" else if (elBelongs) s"$elPkg.Belongs_To (Result, Buffer)" else ""
+    val within = if (isSlice) s"${KT}Within (Result, Buffer)" else if (elBelongs) s"${elPkg}Belongs_To (Result, Buffer)" else ""
     val getBody = List(
       s"procedure Get_$bs (Buffer : ${KT}Bytes; This : T; Index : ${KT}Length; Element : out $elT) is",
       s"   Position : $cur := ${bs}_First (This);",
@@ -1534,6 +2112,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val bs = base(idRaw(p.id))
     val path = p.path
     if (p.cond.repeat != NoRepeat) throw new AdaUnsupported("parse instance with `repeat`")
+    if (AdaTranslator.hasProcess(p.dataType)) throw new AdaUnsupported("parse instance with `process`")
     if (p.pos.isEmpty) throw new AdaUnsupported("parse instance without `pos`")
     p.dataType match {
       case _: SwitchType => throw new AdaUnsupported("parse instance whose type depends on a value")
@@ -1584,7 +2163,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val bit = if (sc.bit) List(s"Bit : ${KT}U64;") else Nil
     val bodyStmts = seek ++ reads ++ List(s"Outcome := ${KS}Status (L);")
     val text = bodyStmts.mkString("\n")
-    val unref = if (text.contains("This")) Nil else List("pragma Unreferenced (This);")
+    val unref = if (text.contains("This")) Nil else List("pragma Warnings (Off, This);")
     o.bodyAfter ++= List(s"$spec is") ++ ind(List(init) ++ sc.decls.toList ++ bit ++ unref) ++ List("begin") ++ ind(bodyStmts) ++ List(s"end $nm;", "")
   }
 
@@ -1607,6 +2186,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val pre = ListBuffer[String]()
     if (hasIo(cs)) pre += "This.Io := S;"
     cs.params.foreach { p => pre += s"This.${plain(idRaw(p.id))} := ${paramName(idRaw(p.id))};" }
+    refsOf(cs).foreach { r => pre += s"This.${r.adaName} := ${r.adaName};" }
+    if (isRecursive(cs)) pre += "This.Depth := Depth;"
     ownCalc.foreach { ce =>
       decls += s"Order : ${KT}Byte_Order;"
       pre ++= guard(cs.path)(calcOrder(ce, "Order", rc))

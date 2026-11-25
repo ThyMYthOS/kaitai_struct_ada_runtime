@@ -89,7 +89,7 @@ is
 
    procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out First_Cursor; Element : out Type_U1_Type.T)
    is
-      pragma Unreferenced (This);
+      pragma Warnings (Off, This);
    begin
       Type_U1_Type.Parse (Buffer, Position.Io, Element);
       Position.Left := (if Type_U1_Type.Valid (Element) then Position.Left - 1 else 0);
@@ -111,7 +111,7 @@ is
 
    procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Second_Cursor; Element : out Type_U2_Type.T)
    is
-      pragma Unreferenced (This);
+      pragma Warnings (Off, This);
    begin
       Type_U2_Type.Parse (Buffer, Position.Io, Element);
       Position.Left := (if Type_U2_Type.Valid (Element) then Position.Left - 1 else 0);

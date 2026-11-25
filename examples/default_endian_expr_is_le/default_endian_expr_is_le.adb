@@ -59,7 +59,7 @@ is
    end Parse;
 
    procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Docs_Cursor; Element : out Doc_Type.T) is
-      pragma Unreferenced (This);
+      pragma Warnings (Off, This);
    begin
       Doc_Type.Parse (Buffer, Position.Io, Element);
       Position.Left := (if Doc_Type.Valid (Element) then Position.Left - 1 else 0);

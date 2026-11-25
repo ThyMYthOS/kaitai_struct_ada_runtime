@@ -74,6 +74,12 @@ trait AdaTranslatorEnv {
   def valueInstanceUsesBuffer(cs: ClassSpec, inst: ValueInstanceSpec): Boolean
   /** True if the field is stored in the record (it is not a `contents` field) */
   def isStored(attr: AttrLikeSpec): Boolean
+  /**
+    * What `e` stands for in class `cs` if it is a reference to the parent or the root: the name of
+    * the component of the record that holds the value and its type (`Left`), or an expression of
+    * `cs` itself that means the same (`Right`).
+    */
+  def outsideRef(cs: ClassSpec, e: Ast.expr): Option[Either[(String, DataType), Ast.expr]]
 }
 
 object AdaTranslator {
@@ -88,6 +94,13 @@ object AdaTranslator {
     case FloatMultiType(w, _) => Some(w.width)
     case EnumType(_, _, b) => fixedElement(b)
     case _ => None
+  }
+  /** The field is kept as the bytes of the input, because it has `process` */
+  def hasProcess(dt: DataType): Boolean = dt match {
+    case b: BytesType => b.process.isDefined
+    case StrFromBytesType(b, _, _) => b.process.isDefined
+    case ut: UserTypeFromBytes => ut.process.isDefined
+    case _ => false
   }
   def repeatKind(dt: DataType): String = if (fixedElement(dt).isDefined) "slice" else "cursor"
   def elementSize(dt: DataType): Int = fixedElement(dt).get
@@ -153,6 +166,11 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
   }
 
   def translate(e: Ast.expr): ATr = e match {
+    case _: Ast.expr.Name | _: Ast.expr.Attribute if env.outsideRef(provider.nowClass, e).isDefined =>
+      env.outsideRef(provider.nowClass, e).get match {
+        case Left((comp, dt)) => fromValue(dt, s"$thisName.$comp", Nil)
+        case Right(own) => translate(own)
+      }
     case Ast.expr.IntNum(n) =>
       if (n < S64Min || n > S64Max)
         unsupported(s"integer literal $n does not fit into 64 bits")
@@ -256,6 +274,8 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         case a: AttrSpec =>
           if (!env.isStored(a))
             unsupported(s"field `$name` holds `contents`, which is checked but not stored")
+          if (hasProcess(a.dataType))
+            unsupported(s"field `$name` has `process`; its value exists only when it is asked for")
           val has = if (a.cond.ifExpr.isDefined) List(s"$thisName.${env.presenceName(provider.nowClass, a.id)}") else Nil
           a.cond.repeat match {
             case NoRepeat => fromValue(a.dataType, s"$thisName.${env.memberName(cs, a.id)}", has)
@@ -479,6 +499,8 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
       case a: AttrSpec =>
         if (!env.isStored(a))
           unsupported(s"field `$attr` holds `contents`, which is checked but not stored")
+        if (hasProcess(a.dataType))
+          unsupported(s"field `$attr` has `process`; its value exists only when it is asked for")
         val has = if (a.cond.ifExpr.isDefined) List(s"$pkg.${env.presenceName(cs, member.id)} (${obj.code})") else Nil
         a.cond.repeat match {
           case NoRepeat => fromAccessor(a.dataType, pkg, nm, bs, obj.code, g0 ++ has)

@@ -65,7 +65,7 @@ is
      (Buffer : Kaitai.Types.Bytes; This : T; Result : out Header_Type.T; Outcome : out Kaitai.Types.Status_Kind)
    is
       L : Kaitai.Streams.Stream := This.Io;
-      pragma Unreferenced (This);
+      pragma Warnings (Off, This);
    begin
       Kaitai.Streams.Seek (L, 0);
       Header_Type.Parse (Buffer, L, Result);

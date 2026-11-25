@@ -15,7 +15,7 @@ set -eu
 
 # Examples that are written by hand, as the model for constructs the
 # compiler does not generate yet.  They are left alone.
-HANDWRITTEN="extras write_model"
+HANDWRITTEN="write_model"
 
 here=$(cd "$(dirname "$0")/.." && pwd)
 KSC_DIR=${KSC_DIR:-$HOME/.cache/kaitai_struct_compiler}

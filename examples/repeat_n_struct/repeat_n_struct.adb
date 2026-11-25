@@ -31,7 +31,7 @@ is
 
    procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Chunks_Cursor; Element : out Chunk_Type.T)
    is
-      pragma Unreferenced (This);
+      pragma Warnings (Off, This);
    begin
       Chunk_Type.Parse (Buffer, Position.Io, Element);
       Position.Left := (if Chunk_Type.Valid (Element) then Position.Left - 1 else 0);

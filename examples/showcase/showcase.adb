@@ -110,7 +110,7 @@ is
       procedure Next
         (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Records_Cursor; Element : out Entry_Type.Point_Type.T)
       is
-         pragma Unreferenced (This);
+         pragma Warnings (Off, This);
       begin
          Entry_Type.Point_Type.Parse (Buffer, Position.Io, Element);
          Position.Left := (if Entry_Type.Point_Type.Valid (Element) then Position.Left - 1 else 0);
@@ -231,7 +231,7 @@ is
    procedure Next
      (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Points_Cursor; Element : out Entry_Type.Point_Type.T)
    is
-      pragma Unreferenced (This);
+      pragma Warnings (Off, This);
    begin
       Entry_Type.Point_Type.Parse (Buffer, Position.Io, Element);
       Position.Left := (if Entry_Type.Point_Type.Valid (Element) then Position.Left - 1 else 0);

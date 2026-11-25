@@ -17,7 +17,7 @@ is
      (Buffer : Kaitai.Types.Bytes; This : T; Result : out Kaitai.Types.Slice; Outcome : out Kaitai.Types.Status_Kind)
    is
       L : Kaitai.Streams.Stream := This.Io;
-      pragma Unreferenced (This);
+      pragma Warnings (Off, This);
    begin
       Kaitai.Streams.Seek (L, 2);
       Kaitai.Streams.Read_Bytes (L, 5, Result);

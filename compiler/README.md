@@ -34,63 +34,59 @@ $KSC_DIR/jvm/target/universal/stage/bin/kaitai-struct-compiler -t ada --outdir o
 scripts/generate-examples.sh [--check]   # regenerates and formats examples/*
 ```
 
-## What is supported
+## What is supported and what is rejected
 
-Integers `u1`..`u8`, `s1`..`s8` (fixed byte order, byte order decided at run
-time, `endian: switch-on`), bit fields `b1`..`b64` with `bit-endian`, floats
-as raw bits with the accessor pair, bytes and strings with `size`,
-`size-eos`, `terminator` (also several bytes), `pad-right`, `include`,
-`consume`, `eos-error`, string encodings, `contents`, `valid` (`eq`, `min`,
-`max`, range, `any-of`, `in-enum`, `expr`; also on repetitions of integers of a fixed size), `if`, enumerations, `switch-on`
-with structures or with integers (on integers, enumerations, strings or bytes, with byte-array cases; also a switch that has only `_`), `size`, `size-eos`, `terminator` and
-`pad-right` on fields of a type (the value is parsed from the cut bytes),
-`repeat: expr/eos/until` (structures and byte/string elements with a cursor,
-integers and floats of a fixed size as a slice), value instances (integer,
-boolean, enumeration, bytes, string), parse instances with `pos`, `size` and
-`io: _root._io`, parameters of integer, boolean or enumeration type, nested
-types by path, doc strings as comments.
+The backend translates a construct with the meaning it has in Kaitai Struct,
+or it rejects the description with an error that names the construct and the
+path of the attribute:
 
-`_parent` and `_root` (as parameters of `Parse`, for integers, booleans and
-enumerations, chains such as `_parent._parent.x` included), `process` (`xor`
-with a byte or a bytes key, `rol`, `ror`, `zlib`; the accessor undoes it into
-an array of the caller), types that contain themselves (directly or through a
-repetition, with `Depth`; `--ada-max-depth N` sets `Max_Depth`, default 8),
-imports (a type of another description is `<Package>.T`; all files of a
-compilation are written).
+```
+(main): /instances/v:
+	error: not supported by the Ada backend: floating-point arithmetic
+```
 
-Expressions: integer arithmetic in S64 with the guards of `Kaitai.Arithmetic`
-(dropped where interval arithmetic shows they hold), comparisons, `and`,
-`or`, `not`, `?:`, enumeration labels, fields of nested values, `.size` of
-repetitions, `_io.size/pos/eof`, `.length`, `.to_i` (of a literal as well: computed by the compiler), `.min/.max/.first/.last`
-of bytes, subscripts of bytes and of repetitions of integers of a fixed size, comparison of bytes and strings with literals (of any characters in the encodings above), integers up to 2**64-1 as operands of a comparison with an unsigned field and as the value of an instance, enumerations with values up to 2**64-1 on unsigned fields, `sizeof` and `_sizeof` (also `x._sizeof`).
+It does not generate an approximation. `compiler/SURVEY.md` lists what
+happens to each of the 334 formats of the Kaitai Struct test suite, and
+`docs/codegen.md` describes the generated code for everything in the column
+"Generated".
 
-## What is rejected
+### Fields
 
-Each of these is a compile error that names the construct and the path of
-the attribute: types that contain each other (also through imports; only a
-type that contains itself is supported), `_parent` in the top-level type of a
-description, `_root` in a type of another description that is used from
-elsewhere or in a description whose top-level type contains itself, the
-key `parent` on a field whose type uses `_parent`, `_parent`/`_root` values
-that are not integers, booleans or enumerations, `process` that is custom, on a string, on a repeated field, on
-a switch field or on a parse instance, and an expression or `valid` that
-depends on a processed value, opaque types, floating-point arithmetic, integers above 2**63-1 in arithmetic, compared with signed values, or in enumerations of signed fields,
-string concatenation, `substring`, `reverse`, `to_s`, array subscripts and
-arrays in expressions beyond `.size` and subscripts of repetitions of other elements, `_index`, casts, parameters of other
-types, `repeat` on parse instances or on switch fields, `valid` on other repeated
-fields, parse instances used in expressions, encodings `UTF-16` without byte
-order, `UTF-32` and the like, encoding names that Kaitai Struct does not know, `valid` on a field whose type is chosen by
-`switch-on` unless all its cases are integers and it has a `_` case (`in-enum` never), `to_i` of strings in UTF-16, comparisons of
-strings in different encodings other than ASCII and UTF-8, string literals with a character that the compiler cannot encode (it encodes ASCII, UTF-8, ISO-8859-1, UTF-16LE and UTF-16BE, and only ASCII characters in other encodings such as SJIS or IBM437), the ordering of strings in other encodings than ASCII, UTF-8 and ISO-8859-1, and `.length` of
-strings in Shift_JIS, Big5 or EUC-KR.
+| Construct | Generated | Rejected |
+|---|---|---|
+| Integers | `u1` .. `u8`, `s1` .. `s8`; fixed byte order, byte order decided at run time, `endian: switch-on` | – |
+| Bit fields | `b1` .. `b64` with `bit-endian`; a type that starts with bit fields goes on in the byte that the bit fields before it left open, as in the other targets (see "Fields" in `docs/codegen.md`) | the top-level type of another description that starts with bit fields, used where the stream may be inside a byte |
+| Floats | `f4`, `f8` as their bits, with a second accessor for the value if it is finite | any expression with a float, also a comparison ("floating-point arithmetic") |
+| Bytes and strings | `size`, `size-eos`, `terminator` (also of several bytes), `pad-right`, `include`, `consume`, `eos-error`, `contents` | – |
+| String encodings | `ASCII`, `UTF-8`, `UTF-16LE`, `UTF-16BE`, which are checked when a string is parsed; the other encodings that Kaitai Struct knows (`ISO-8859-1`, `Shift_JIS`, `IBM437`, ...), whose strings are delivered as their bytes without a check | `UTF-16` without a byte order, `UTF-32`, `UTF-32LE`, `UTF-32BE`; a name that Kaitai Struct does not know |
+| `valid` | `eq`, `min`, `max`, range, `any-of`, `in-enum`, `expr`; on a repetition of integers of a fixed size; on a field whose type is chosen by `switch-on`, if all cases are integers and there is a `_` case | on other repeated fields; on other fields with `switch-on`, and `in-enum` on any of them |
+| `if` | yes | – |
+| Enumerations | on integers; with values up to 2**64-1 on unsigned fields | values above 2**63-1 on signed fields or together with negative values |
+| User types | nested types by path; `size`, `size-eos`, `terminator` and `pad-right` on a field of a type (the value is parsed from the bytes that are cut out); imports (a type of another description is `<Package>.T`; all files of a compilation are written) | opaque types; types that contain each other, also through imports |
+| Types that contain themselves | directly or through a repetition, with the parameter `Depth` (`--ada-max-depth N` sets `Max_Depth`, default 8) | a field whose type depends on a value and can be the type itself; `valid` on a field of its own type |
+| `switch-on` | on integers, enumerations, strings or bytes; cases that are structures, integers or byte arrays; a switch that has only the `_` case | – |
+| `repeat` | `expr`, `eos`, `until`; structures, bytes and strings with a cursor, integers and floats of a fixed size as a slice | on a field with `switch-on`; on a parse instance; `_index` |
+| `process` | `xor` with a byte or with a key of bytes, `rol`, `ror`, `zlib`; the accessor undoes it into an array of the caller | a custom process; on a string, a repeated field, a field with `switch-on` or a parse instance; an expression or a `valid` that depends on a processed value |
+| Parameters | integer, boolean, enumeration | any other type (strings, bytes, user types, arrays, streams) |
+| `_parent`, `_root` | for values that are integers, booleans or enumerations, chains such as `_parent._parent.x` included; they become parameters of `Parse` | other values (a string, bytes, a user type, `_parent._io`); `_parent` in the top-level type; `_root` in a type of another description that is used from elsewhere, or in a description whose top-level type contains itself; the key `parent` on a field whose type uses `_parent` |
+| Instances | with a value: integer, boolean, enumeration, and bytes or a string that is a field (`value: name`); with a position: `pos`, `size`, `io: _root._io` | a value of bytes or a string that is not a field (a literal, a concatenation); an instance with a position that is used in an expression, has `repeat` or `process` |
+| `doc`, `doc-ref` | as comments | – |
 
-A type that starts with bit fields goes on in the byte that the bit fields
-before it left open, as in the other targets. Where it is certainly entered
-at a byte boundary, its `Parse` keeps a leading `Align_To_Byte` and has the
-precondition that no bits are left; see "Fields" and "What differs" in
-`docs/codegen.md`. The one use that is rejected is that of the top-level type
-of another description, which has the precondition, where the stream may be
-inside a byte.
+### Expressions
+
+| Construct | Generated | Rejected |
+|---|---|---|
+| Integer arithmetic | `+ - * / %`, shifts, bit operations, in `Kaitai.Types.S64`. An operation that would overflow or divide by zero makes the expression undefined (see "Expressions" in `docs/codegen.md`); the check is left out where the compiler can show that it holds | – |
+| Integers above 2**63-1 (up to 2**64-1) | as an operand of a comparison with an unsigned field or with another literal (`x >= 9223372036854775808`), in `valid` on an unsigned field, and as the whole value of an instance; these are computed in `Kaitai.Types.U64` | as an operand of arithmetic (`x + 9223372036854775808`, `18446744073709551615 - 1`); compared with a signed field or with an expression. The message is "integer literal ... does not fit into 64 bits", which means the 64 bits with a sign that expressions are computed in |
+| A `u8` field in arithmetic | `x + 1` is computed in `S64`; for a value of `x` above 2**63-1 the expression is not defined, which `Has_...` of the instance tells | – |
+| Comparisons, `and`, `or`, `not`, `?:` | yes | – |
+| Enumerations | labels, comparison, `.to_i` | – |
+| Strings | comparison with a literal of any characters (the compiler encodes the literal for ASCII, UTF-8, ISO-8859-1, UTF-16LE and UTF-16BE) and with each other; `<`, `>` for ASCII, UTF-8 and ISO-8859-1; `.length`; `.to_i` (of a literal: computed by the compiler) | `+` (concatenation), `substring`, `reverse`, `to_s` of an integer; a literal with a character that is not ASCII for a string in another encoding (`Shift_JIS`, `IBM437`, ...); comparison of strings in different encodings other than ASCII and UTF-8; `<`, `>` in other encodings; `.length` in `Shift_JIS`, `Big5` or `EUC-KR`; `.to_i` in UTF-16 |
+| Bytes | comparison, `.length`, `.first`, `.last`, `.min`, `.max`, subscripts | – |
+| Repetitions | `.size`; subscripts of a repetition of integers of a fixed size | `.first`, `.last`, `.min`, `.max` and other uses of an array; subscripts of other repetitions |
+| `_io.size`, `_io.pos`, `_io.eof` | in the expressions of fields (`size`, `if`, `repeat-expr`, ...) | in a value instance |
+| Fields of nested values, `sizeof<t>`, `_sizeof`, `x._sizeof` | yes | – |
+| Casts (`.as<...>`) | – | all |
 
 ## Writing
 

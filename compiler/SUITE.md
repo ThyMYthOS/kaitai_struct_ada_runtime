@@ -6,21 +6,21 @@ commit `4108136c807f8df88df843de6571f1a7bf29c74e`, with the backend and the
 runtime library of this commit. The test programs were built with
 `-gnat2012 -gnata -gnatwa` and with the contracts of the library executed;
 no program raised an exception, so no precondition or postcondition of a
-generated parser was violated by any of these tests. The build log has no
-warnings.
+generated parser was violated by any of these tests. The build log of this
+run has no warnings (the round trip run below is different).
 
 First run (before the backend learned `process`, `_parent`/`_root`, recursion,
 imports and the fixes below): 167 passed, 8 failed, 145 not generated, 175
-parsers. This run: 211 parsers, 210 test programs.
+parsers. This run: 223 parsers, 222 test programs.
 
 | Result | Tests |
 |---|---|
-| passed | 209 |
+| passed | 221 |
 | failed | 0 |
 | error | 0 |
 | known difference | 1 |
 | build failed | 0 |
-| not generated | 109 |
+| not generated | 97 |
 | not translated | 1 |
 | total | 320 |
 
@@ -40,6 +40,7 @@ fail. The exit status of this run is 0.
 | Test | Class | Verdict |
 |---|---|---|
 | `nav_root_recursive` | not generated | rejected since this suite showed that it was translated wrongly |
+| `str_encodings_escaping_enc` | not generated | rejected since the comparison with the Python parsers showed that its test passed without testing |
 | `debug_array_user_eof_exception` | known difference | documented difference (assumption of the test) |
 | `nested_types_import` | not translated | AdaSG limit, by design |
 
@@ -66,18 +67,34 @@ top-level type contains itself.
 
 ### A test that passed without testing (`valid_switch`)
 
-`valid_switch` has `valid` on a field whose type is chosen by `switch-on`. The
-backend generated the parser without the check, and the test passed, because
-its data satisfies the check. A review of what the backend reads of a
-description found this, not the suite. The backend now rejects the construct,
-so the test is `not generated`. A passed test says that the asserts hold for
-its data, not that every key of the description has its effect.
+`valid_switch` has `valid` on a field whose type is chosen by `switch-on`. An
+earlier backend generated the parser without the check, and the test passed,
+because its data satisfies the check. A review of what the backend reads of a
+description found this, not the suite, and the backend rejected the construct
+for a while. It now generates the check (after the cases, on the value that was
+read), when all cases are integers and there is a `_` case, and the test passes
+with the check in place; `examples/valid_switch` tests that another value is
+rejected. A passed test says that the asserts hold for its data, not that every
+key of the description has its effect.
 
-The same review found that a type whose first field is a bit field starts at
+The same review found that a type whose first field is a bit field started at
 a byte boundary here, while the other targets go on in the open byte. The
-backend now rejects such a type where the stream may be inside a byte.
-`default_bit_endian_mod` uses one as the first field of another type; its
-test passed, since nothing is read before it, and it is `not generated` now.
+backend rejected such a type where the stream may be inside a byte, and
+`default_bit_endian_mod`, which uses one as the first field of another type,
+was `not generated` for a while (its test had passed, since nothing is read
+before the bit field). A type that starts with bit fields goes on in the open
+byte now, so `default_bit_endian_mod` is generated again and passes.
+
+### An encoding name that nothing knows (`str_encodings_escaping_enc`)
+
+The format is about escaping the names of encodings in generated code; its
+encodings are `ASCII\\x`, `UTF-8\'x`, `SJIS\"x` and `IBM437\nx`. The Ada
+parser took a name that it did not know for an encoding of one byte per
+character, which accepts every byte, so the test passed. The Python parser
+fails there at run time (`LookupError: unknown encoding`), and so does any
+other target; the comparison with the Python parsers (`DIFF.md`) found the
+difference. The backend now rejects an encoding name that Kaitai Struct does
+not know, so the format is `not generated` and its test is no longer run.
 
 ### Partial results after a failed parse (`debug_array_user_eof_exception`)
 
@@ -100,66 +117,50 @@ tests partially).
 
 ### passed
 
-bits_byte_aligned, bits_byte_aligned_eof_be, bits_byte_aligned_eof_le, bits_enum, bits_seq_endian_combo, bits_shift_by_b32_le, bits_shift_by_b64_le, bits_signed_res_b32_be, bits_signed_res_b32_le, bits_signed_shift_b32_le, bits_signed_shift_b64_le, bits_simple, bits_simple_le, bits_unaligned_b32_be, bits_unaligned_b32_le, bits_unaligned_b64_be, bits_unaligned_b64_le, buffered_struct, bytes_eos_pad_term, bytes_pad_term, bytes_pad_term_empty, bytes_pad_term_equal, bytes_pad_term_roundtrip, bytes_pad_term_zero_size, combine_bool, combine_enum, debug_0, debug_array_user, debug_enum_name, debug_switch_user, default_big_endian, default_endian_expr_exception, default_endian_expr_inherited, default_endian_expr_is_be, default_endian_expr_is_le, default_endian_mod, docstrings, docstrings_docref, docstrings_docref_multi, enum_0, enum_1, enum_deep, enum_deep_literals, enum_fancy, enum_if, enum_import_literals, enum_import_seq, enum_int_range_s, enum_int_range_u, enum_invalid, enum_long_range_s, enum_negative, enum_of_value_inst, eof_exception_bits_be, eof_exception_bits_be2, eof_exception_bits_le, eof_exception_bits_le2, eof_exception_bytes, eof_exception_sized, eof_exception_switch_user, eof_exception_u4, eos_exception_bytes, eos_exception_sized, eos_exception_u4, expr_1, expr_bits, expr_enum, expr_if_int_eq, expr_int_div, expr_io_eof_bits, expr_io_pos, expr_io_pos_bits, expr_mod, expr_sizeof_type_0, expr_sizeof_type_1, fixed_contents, fixed_struct, hello_world, if_instances, if_struct, if_values, imports0, imports_abs_abs, imports_abs_rel, imports_params_def_enum_imported, imports_rel_1, instance_std, integers, integers_double_overflow, integers_min_max, js_signed_right_shift, meta_tags, meta_xref, multiple_use, name_clash_import_vs_inst, nav_parent, nav_parent_false2, nav_parent_switch, nav_root, nested_same_name, nested_same_name2, nested_type_param, nested_types, nested_types2, nested_types3, non_standard, optional_id, params_call, params_call_extra_parens, params_enum, params_pass_bool, position_abs, position_to_end, process_bytes_pad_term, process_rotate, process_struct_pad_term, process_to_user, process_xor4_const, process_xor4_value, process_xor_const, process_xor_value, repeat_eos_bytes, repeat_eos_bytes_pad, repeat_eos_bytes_pad_term, repeat_eos_struct, repeat_eos_term_bytes, repeat_eos_term_struct, repeat_eos_u4, repeat_n_bytes, repeat_n_bytes_pad, repeat_n_bytes_pad_term, repeat_n_struct, repeat_n_strz, repeat_n_strz_double, repeat_n_term_bytes, repeat_n_term_struct, repeat_until_bytes, repeat_until_bytes_pad, repeat_until_bytes_pad_term, repeat_until_complex, repeat_until_s4, repeat_until_sized, str_encodings, str_encodings_default, str_encodings_escaping_enc, str_encodings_utf16, str_eos, str_eos_pad_term, str_eos_pad_term_empty, str_eos_pad_term_equal, str_pad_term, str_pad_term_empty, str_pad_term_equal, str_pad_term_roundtrip, str_pad_term_utf16, str_pad_term_zero_size, struct_pad_term, struct_pad_term_equal, switch_integers, switch_manual_enum, switch_manual_enum_invalid, switch_manual_enum_invalid_else, switch_manual_int, switch_manual_int_else, switch_manual_int_size, switch_manual_int_size_else, switch_manual_int_size_eos, switch_manual_str, switch_manual_str_else, switch_multi_bool_ops, term_bytes, term_bytes2, term_bytes3, term_bytes4, term_struct, term_struct2, term_struct3, term_struct4, term_strz, term_strz2, term_strz3, term_strz4, term_strz_utf16_v1, term_strz_utf16_v2, term_strz_utf16_v3, term_strz_utf16_v4, term_u1_val, ts_packet_header, type_int_unary_op, user_type, valid_fail_anyof_int, valid_fail_contents, valid_fail_eq_bytes, valid_fail_eq_int, valid_fail_eq_str, valid_fail_expr, valid_fail_in_enum, valid_fail_max_int, valid_fail_min_int, valid_fail_range_bytes, valid_fail_range_int, valid_fail_repeat_anyof_int, valid_fail_repeat_eq_int, valid_fail_repeat_max_int, valid_fail_repeat_min_int, valid_not_parsed_if, valid_optional_id, zlib_surrounded, zlib_with_header_78
+bits_byte_aligned, bits_byte_aligned_eof_be, bits_byte_aligned_eof_le, bits_enum, bits_seq_endian_combo, bits_shift_by_b32_le, bits_shift_by_b64_le, bits_signed_res_b32_be, bits_signed_res_b32_le, bits_signed_shift_b32_le, bits_signed_shift_b64_le, bits_simple, bits_simple_le, bits_unaligned_b32_be, bits_unaligned_b32_le, bits_unaligned_b64_be, bits_unaligned_b64_le, buffered_struct, bytes_eos_pad_term, bytes_pad_term, bytes_pad_term_empty, bytes_pad_term_equal, bytes_pad_term_roundtrip, bytes_pad_term_zero_size, combine_bool, combine_enum, debug_0, debug_array_user, debug_enum_name, debug_switch_user, default_big_endian, default_bit_endian_mod, default_endian_expr_exception, default_endian_expr_inherited, default_endian_expr_is_be, default_endian_expr_is_le, default_endian_mod, docstrings, docstrings_docref, docstrings_docref_multi, enum_0, enum_1, enum_deep, enum_deep_literals, enum_fancy, enum_if, enum_import_literals, enum_import_seq, enum_int_range_s, enum_int_range_u, enum_invalid, enum_long_range_s, enum_long_range_u, enum_negative, enum_of_value_inst, eof_exception_bits_be, eof_exception_bits_be2, eof_exception_bits_le, eof_exception_bits_le2, eof_exception_bytes, eof_exception_sized, eof_exception_switch_user, eof_exception_u4, eos_exception_bytes, eos_exception_sized, eos_exception_u4, expr_1, expr_bits, expr_enum, expr_if_int_eq, expr_int_div, expr_io_eof_bits, expr_io_pos, expr_io_pos_bits, expr_mod, expr_sizeof_type_0, expr_sizeof_type_1, expr_sizeof_value_0, expr_sizeof_value_sized, expr_to_i_trailing, fixed_contents, fixed_struct, hello_world, if_instances, if_struct, if_values, imports0, imports_abs_abs, imports_abs_rel, imports_params_def_enum_imported, imports_rel_1, instance_std, integers, integers_double_overflow, integers_min_max, js_signed_right_shift, meta_tags, meta_xref, multiple_use, name_clash_import_vs_inst, nav_parent, nav_parent_false2, nav_parent_switch, nav_root, nested_same_name, nested_same_name2, nested_type_param, nested_types, nested_types2, nested_types3, non_standard, optional_id, params_call, params_call_extra_parens, params_enum, params_pass_bool, position_abs, position_to_end, process_bytes_pad_term, process_rotate, process_struct_pad_term, process_to_user, process_xor4_const, process_xor4_value, process_xor_const, process_xor_value, repeat_eos_bytes, repeat_eos_bytes_pad, repeat_eos_bytes_pad_term, repeat_eos_struct, repeat_eos_term_bytes, repeat_eos_term_struct, repeat_eos_u4, repeat_n_bytes, repeat_n_bytes_pad, repeat_n_bytes_pad_term, repeat_n_struct, repeat_n_strz, repeat_n_strz_double, repeat_n_term_bytes, repeat_n_term_struct, repeat_until_bytes, repeat_until_bytes_pad, repeat_until_bytes_pad_term, repeat_until_complex, repeat_until_s4, repeat_until_sized, str_encodings, str_encodings_default, str_encodings_utf16, str_eos, str_eos_pad_term, str_eos_pad_term_empty, str_eos_pad_term_equal, str_literals_latin1, str_pad_term, str_pad_term_empty, str_pad_term_equal, str_pad_term_roundtrip, str_pad_term_utf16, str_pad_term_zero_size, struct_pad_term, struct_pad_term_equal, switch_bytearray, switch_else_only, switch_integers, switch_manual_enum, switch_manual_enum_invalid, switch_manual_enum_invalid_else, switch_manual_int, switch_manual_int_else, switch_manual_int_size, switch_manual_int_size_else, switch_manual_int_size_eos, switch_manual_str, switch_manual_str_else, switch_multi_bool_ops, term_bytes, term_bytes2, term_bytes3, term_bytes4, term_struct, term_struct2, term_struct3, term_struct4, term_strz, term_strz2, term_strz3, term_strz4, term_strz_utf16_v1, term_strz_utf16_v2, term_strz_utf16_v3, term_strz_utf16_v4, term_u1_val, ts_packet_header, type_int_unary_op, user_type, valid_fail_anyof_int, valid_fail_contents, valid_fail_eq_bytes, valid_fail_eq_int, valid_fail_eq_str, valid_fail_expr, valid_fail_in_enum, valid_fail_max_int, valid_fail_min_int, valid_fail_range_bytes, valid_fail_range_int, valid_fail_range_str, valid_fail_repeat_anyof_int, valid_fail_repeat_eq_int, valid_fail_repeat_max_int, valid_fail_repeat_min_int, valid_long, valid_not_parsed_if, valid_optional_id, valid_short, valid_switch, yaml_ints, zlib_surrounded, zlib_with_header_78
 
 ### not generated: why the backend rejects the format
 
 | Count | Reason | Tests |
 |---|---|---|
 | 11 | parameter of a type other than integer, boolean or enumeration | imports_cast_to_imported, imports_cast_to_imported2, imports_params_def_usertype_imported, params_pass_array_int, params_pass_array_io, params_pass_array_str, params_pass_array_struct, params_pass_array_usertype, params_pass_io, params_pass_struct, params_pass_usertype |
-| 6 | `_parent` ... | debug_array_user_current_excluded, nav_parent_recursive, nav_parent_vs_value_inst, process_repeat_usertype_dynarg_custom, process_repeat_usertype_dynarg_rotate, process_repeat_usertype_dynarg_xor |
 | 6 | parse instance used in an expression | instance_in_repeat_expr, instance_in_repeat_until, instance_in_sized, position_in_seq, valid_fail_contents_inst, valid_fail_inst |
-| 5 | field with process used in an expression | expr_if_int_ops, process_coerce_bytes, process_coerce_usertype1, process_coerce_usertype2, type_ternary |
+| 5 | a value of `_parent` or `_root` that is not an integer, a boolean or an enumeration | debug_array_user_current_excluded, nav_parent_vs_value_inst, process_repeat_usertype_dynarg_custom, process_repeat_usertype_dynarg_rotate, process_repeat_usertype_dynarg_xor |
+| 5 | cast (`.as<...>`) | cast_nested, cast_to_top, expr_bytes_non_literal, imports_abs, io_local_var |
+| 5 | expression that depends on a processed value | expr_if_int_ops, process_coerce_bytes, process_coerce_usertype1, process_coerce_usertype2, type_ternary |
+| 5 | repeated field (only `.size` is supported) | expr_array, imports_params_def_array_usertype_imported, repeat_until_calc_array_type, repeat_until_term_bytes, repeat_until_term_struct |
 | 4 | `.to_s` of an integer | bcd_user_type_be, bcd_user_type_le, enum_to_i, enum_to_i_invalid |
-| 4 | cast (`.as<...>`) | cast_nested, cast_to_top, expr_bytes_non_literal, io_local_var |
 | 4 | floating-point arithmetic | expr_ops_parens, float_to_i, floating_points, valid_fail_range_float |
+| 4 | repetition of bit fields or of a field whose type depends on a value | repeat_eos_bits_b1, repeat_eos_bits_b4, switch_repeat_expr, switch_repeat_expr_invalid |
 | 4 | value instance of bytes or string that is not a field | combine_bytes, combine_str, expr_bytes_cmp, expr_bytes_ops |
-| 3 | subscript of something that is not bytes or a repetition of integers | index_to_param_eos, index_to_param_expr, index_to_param_until |
-| 3 | string literal with characters outside printable ASCII | expr_str_encodings, str_literals_latin1, valid_eq_str_encodings |
-| 3 | parse instance with `repeat` | instance_std_array, instance_user_array, valid_fail_repeat_inst |
+| 3 | `_parent` or `_root` followed by a member that the type does not have (`_io`) | instance_io_user, instance_io_user_earlier, nav_parent_switch_cast |
 | 3 | custom `process` | process_custom, process_custom_no_args, process_term_struct |
-| 3 | integer literal that does not fit into 64 bits does not fit into 64 bits | valid_long, valid_short, yaml_ints |
-| 2 | `valid` on a repeated field that is not a repetition of integers of a fixed size | valid_fail_repeat_contents, valid_fail_repeat_expr |
-| 2 | string concatenation | expr_0, expr_3 |
-| 2 | parse instance whose type depends on a value | nav_parent2, nav_parent3 |
-| 2 | opaque type | opaque_external_type, type_ternary_opaque |
+| 3 | parse instance with `repeat` | instance_std_array, instance_user_array, valid_fail_repeat_inst |
+| 3 | subscript of something that is not bytes or a repetition of integers | index_to_param_eos, index_to_param_expr, index_to_param_until |
 | 2 | `process` on a repeated field | process_repeat_bytes, process_repeat_usertype |
-| 2 | repeated field `records1` (only `.size` is supported) | repeat_until_term_bytes, repeat_until_term_struct |
-| 2 | switch on VBytes | switch_bytearray, switch_else_only |
-| 2 | repetition of a field whose type depends on a value | switch_repeat_expr, switch_repeat_expr_invalid |
-| 1 | `_index` | index_sizes |
-| 1 | enum value 18446744073709551615 does not fit into 64 bits | enum_long_range_u |
-| 1 | types enum_to_i_class_border_1 and enum_to_i_class_border_2 contain each other (only a type that contains itse | enum_to_i_class_border_1 |
-| 1 | parse instance `char5` of a nested value | expr_2 |
-| 1 | repeated field `afloat` (only `.size` is supported) | expr_array |
-| 1 | array literal that is not a list of bytes | expr_calc_array_ops |
-| 1 | string interpolation | expr_fstring_0 |
-| 1 | `_io` ... | expr_io_eof |
-| 1 | conditional expression that is not an integer or a boolean | expr_io_ternary |
-| 1 | expr_sizeof_value_0: /: error: invalid ID: '_sizeof', expected /^[a-z][a-z0-9_]*$/ | expr_sizeof_value_0 |
-| 1 | expr_sizeof_value_sized: /: error: invalid ID: '_sizeof', expected /^[a-z][a-z0-9_]*$/ | expr_sizeof_value_sized |
-| 1 | `.reverse` of a string | expr_str_ops |
-| 1 | `.to_i` of a string literal | expr_to_i_trailing |
-| 1 | : /meta/imports/0: error: unable to find 'common/vlq_base128_le.ksy' in import search paths,  | imports_abs |
-| 1 | types imports_circular_b and imports_circular_a contain each other (only a type that contains itself is suppor | imports_circular_a |
-| 1 | repeated field `hws` (only `.size` is supported) | imports_params_def_array_usertype_imported |
-| 1 | `_root.strings._io`: no such member in type instance_io_user | instance_io_user |
-| 1 | `_parent.sized_b._io`: no such member in the type that has the field | instance_io_user_earlier |
+| 2 | `valid` on a repeated field that is not a repetition of integers of a fixed size | valid_fail_repeat_contents, valid_fail_repeat_expr |
+| 2 | opaque type | opaque_external_type, type_ternary_opaque |
+| 2 | parse instance whose type depends on a value | nav_parent2, nav_parent3 |
+| 2 | string concatenation | expr_0, expr_3 |
+| 2 | string literal with a character that the backend cannot encode (a string in Shift_JIS) | expr_str_encodings, valid_eq_str_encodings |
 | 2 | the key `parent` on a field of a type that uses `_parent` | nav_parent_false, nav_parent_override |
-| 1 | `_parent._parent`: no such member in the type that has the field | nav_parent_switch_cast |
+| 2 | types that contain each other | enum_to_i_class_border_1, imports_circular_a |
+| 1 | `.reverse` of a string | expr_str_ops |
+| 1 | `_index` | index_sizes |
+| 1 | `_io` in a value instance | expr_io_eof |
+| 1 | `_parent` used as a value | nav_parent_recursive |
 | 1 | `_root` in a description whose top-level type contains itself | nav_root_recursive |
-| 1 | `valid` on a field whose type depends on a value | valid_switch |
-| 1 | a type that starts with a bit field, used where the stream may be inside a byte | default_bit_endian_mod |
 | 1 | `process` in a field whose type depends on a value | process_coerce_switch |
 | 1 | a field whose type depends on a value and can be the type itself | recursive_one |
-| 1 | repetition of BitsType1(BigBitEndian) | repeat_eos_bits_b1 |
-| 1 | repetition of BitsType(4,BigBitEndian) | repeat_eos_bits_b4 |
-| 1 | repeated field `records` (only `.size` is supported) | repeat_until_calc_array_type |
-| 1 | method `to_s` | str_encodings_escaping_to_s |
-| 1 | value instance that needs the buffer in a type without slices | str_literals2 |
+| 1 | array literal that is not a list of bytes | expr_calc_array_ops |
+| 1 | conditional expression that is not an integer or a boolean | expr_io_ternary |
+| 1 | encoding name that Kaitai Struct does not know (`ASCII\\x`) | str_encodings_escaping_enc |
 | 1 | field whose type depends on a value, used in an expression | switch_integers2 |
-| 1 | value instance of type CalcUserType(List(foo),None,List(),false) | type_ternary_2nd_falsy |
-| 1 | comparison of VStr(ASCII) with VStrLit(P) | valid_fail_range_str |
+| 1 | method `to_s` | str_encodings_escaping_to_s |
+| 1 | parse instance of a nested value | expr_2 |
+| 1 | string interpolation | expr_fstring_0 |
+| 1 | value instance of a user type | type_ternary_2nd_falsy |
+| 1 | value instance that needs the buffer in a type without slices | str_literals2 |
 
 
 ## Notes on the generator
@@ -179,13 +180,17 @@ bits_byte_aligned, bits_byte_aligned_eof_be, bits_byte_aligned_eof_le, bits_enum
 - Types that contain themselves: a top-level type that does is parsed with
   `<Pkg>.Max_Depth`; a field of that type is read with its procedure and
   checked with `Valid`.
-- Not covered because no test needs it: asserts with `exception` for the access
-  to a value (`AdaSG` reports such a test as `not translated`), parameters of
+- An assert with `exception` for the access to a value is translated only for
+  `ConversionError` (`"9173abc".to_i`): the instance is not defined, which is
+  what the parsers report for a value that cannot be computed. Any other
+  exception on an access is reported as `not translated`. A switch that has one
+  type of case, and an enumeration value above 2**63-1, are read by `AdaSG` as
+  the compiler generates them (`switch_else_only`, `enum_long_range_u`).
+- Not covered because no test needs it: parameters of
   the top-level type (a `.kst` has no way to give them; `ADA_SG_TOP_ARGS` is an
   escape for experiments).
-- `--round-trip` (see `compiler/README.md`) is only tried with
-  `examples/write_model`, where it prints `round trip: same`; the compiler option
-  `--read-write` was not available to try it on the suite.
+- `--round-trip` (see `compiler/README.md`) is described in "Round trip"
+  below.
 
 ## Round trip
 
@@ -208,22 +213,29 @@ Totals of the run:
 
 | Result | Tests |
 |---|---|
-| passed (`round trip: same`) | 176 |
+| passed (`round trip: same`) | 187 |
 | canonical | 23 |
 | failed | 0 |
 | error | 0 |
 | build failed | 0 |
 | known difference | 1 |
-| not generated | 119 |
+| not generated | 108 |
 | not translated | 1 |
 | total | 320 |
 
-`--read-write` rejects 10 more formats than the plain run: `non_standard`,
-`switch_integers`, `switch_multi_bool_ops` (an integer of different kinds
-chosen by a value), `str_pad_term_utf16`, `term_strz_utf16_v1`
-to `v4` (a terminator of more than one byte), `struct_pad_term`,
-`struct_pad_term_equal` (a value cut from bytes with a size and a terminator
-or padding).
+29 of the 211 test programs of this run print no `round trip` line: the input
+of the test makes `Parse` fail, so there is no value to write. The build log of this run is not free of warnings, unlike
+that of the plain run: all 211 test programs have `-gnatwu` or `-gnatwk`
+warnings about helper declarations that the program does not use (`S`,
+`Undefined_Again`, `Values_Hold`, `Num`, `Values_Differ`); no generated
+parser has a warning.
+
+`--read-write` rejects 11 more tests than the plain run: `non_standard`,
+`switch_integers`, `switch_multi_bool_ops`, `valid_switch` (an integer of
+different kinds chosen by a value; in `valid_switch` they are `u2le` and
+`u2be`), `str_pad_term_utf16`, `term_strz_utf16_v1` to `v4` (a terminator of
+more than one byte), `struct_pad_term`, `struct_pad_term_equal` (a value cut
+from bytes with a size and a terminator or padding).
 
 ### The 23 canonical tests, by cause
 
@@ -234,8 +246,7 @@ these tests `Write` produced as many bytes as `Parse` consumed.
 |---|---|
 | bits that no field reads are written as zero | `bits_byte_aligned`, `bits_enum`, `bits_seq_endian_combo`, `combine_bool`, `expr_bits`, `params_pass_bool` |
 | padding, and what follows a terminator in a field with a size, is written with the padding byte | `bytes_pad_term`, `bytes_pad_term_empty`, `bytes_pad_term_equal`, `bytes_eos_pad_term`, `str_pad_term`, `str_pad_term_empty`, `str_pad_term_equal`, `str_eos_pad_term`, `str_eos_pad_term_empty`, `str_eos_pad_term_equal`, `process_bytes_pad_term`, `process_struct_pad_term`, `repeat_eos_bytes_pad_term`, `repeat_n_bytes_pad_term`, `repeat_until_bytes_pad_term` |
-| the unused rest of a substream is written as zeros | `buffered_struct` |
-| a type that has only instances with `pos` is not written, so its substream is zeros | `str_encodings_escaping_enc` |
+| the unused rest of a substream is written as zeros | `buffered_struct`, `expr_sizeof_value_sized` |
 
 ### What the first round trip found
 

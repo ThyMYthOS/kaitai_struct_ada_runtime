@@ -12,11 +12,11 @@ at worst be rejected. GNATprove proves the library and the generated parsers
 automatically.
 
 **Status:** usable for a large part of the language, not complete. The
-compiler generates parsers for 213 of the 334 formats of the Kaitai Struct
+compiler generates parsers for 227 of the 334 formats of the Kaitai Struct
 test suite, all of them proven, and rejects the rest with an error that names
 the construct; [compiler/SURVEY.md](compiler/SURVEY.md) has the list. Of the
-320 tests of that suite 209 pass, one fails because of a documented
-difference, one cannot be translated, and 109 are for formats that are
+320 tests of that suite 221 pass, one fails because of a documented
+difference, one cannot be translated, and 97 are for formats that are
 rejected ([compiler/SUITE.md](compiler/SUITE.md)). With the option
 `--read-write` the compiler also generates `Write`, which writes a parsed
 value again. There are no operations yet that change a value or build one

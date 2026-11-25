@@ -7,6 +7,7 @@ with Default_Endian_Expr_Is_Le;
 with Enum_0;
 with Expr_1;
 with Expr_Sizeof_Type_0;
+with Expr_Sizeof_Value_Sized;
 with Fixed_Struct;
 with Hello_World;
 with If_Struct;
@@ -631,6 +632,23 @@ package body Examples_Tests is
       end if;
    end Test_Expr_Sizeof_Type_0;
 
+   procedure Test_Expr_Sizeof_Value_Sized is
+      use Expr_Sizeof_Value_Sized;
+      S    : Stream := Open (Sample_Fixed_Struct);
+      This : Expr_Sizeof_Value_Sized.T;
+   begin
+      Group ("examples expr_sizeof_value_sized");
+      Parse (Sample_Fixed_Struct, S, This);
+      Check (Valid (This), "parses");
+      if Valid (This) then
+         Check (Self_Sizeof (This) = 12 + 2, "_sizeof is the size of the type, with the size of the field it is in");
+         Check (Sizeof_Block (This) = 12, "the size of a field with a size is that size");
+         Check (Sizeof_Block_A (This) = 1, "the size of an integer");
+         Check (Sizeof_Block_B (This) = 4, "the size of a larger integer");
+         Check (Sizeof_Block_C (This) = 2, "the size of bytes with a size");
+      end if;
+   end Test_Expr_Sizeof_Value_Sized;
+
    procedure Test_Term_Struct is
       use Term_Struct;
       Data : Bytes renames Sample_Term_Strz;
@@ -990,6 +1008,7 @@ package body Examples_Tests is
       Test_Bits_Byte_Aligned;
       Test_Bytes_Pad_Term_Equal;
       Test_Expr_Sizeof_Type_0;
+      Test_Expr_Sizeof_Value_Sized;
       Test_Term_Struct;
       Test_Imports0;
       Test_Write_Bits_Enum;

@@ -62,7 +62,7 @@ Expressions: integer arithmetic in S64 with the guards of `Kaitai.Arithmetic`
 (dropped where interval arithmetic shows they hold), comparisons, `and`,
 `or`, `not`, `?:`, enumeration labels, fields of nested values, `.size` of
 repetitions, `_io.size/pos/eof`, `.length`, `.to_i`, `.min/.max/.first/.last`
-of bytes, subscripts of bytes and of repetitions of integers of a fixed size, comparison of bytes and strings with literals, `sizeof`.
+of bytes, subscripts of bytes and of repetitions of integers of a fixed size, comparison of bytes and strings with literals, `sizeof` and `_sizeof` (also `x._sizeof`).
 
 ## What is rejected
 

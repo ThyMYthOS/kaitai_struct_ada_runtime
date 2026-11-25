@@ -334,6 +334,7 @@ and a `u8` that does not fit makes the expression undefined.
 | `s.length` | `Strings.Character_Count (Buffer, S, Encoding)`; the size of the slice for an encoding of one byte per character |
 | `x.size` of a repetition | `X_Count` |
 | `_io.size`, `_io.pos`, `_io.eof` | `Size (S)`, `Pos (S)`, `Is_EOF (S)` |
+| `sizeof<t>`, `_sizeof`, `x._sizeof` | the size in bytes, a constant of the compiler; a begun byte counts as a whole one, and a type or value of dynamic size is an error of the compiler, as in the other targets |
 
 Every expression has a condition under which it is defined, the conjunction
 of what the table names for its parts, in the order of evaluation and joined

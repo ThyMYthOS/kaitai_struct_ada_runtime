@@ -143,6 +143,8 @@ object AdaTranslator {
 class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) {
   import AdaTranslator._
 
+  private val typeDetector = new TypeDetector(provider)
+
   /** Name of the buffer, if there is one in the context */
   var buffer: Option[String] = Some("Buffer")
   /** Name of the stream, if there is one in the context */
@@ -344,6 +346,10 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         case None => unsupported("`_` outside of `repeat-until` and `valid`")
       }
     case Identifier.INDEX => unsupported("`_index`")
+    case Identifier.SIZEOF =>
+      // `_sizeof` alone is the size of the current type, known at compile time
+      val n = BigInt(CommonSizeOf.getByteSizeOfClassSpec(provider.nowClass))
+      ATr(n.toString, 0, Nil, VInt, n, n, isLiteral = true)
     case _ =>
       val cs = provider.nowClass
       val member = provider.resolveMember(cs, name)
@@ -436,7 +442,11 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
   }
 
   private def translateAttribute(value: Ast.expr, attr: String): ATr = {
-    if (attr == Identifier.SIZEOF) unsupported("`_sizeof`")
+    if (attr == Identifier.SIZEOF) {
+      // `x._sizeof` is a constant of the compiler, like `sizeof<type>`
+      val n = BigInt(CommonSizeOf.bitToByteSize(CommonSizeOf.getBitsSizeOfType(value.toString, typeDetector.detectType(value))))
+      return ATr(n.toString, 0, Nil, VInt, n, n, isLiteral = true)
+    }
     if (isRootIo(value)) {
       return attr match {
         case "size" => int(s"Kaitai.Types.S64 (${useBuffer()}'Length)", 0, Nil, 0, S64Max, ub = true)

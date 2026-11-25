@@ -7,6 +7,7 @@ with Default_Endian_Expr_Is_Le;
 with Enum_0;
 with Expr_1;
 with Expr_Sizeof_Type_0;
+with Expr_Sizeof_Value_Sized;
 with Extras;
 with Fixed_Struct;
 with Hello_World;
@@ -204,6 +205,9 @@ package body Fuzz_Targets is
             return Sample_Data.Str_Pad_Term;
 
          when Expr_Sizeof_Type_0_Parser        =>
+            return Sample_Data.Fixed_Struct;
+
+         when Expr_Sizeof_Value_Sized_Parser   =>
             return Sample_Data.Fixed_Struct;
 
          when Term_Strz4_Parser                =>
@@ -496,6 +500,25 @@ package body Fuzz_Targets is
       end if;
    end Run_Expr_Sizeof_Type_0;
 
+   procedure Run_Expr_Sizeof_Value_Sized (Input : Bytes; Fields : out Natural) is
+      S : Stream := Open (Input);
+      R : Expr_Sizeof_Value_Sized.T;
+   begin
+      Fields := 0;
+      Expr_Sizeof_Value_Sized.Parse (Input, S, R);
+      pragma Assert (Expr_Sizeof_Value_Sized.Valid (R) = OK (S));
+      if Expr_Sizeof_Value_Sized.Valid (R) then
+         Fields := 1;
+         Count (Fields, Expr_Sizeof_Value_Sized.More (R) = 0);
+         Count (Fields, Expr_Sizeof_Value_Sized.Self_Sizeof (R) = 14);
+         Count (Fields, Expr_Sizeof_Value_Sized.Sizeof_Block (R) = 12);
+         Count (Fields, Expr_Sizeof_Value_Sized.Sizeof_Block_A (R) = 1);
+         Count (Fields, Expr_Sizeof_Value_Sized.Sizeof_Block_B (R) = 4);
+         Count (Fields, Expr_Sizeof_Value_Sized.Sizeof_Block_C (R) = 2);
+         Count (Fields, Expr_Sizeof_Value_Sized.Block_Type.Valid (Expr_Sizeof_Value_Sized.Block1 (R)));
+      end if;
+   end Run_Expr_Sizeof_Value_Sized;
+
    procedure Run_Subscripts (Input : Bytes; Fields : out Natural) is
       S        : Stream := Open (Input);
       R        : Subscripts.T;
@@ -778,6 +801,9 @@ package body Fuzz_Targets is
 
          when Valid_Fail_Repeat_Eq_Int_Parser  =>
             Run_Valid_Fail_Repeat_Eq_Int (Input, Fields);
+
+         when Expr_Sizeof_Value_Sized_Parser   =>
+            Run_Expr_Sizeof_Value_Sized (Input, Fields);
       end case;
    end Run;
 

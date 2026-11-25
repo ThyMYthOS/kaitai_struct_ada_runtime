@@ -1,5 +1,7 @@
 # Changelog
 
+## Unreleased
+
 ## 0.2.0 (2026-11-25)
 
 The compiler backend covers more of the language and is compared with the

@@ -9,7 +9,7 @@ It is written in SPARK and proven free of run-time errors. It uses neither
 heap nor exceptions nor the secondary stack, never copies input, and runs on
 a light run-time library on a microcontroller.
 """
-version = "0.2.0"
+version = "0.3.0-dev"
 
 authors = ["Manuel Stahl"]
 maintainers = ["Manuel Stahl <thymythos@googlemail.com>"]

@@ -166,4 +166,14 @@ package Stream_Runs is
    function Run_Status8_Returned (Data : Bytes) return U64
    with No_Inline;
 
+   --  The parsers that the compiler generates from the descriptions in
+   --  formats/, called once per record; the checksums are those of
+   --  Run_Fields4_Direct, Run_Term_Kaitai and Run_Nested_Direct
+   function Run_Generated_Fields4 (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Generated_Term (Data : Bytes) return U64
+   with No_Inline;
+   function Run_Generated_Nested (Data : Bytes) return U64
+   with No_Inline;
+
 end Stream_Runs;

@@ -65,7 +65,10 @@ procedure Parse_Bench is
       Status4_Sticky_V,
       Status4_Returned_V,
       Status8_Sticky_V,
-      Status8_Returned_V);
+      Status8_Returned_V,
+      Generated_Fields4_V,
+      Generated_Term_V,
+      Generated_Nested_V);
 
    type Group is
      (Term_G,
@@ -123,7 +126,10 @@ procedure Parse_Bench is
       Status4_Sticky_V           => Status4_G,
       Status4_Returned_V         => Status4_G,
       Status8_Sticky_V           => Status8_G,
-      Status8_Returned_V         => Status8_G];
+      Status8_Returned_V         => Status8_G,
+      Generated_Fields4_V        => Fields4_G,
+      Generated_Term_V           => Term_G,
+      Generated_Nested_V         => Nested_G];
 
    subtype Name is String (1 .. 24);
 
@@ -165,7 +171,10 @@ procedure Parse_Bench is
       "status4_sticky          ",
       "status4_returned        ",
       "status8_sticky          ",
-      "status8_returned        "];
+      "status8_returned        ",
+      "generated_fields4       ",
+      "generated_term          ",
+      "generated_nested        "];
 
    Failed : Boolean := False;
 
@@ -253,7 +262,10 @@ begin
                     when Status4_Sticky_V           => Run_Status4_Sticky (Fields (1 .. 4 * Length (Records))),
                     when Status4_Returned_V         => Run_Status4_Returned (Fields (1 .. 4 * Length (Records))),
                     when Status8_Sticky_V           => Run_Status8_Sticky (Fields (1 .. 8 * Length (Records))),
-                    when Status8_Returned_V         => Run_Status8_Returned (Fields (1 .. 8 * Length (Records))));
+                    when Status8_Returned_V         => Run_Status8_Returned (Fields (1 .. 8 * Length (Records))),
+                    when Generated_Fields4_V        => Run_Generated_Fields4 (Fields (1 .. 4 * Length (Records))),
+                    when Generated_Term_V           => Run_Generated_Term (Term (1 .. Term_Used)),
+                    when Generated_Nested_V         => Run_Generated_Nested (Nested (1 .. Nested_Used)));
                Times (V) (R) := Elapsed_NS (Watch) / Long_Float (Records);
             end if;
          end loop;

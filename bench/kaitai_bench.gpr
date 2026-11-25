@@ -23,7 +23,7 @@ project Kaitai_Bench is
       when "proven"  => Switches := Switches & ("-gnatn", "-gnatp");
    end case;
 
-   for Source_Dirs use ("src/");
+   for Source_Dirs use ("src/", "generated/");
    for Object_Dir use "obj/" & Mode;
    for Create_Missing_Dirs use "True";
    for Exec_Dir use "bin/" & Mode;

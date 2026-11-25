@@ -1,4 +1,7 @@
 with Bench_Data;
+with Bench_Fields4;
+with Bench_Nested;
+with Bench_Term;
 with Bit_Variants;
 with Kaitai.Decoding;
 with Kaitai.Processing;
@@ -1657,5 +1660,61 @@ package body Stream_Runs is
       end loop;
       return Sum;
    end Run_Status8_Returned;
+
+   ---------------------------------------------------------------------
+   --  Generated parsers
+   ---------------------------------------------------------------------
+
+   function Run_Generated_Fields4 (Data : Bytes) return U64 is
+      S    : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      This : Bench_Fields4.T;
+      Sum  : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Bench_Fields4.Parse (Data, S, This);
+         exit when not Kaitai.Streams.OK (S) or else not Bench_Fields4.Valid (This);
+         Sum :=
+           Sum
+           * 31
+           + (((U64 (Bench_Fields4.A (This)) * 31 + U64 (Bench_Fields4.B (This))) * 31 + U64 (Bench_Fields4.C (This)))
+              * 31
+              + U64 (Bench_Fields4.D (This)));
+      end loop;
+      return Sum;
+   end Run_Generated_Fields4;
+
+   function Run_Generated_Term (Data : Bytes) return U64 is
+      S    : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      This : Bench_Term.T;
+      Sum  : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Bench_Term.Parse (Data, S, This);
+         exit when not Kaitai.Streams.OK (S) or else not Bench_Term.Valid (This);
+         Sum :=
+           Sum * 31 + U64 (Size (Bench_Term.S1 (This))) + U64 (Size (Bench_Term.S2 (This))) + U64 (Bench_Term.N (This));
+      end loop;
+      return Sum;
+   end Run_Generated_Term;
+
+   function Run_Generated_Nested (Data : Bytes) return U64 is
+      use Bench_Nested;
+      S    : Kaitai.Streams.Stream := Kaitai.Streams.Open (Data);
+      This : Bench_Nested.T;
+      Sum  : U64 := 0;
+   begin
+      while not Kaitai.Streams.Is_EOF (S) loop
+         Parse (Data, S, This);
+         exit when not Kaitai.Streams.OK (S) or else not Valid (This);
+         Sum :=
+           Sum
+           * 31
+           + U64 (Inner_Type.V (A (This)))
+           + U64 (Inner_Type.V (B (This)))
+           + U64 (Inner_Type.V (C (This)))
+           + U64 (Inner_Type.V (D (This)));
+      end loop;
+      return Sum;
+   end Run_Generated_Nested;
 
 end Stream_Runs;

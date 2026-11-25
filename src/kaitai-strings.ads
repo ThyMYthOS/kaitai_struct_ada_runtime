@@ -9,10 +9,17 @@ package Kaitai.Strings
   with Pure, SPARK_Mode, Always_Terminates
 is
 
-   type Encoding is (US_ASCII, UTF_8, UTF_16LE, UTF_16BE, UTF_32LE, UTF_32BE, Single_Byte);
-   --  Single_Byte stands for every encoding in which each byte is one
-   --  character and every byte is accepted: ISO-8859-x, CP437, windows-125x
-   --  and the like.
+   --  The encoding of a string, as the description names it.  Single_Byte
+   --  stands for every encoding in which each byte is one character and every
+   --  byte is accepted: ISO-8859-x, CP437, windows-125x and the like.
+   type Encoding is
+     (US_ASCII,     --  ASCII, 7 bits per character
+      UTF_8,        --  UTF-8
+      UTF_16LE,     --  UTF-16, least significant byte of a unit first
+      UTF_16BE,     --  UTF-16, most significant byte of a unit first
+      UTF_32LE,     --  UTF-32, least significant byte of a unit first
+      UTF_32BE,     --  UTF-32, most significant byte of a unit first
+      Single_Byte); --  one byte per character, see above
 
    --  True if the bytes of Item are well formed in Enc.
    --

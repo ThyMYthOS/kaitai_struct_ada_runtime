@@ -113,7 +113,11 @@ is
                  then Max'Result = Byte'First
                  else (for some I in Item.First .. Item.Last => Max'Result = Buffer (I)));
 
-   type Order is (Less, Same, Greater);
+   --  The result of Compare
+   type Order is
+     (Less,      --  Left comes before Right
+      Same,      --  Left and Right have the same bytes
+      Greater);  --  Left comes after Right
 
    --  Left compared with Right byte by byte, as Kaitai Struct orders byte
    --  arrays: the first byte that differs decides, and if there is none,

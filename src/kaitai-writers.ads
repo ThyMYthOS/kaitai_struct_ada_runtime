@@ -37,6 +37,10 @@ package Kaitai.Writers
   with Pure, SPARK_Mode, Always_Terminates
 is
 
+   --  The state of writing one byte array: the window of the target the writer
+   --  covers, the position in it, the extent written so far, the free bits of
+   --  a bit field and the status.  Open makes a writer; Subwriter makes one
+   --  for a part of another.
    type Writer is private;
 
    ---------------------------------------------------------------------
@@ -212,8 +216,14 @@ is
    --
    --  The postcondition of each says that Kaitai.Decoding reads Value back
    --  from where it was written.
+   --
+   --  Each of them writes the integer at the current position and advances by
+   --  its size.  If fewer bytes are left, the writer fails with
+   --  Capacity_Exceeded, nothing is written and the position stays.  The
+   --  signed ones write the two's complement.
    ---------------------------------------------------------------------
 
+   --  Writes Value as an unsigned integer of 1 byte (`u1`)
    procedure Write_U1 (Target : in out Bytes; W : in out Writer; Value : U8)
    with
      Inline,
@@ -223,6 +233,7 @@ is
        and then Is_Valid (W, Target)
        and then (if OK (W) then Decoding.U8_At (Target, Next_Index (W'Old)) = Value);
 
+   --  Writes Value as a signed integer of 1 byte (`s1`)
    procedure Write_S1 (Target : in out Bytes; W : in out Writer; Value : S8)
    with
      Inline,
@@ -232,6 +243,7 @@ is
        and then Is_Valid (W, Target)
        and then (if OK (W) then Decoding.To_S8 (Decoding.U8_At (Target, Next_Index (W'Old))) = Value);
 
+   --  Writes Value as an unsigned integer of 2 bytes, least significant byte first (`u2le`)
    procedure Write_U2le (Target : in out Bytes; W : in out Writer; Value : U16)
    with
      Inline,
@@ -241,6 +253,7 @@ is
        and then Is_Valid (W, Target)
        and then (if OK (W) then Decoding.U16_LE (Target, Next_Index (W'Old)) = Value);
 
+   --  Writes Value as an unsigned integer of 2 bytes, most significant byte first (`u2be`)
    procedure Write_U2be (Target : in out Bytes; W : in out Writer; Value : U16)
    with
      Inline,
@@ -250,6 +263,8 @@ is
        and then Is_Valid (W, Target)
        and then (if OK (W) then Decoding.U16_BE (Target, Next_Index (W'Old)) = Value);
 
+   --  Writes Value as an unsigned integer of 2 bytes in the byte order Order, for a format that decides
+   --  it at run time: `u2le` if Little_Endian, `u2be` otherwise
    procedure Write_U2 (Target : in out Bytes; W : in out Writer; Order : Byte_Order; Value : U16)
    with
      Inline,
@@ -264,6 +279,7 @@ is
                     else Decoding.U16_BE (Target, Next_Index (W'Old)))
                    = Value);
 
+   --  Writes Value as a signed integer of 2 bytes, least significant byte first (`s2le`)
    procedure Write_S2le (Target : in out Bytes; W : in out Writer; Value : S16)
    with
      Inline,
@@ -273,6 +289,7 @@ is
        and then Is_Valid (W, Target)
        and then (if OK (W) then Decoding.To_S16 (Decoding.U16_LE (Target, Next_Index (W'Old))) = Value);
 
+   --  Writes Value as a signed integer of 2 bytes, most significant byte first (`s2be`)
    procedure Write_S2be (Target : in out Bytes; W : in out Writer; Value : S16)
    with
      Inline,
@@ -282,6 +299,8 @@ is
        and then Is_Valid (W, Target)
        and then (if OK (W) then Decoding.To_S16 (Decoding.U16_BE (Target, Next_Index (W'Old))) = Value);
 
+   --  Writes Value as a signed integer of 2 bytes in the byte order Order, for a format that decides
+   --  it at run time: `s2le` if Little_Endian, `s2be` otherwise
    procedure Write_S2 (Target : in out Bytes; W : in out Writer; Order : Byte_Order; Value : S16)
    with
      Inline,
@@ -297,6 +316,7 @@ is
                        else Decoding.U16_BE (Target, Next_Index (W'Old))))
                    = Value);
 
+   --  Writes Value as an unsigned integer of 4 bytes, least significant byte first (`u4le`)
    procedure Write_U4le (Target : in out Bytes; W : in out Writer; Value : U32)
    with
      Inline,
@@ -306,6 +326,7 @@ is
        and then Is_Valid (W, Target)
        and then (if OK (W) then Decoding.U32_LE (Target, Next_Index (W'Old)) = Value);
 
+   --  Writes Value as an unsigned integer of 4 bytes, most significant byte first (`u4be`)
    procedure Write_U4be (Target : in out Bytes; W : in out Writer; Value : U32)
    with
      Inline,
@@ -315,6 +336,8 @@ is
        and then Is_Valid (W, Target)
        and then (if OK (W) then Decoding.U32_BE (Target, Next_Index (W'Old)) = Value);
 
+   --  Writes Value as an unsigned integer of 4 bytes in the byte order Order, for a format that decides
+   --  it at run time: `u4le` if Little_Endian, `u4be` otherwise
    procedure Write_U4 (Target : in out Bytes; W : in out Writer; Order : Byte_Order; Value : U32)
    with
      Inline,
@@ -329,6 +352,7 @@ is
                     else Decoding.U32_BE (Target, Next_Index (W'Old)))
                    = Value);
 
+   --  Writes Value as a signed integer of 4 bytes, least significant byte first (`s4le`)
    procedure Write_S4le (Target : in out Bytes; W : in out Writer; Value : S32)
    with
      Inline,
@@ -338,6 +362,7 @@ is
        and then Is_Valid (W, Target)
        and then (if OK (W) then Decoding.To_S32 (Decoding.U32_LE (Target, Next_Index (W'Old))) = Value);
 
+   --  Writes Value as a signed integer of 4 bytes, most significant byte first (`s4be`)
    procedure Write_S4be (Target : in out Bytes; W : in out Writer; Value : S32)
    with
      Inline,
@@ -347,6 +372,8 @@ is
        and then Is_Valid (W, Target)
        and then (if OK (W) then Decoding.To_S32 (Decoding.U32_BE (Target, Next_Index (W'Old))) = Value);
 
+   --  Writes Value as a signed integer of 4 bytes in the byte order Order, for a format that decides
+   --  it at run time: `s4le` if Little_Endian, `s4be` otherwise
    procedure Write_S4 (Target : in out Bytes; W : in out Writer; Order : Byte_Order; Value : S32)
    with
      Inline,
@@ -362,6 +389,7 @@ is
                        else Decoding.U32_BE (Target, Next_Index (W'Old))))
                    = Value);
 
+   --  Writes Value as an unsigned integer of 8 bytes, least significant byte first (`u8le`)
    procedure Write_U8le (Target : in out Bytes; W : in out Writer; Value : U64)
    with
      Inline,
@@ -371,6 +399,7 @@ is
        and then Is_Valid (W, Target)
        and then (if OK (W) then Decoding.U64_LE (Target, Next_Index (W'Old)) = Value);
 
+   --  Writes Value as an unsigned integer of 8 bytes, most significant byte first (`u8be`)
    procedure Write_U8be (Target : in out Bytes; W : in out Writer; Value : U64)
    with
      Inline,
@@ -380,6 +409,8 @@ is
        and then Is_Valid (W, Target)
        and then (if OK (W) then Decoding.U64_BE (Target, Next_Index (W'Old)) = Value);
 
+   --  Writes Value as an unsigned integer of 8 bytes in the byte order Order, for a format that decides
+   --  it at run time: `u8le` if Little_Endian, `u8be` otherwise
    procedure Write_U8 (Target : in out Bytes; W : in out Writer; Order : Byte_Order; Value : U64)
    with
      Inline,
@@ -394,6 +425,7 @@ is
                     else Decoding.U64_BE (Target, Next_Index (W'Old)))
                    = Value);
 
+   --  Writes Value as a signed integer of 8 bytes, least significant byte first (`s8le`)
    procedure Write_S8le (Target : in out Bytes; W : in out Writer; Value : S64)
    with
      Inline,
@@ -403,6 +435,7 @@ is
        and then Is_Valid (W, Target)
        and then (if OK (W) then Decoding.To_S64 (Decoding.U64_LE (Target, Next_Index (W'Old))) = Value);
 
+   --  Writes Value as a signed integer of 8 bytes, most significant byte first (`s8be`)
    procedure Write_S8be (Target : in out Bytes; W : in out Writer; Value : S64)
    with
      Inline,
@@ -412,6 +445,8 @@ is
        and then Is_Valid (W, Target)
        and then (if OK (W) then Decoding.To_S64 (Decoding.U64_BE (Target, Next_Index (W'Old))) = Value);
 
+   --  Writes Value as a signed integer of 8 bytes in the byte order Order, for a format that decides
+   --  it at run time: `s8le` if Little_Endian, `s8be` otherwise
    procedure Write_S8 (Target : in out Bytes; W : in out Writer; Order : Byte_Order; Value : S64)
    with
      Inline,
@@ -493,12 +528,24 @@ is
                    (if OK (After) then Open_Byte (Before) + Bytes_Needed (Count, Bits_Free (Before)) else 0)))
    with Ghost;
 
+   --  Write Value as a bit field of Count bits, as `b1` to `b64` of Kaitai
+   --  Struct with big endian bit order (the default): the bits of a byte are
+   --  filled from the most significant one down, and the most significant bits
+   --  of Value go first.  The bits of the last byte that Count does not use
+   --  stay free, and zero, for the next bit field; Bits_Free tells how many.
+   --  The position is behind every byte of which a bit was written.  Fails
+   --  with Validation_Greater_Than if Value exceeds Mask (Count), and with
+   --  Capacity_Exceeded if the bytes needed are not there; nothing is written
+   --  then.
    procedure Write_Bits_Int_Be (Target : in out Bytes; W : in out Writer; Count : Bit_Count; Value : U64)
    with
      Inline,
      Pre  => Is_Valid (W, Target),
      Post => Produced_Bits_In (W'Old, W, Target'Old, Target, Count, Value) and then Is_Valid (W, Target);
 
+   --  Like Write_Bits_Int_Be with little endian bit order, as `b1le` to
+   --  `b64le`: the bits of a byte are filled from the least significant one
+   --  up, and the least significant bits of Value go first
    procedure Write_Bits_Int_Le (Target : in out Bytes; W : in out Writer; Count : Bit_Count; Value : U64)
    with
      Inline,

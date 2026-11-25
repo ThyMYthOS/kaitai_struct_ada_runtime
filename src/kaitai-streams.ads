@@ -22,6 +22,9 @@ package Kaitai.Streams
   with Pure, SPARK_Mode, Always_Terminates
 is
 
+   --  The state of reading one buffer: the window of the buffer the stream
+   --  covers, the position in it, the unread bits of a bit field and the
+   --  status.  Open makes a stream; Substream makes one for a part of another.
    type Stream is private;
 
    ---------------------------------------------------------------------
@@ -183,8 +186,14 @@ is
    --  bytes; le = little endian, be = big endian.  The names follow the
    --  Kaitai Struct stream API.  The variants without order in the name
    --  take it as a parameter, for formats that decide it at run time.
+   --
+   --  Each of them reads the integer at the current position and advances by
+   --  its size.  If fewer bytes are left, the stream fails with End_Of_Stream,
+   --  the position stays and Value is 0.  A bit field that was begun is
+   --  dropped.  The signed ones read the bytes as two's complement.
    ---------------------------------------------------------------------
 
+   --  Reads an unsigned integer of 1 byte (`u1`)
    procedure Read_U1 (Buffer : Bytes; S : in out Stream; Value : out U8)
    with
      Inline,
@@ -194,6 +203,7 @@ is
        and then Is_Valid (S, Buffer)
        and then (if OK (S) then Value = Decoding.U8_At (Buffer, Next_Index (S'Old)) else Value = 0);
 
+   --  Reads a signed integer of 1 byte (`s1`)
    procedure Read_S1 (Buffer : Bytes; S : in out Stream; Value : out S8)
    with
      Inline,
@@ -203,6 +213,7 @@ is
        and then Is_Valid (S, Buffer)
        and then (if OK (S) then Value = Decoding.To_S8 (Decoding.U8_At (Buffer, Next_Index (S'Old))) else Value = 0);
 
+   --  Reads an unsigned integer of 2 bytes, least significant byte first (`u2le`)
    procedure Read_U2le (Buffer : Bytes; S : in out Stream; Value : out U16)
    with
      Inline,
@@ -212,6 +223,7 @@ is
        and then Is_Valid (S, Buffer)
        and then (if OK (S) then Value = Decoding.U16_LE (Buffer, Next_Index (S'Old)) else Value = 0);
 
+   --  Reads an unsigned integer of 2 bytes, most significant byte first (`u2be`)
    procedure Read_U2be (Buffer : Bytes; S : in out Stream; Value : out U16)
    with
      Inline,
@@ -221,6 +233,8 @@ is
        and then Is_Valid (S, Buffer)
        and then (if OK (S) then Value = Decoding.U16_BE (Buffer, Next_Index (S'Old)) else Value = 0);
 
+   --  Reads an unsigned integer of 2 bytes in the byte order Order, for a format that decides
+   --  it at run time: `u2le` if Little_Endian, `u2be` otherwise
    procedure Read_U2 (Buffer : Bytes; S : in out Stream; Order : Byte_Order; Value : out U16)
    with
      Inline,
@@ -236,6 +250,7 @@ is
                       else Decoding.U16_BE (Buffer, Next_Index (S'Old)))
                  else Value = 0);
 
+   --  Reads a signed integer of 2 bytes, least significant byte first (`s2le`)
    procedure Read_S2le (Buffer : Bytes; S : in out Stream; Value : out S16)
    with
      Inline,
@@ -245,6 +260,7 @@ is
        and then Is_Valid (S, Buffer)
        and then (if OK (S) then Value = Decoding.To_S16 (Decoding.U16_LE (Buffer, Next_Index (S'Old))) else Value = 0);
 
+   --  Reads a signed integer of 2 bytes, most significant byte first (`s2be`)
    procedure Read_S2be (Buffer : Bytes; S : in out Stream; Value : out S16)
    with
      Inline,
@@ -254,6 +270,8 @@ is
        and then Is_Valid (S, Buffer)
        and then (if OK (S) then Value = Decoding.To_S16 (Decoding.U16_BE (Buffer, Next_Index (S'Old))) else Value = 0);
 
+   --  Reads a signed integer of 2 bytes in the byte order Order, for a format that decides
+   --  it at run time: `s2le` if Little_Endian, `s2be` otherwise
    procedure Read_S2 (Buffer : Bytes; S : in out Stream; Order : Byte_Order; Value : out S16)
    with
      Inline,
@@ -270,6 +288,7 @@ is
                         else Decoding.U16_BE (Buffer, Next_Index (S'Old)))
                  else Value = 0);
 
+   --  Reads an unsigned integer of 4 bytes, least significant byte first (`u4le`)
    procedure Read_U4le (Buffer : Bytes; S : in out Stream; Value : out U32)
    with
      Inline,
@@ -279,6 +298,7 @@ is
        and then Is_Valid (S, Buffer)
        and then (if OK (S) then Value = Decoding.U32_LE (Buffer, Next_Index (S'Old)) else Value = 0);
 
+   --  Reads an unsigned integer of 4 bytes, most significant byte first (`u4be`)
    procedure Read_U4be (Buffer : Bytes; S : in out Stream; Value : out U32)
    with
      Inline,
@@ -288,6 +308,8 @@ is
        and then Is_Valid (S, Buffer)
        and then (if OK (S) then Value = Decoding.U32_BE (Buffer, Next_Index (S'Old)) else Value = 0);
 
+   --  Reads an unsigned integer of 4 bytes in the byte order Order, for a format that decides
+   --  it at run time: `u4le` if Little_Endian, `u4be` otherwise
    procedure Read_U4 (Buffer : Bytes; S : in out Stream; Order : Byte_Order; Value : out U32)
    with
      Inline,
@@ -303,6 +325,7 @@ is
                       else Decoding.U32_BE (Buffer, Next_Index (S'Old)))
                  else Value = 0);
 
+   --  Reads a signed integer of 4 bytes, least significant byte first (`s4le`)
    procedure Read_S4le (Buffer : Bytes; S : in out Stream; Value : out S32)
    with
      Inline,
@@ -312,6 +335,7 @@ is
        and then Is_Valid (S, Buffer)
        and then (if OK (S) then Value = Decoding.To_S32 (Decoding.U32_LE (Buffer, Next_Index (S'Old))) else Value = 0);
 
+   --  Reads a signed integer of 4 bytes, most significant byte first (`s4be`)
    procedure Read_S4be (Buffer : Bytes; S : in out Stream; Value : out S32)
    with
      Inline,
@@ -321,6 +345,8 @@ is
        and then Is_Valid (S, Buffer)
        and then (if OK (S) then Value = Decoding.To_S32 (Decoding.U32_BE (Buffer, Next_Index (S'Old))) else Value = 0);
 
+   --  Reads a signed integer of 4 bytes in the byte order Order, for a format that decides
+   --  it at run time: `s4le` if Little_Endian, `s4be` otherwise
    procedure Read_S4 (Buffer : Bytes; S : in out Stream; Order : Byte_Order; Value : out S32)
    with
      Inline,
@@ -337,6 +363,7 @@ is
                         else Decoding.U32_BE (Buffer, Next_Index (S'Old)))
                  else Value = 0);
 
+   --  Reads an unsigned integer of 8 bytes, least significant byte first (`u8le`)
    procedure Read_U8le (Buffer : Bytes; S : in out Stream; Value : out U64)
    with
      Inline,
@@ -346,6 +373,7 @@ is
        and then Is_Valid (S, Buffer)
        and then (if OK (S) then Value = Decoding.U64_LE (Buffer, Next_Index (S'Old)) else Value = 0);
 
+   --  Reads an unsigned integer of 8 bytes, most significant byte first (`u8be`)
    procedure Read_U8be (Buffer : Bytes; S : in out Stream; Value : out U64)
    with
      Inline,
@@ -355,6 +383,8 @@ is
        and then Is_Valid (S, Buffer)
        and then (if OK (S) then Value = Decoding.U64_BE (Buffer, Next_Index (S'Old)) else Value = 0);
 
+   --  Reads an unsigned integer of 8 bytes in the byte order Order, for a format that decides
+   --  it at run time: `u8le` if Little_Endian, `u8be` otherwise
    procedure Read_U8 (Buffer : Bytes; S : in out Stream; Order : Byte_Order; Value : out U64)
    with
      Inline,
@@ -370,6 +400,7 @@ is
                       else Decoding.U64_BE (Buffer, Next_Index (S'Old)))
                  else Value = 0);
 
+   --  Reads a signed integer of 8 bytes, least significant byte first (`s8le`)
    procedure Read_S8le (Buffer : Bytes; S : in out Stream; Value : out S64)
    with
      Inline,
@@ -379,6 +410,7 @@ is
        and then Is_Valid (S, Buffer)
        and then (if OK (S) then Value = Decoding.To_S64 (Decoding.U64_LE (Buffer, Next_Index (S'Old))) else Value = 0);
 
+   --  Reads a signed integer of 8 bytes, most significant byte first (`s8be`)
    procedure Read_S8be (Buffer : Bytes; S : in out Stream; Value : out S64)
    with
      Inline,
@@ -388,6 +420,8 @@ is
        and then Is_Valid (S, Buffer)
        and then (if OK (S) then Value = Decoding.To_S64 (Decoding.U64_BE (Buffer, Next_Index (S'Old))) else Value = 0);
 
+   --  Reads a signed integer of 8 bytes in the byte order Order, for a format that decides
+   --  it at run time: `s8le` if Little_Endian, `s8be` otherwise
    procedure Read_S8 (Buffer : Bytes; S : in out Stream; Order : Byte_Order; Value : out S64)
    with
      Inline,
@@ -444,6 +478,14 @@ is
                    and then Status (After) = (if OK (Before) then End_Of_Stream else Status (Before))))
    with Ghost;
 
+   --  Read a bit field of Count bits, as `b1` to `b64` of Kaitai Struct do with
+   --  big endian bit order (the default).  The bits of a byte are taken from
+   --  the most significant one down, and the first bits read are the most
+   --  significant ones of Value.  The bits of a byte that Count does not use
+   --  are left for the next bit field; Bits_Left tells how many.  The position
+   --  is behind every byte of which a bit was read.  If the bytes needed are
+   --  not there, the stream fails with End_Of_Stream, stays where it was and
+   --  Value is 0.
    procedure Read_Bits_Int_Be (Buffer : Bytes; S : in out Stream; Count : Bit_Count; Value : out U64)
    with
      Inline,
@@ -453,6 +495,9 @@ is
        and then Is_Valid (S, Buffer)
        and then (if OK (S) then Value <= Mask (Count) else Value = 0);
 
+   --  Like Read_Bits_Int_Be with little endian bit order, as `b1le` to `b64le`:
+   --  the bits of a byte are taken from the least significant one up, and the
+   --  first bits read are the least significant ones of Value
    procedure Read_Bits_Int_Le (Buffer : Bytes; S : in out Stream; Count : Bit_Count; Value : out U64)
    with
      Inline,

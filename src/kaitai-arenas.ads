@@ -20,6 +20,9 @@ package Kaitai.Arenas
   with Pure, SPARK_Mode, Always_Terminates
 is
 
+   --  The record of how much of a storage array is in use.  It does not hold the
+   --  storage; Open makes one for a given array, and the same array has to be
+   --  passed where an operation needs it.
    type Arena is private;
 
    --  Number of bytes the storage has

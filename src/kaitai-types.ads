@@ -10,14 +10,22 @@ is
    --  here rather than taken from package Interfaces, so that a use clause
    --  for this package is all that code needs to compute with them.
 
+   --  Unsigned integer of 8 bits, the u1 of Kaitai Struct
    type U8 is mod 2**8 with Size => 8;
+   --  Unsigned integer of 16 bits, the u2 of Kaitai Struct
    type U16 is mod 2**16 with Size => 16;
+   --  Unsigned integer of 32 bits, the u4 of Kaitai Struct
    type U32 is mod 2**32 with Size => 32;
+   --  Unsigned integer of 64 bits, the u8 of Kaitai Struct
    type U64 is mod 2**64 with Size => 64;
 
+   --  Signed integer of 8 bits, the s1 of Kaitai Struct
    type S8 is range -2**7 .. 2**7 - 1 with Size => 8;
+   --  Signed integer of 16 bits, the s2 of Kaitai Struct
    type S16 is range -2**15 .. 2**15 - 1 with Size => 16;
+   --  Signed integer of 32 bits, the s4 of Kaitai Struct
    type S32 is range -2**31 .. 2**31 - 1 with Size => 32;
+   --  Signed integer of 64 bits, the s8 of Kaitai Struct
    type S64 is range -2**63 .. 2**63 - 1 with Size => 64;
 
    --  Shift_Left, Shift_Right, Shift_Right_Arithmetic, Rotate_Left and
@@ -28,6 +36,7 @@ is
    pragma Provide_Shift_Operators (U32);
    pragma Provide_Shift_Operators (U64);
 
+   --  One byte of a buffer
    subtype Byte is U8;
 
    --  A number of bytes.  It is as wide as an address of the target, because
@@ -40,6 +49,8 @@ is
    --  length of any buffer are values of Length.
    subtype Index is Length range 1 .. Length'Last - 1;
 
+   --  A sequence of bytes, such as the buffer a stream reads from.  Its bounds are
+   --  positions of type Index.
    type Bytes is array (Index range <>) of Byte;
 
    --  A length taken from parsed data.  A value that no buffer can have is
@@ -67,14 +78,16 @@ is
    --  slice refers to data without copying it and is only meaningful
    --  together with the buffer it was taken from.
    type Slice is record
-      First : Length := 1;
-      Last  : Length := 0;
+      First : Length := 1;  --  position of the first byte, 1 or more
+      Last  : Length := 0;  --  position of the last byte, First - 1 if the slice is empty
    end record
    with Predicate => Slice.First >= 1 and then Slice.Last >= Slice.First - 1;
 
+   --  Number of bytes of Item
    function Size (Item : Slice) return Length
    is (Item.Last - Item.First + 1);
 
+   --  True if Item has no bytes
    function Is_Empty (Item : Slice) return Boolean
    is (Item.Last < Item.First);
 
@@ -82,11 +95,14 @@ is
    function Within (Item : Slice; Buffer : Bytes) return Boolean
    is (Is_Empty (Item) or else (Item.First >= Buffer'First and then Item.Last <= Buffer'Last));
 
-   type Byte_Order is (Little_Endian, Big_Endian);
+   --  The order in which the bytes of a multi-byte integer or float are stored
+   type Byte_Order is
+     (Little_Endian,  --  least significant byte first, as in u2le
+      Big_Endian);    --  most significant byte first, as in u2be
 
    --  Why parsing stopped.  The first failure is kept; see Kaitai.Streams.
    type Status_Kind is
-     (Success,
+     (Success,                  --  nothing has failed
       End_Of_Stream,            --  more bytes requested than the stream has
       Undecided_Endianness,     --  the byte order was needed before it was known
       Validation_Not_Equal,     --  a value differs from the one required

@@ -13,7 +13,9 @@ package Kaitai.Floats
   with Pure, SPARK_Mode
 is
 
+   --  The type of f4, a binary32 number of IEEE 754
    subtype F32 is Float;
+   --  The type of f8, a binary64 number of IEEE 754
    subtype F64 is Long_Float;
 
    pragma Compile_Time_Error (F32'Size /= 32 or else F32'Machine_Mantissa /= 24, "Float is not IEEE 754 binary32");
@@ -24,12 +26,15 @@ is
    function Is_Finite (Raw : U32) return Boolean
    is ((Raw and 16#7F80_0000#) /= 16#7F80_0000#);
 
+   --  The same for the 64 bits of an f8, where the exponent has 11 bits
    function Is_Finite (Raw : U64) return Boolean
    is ((Raw and 16#7FF0_0000_0000_0000#) /= 16#7FF0_0000_0000_0000#);
 
+   --  The number whose binary32 representation is the 32 bits Raw
    function To_F32 (Raw : U32) return F32
    with Inline, Pre => Is_Finite (Raw);
 
+   --  The number whose binary64 representation is the 64 bits Raw
    function To_F64 (Raw : U64) return F64
    with Inline, Pre => Is_Finite (Raw);
 

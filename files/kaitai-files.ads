@@ -13,8 +13,9 @@ package Kaitai.Files
   with SPARK_Mode
 is
 
+   --  How an operation ended
    type Result_Kind is
-     (Done,
+     (Done,         --  the operation succeeded
       Cannot_Open,   --  there is no such file, or it may not be read
       Too_Large,     --  the file has more bytes than the buffer or than a Length can count
       Failed);       --  reading stopped before the end of the file

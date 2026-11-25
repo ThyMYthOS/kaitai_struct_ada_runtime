@@ -12,6 +12,7 @@ package Kaitai.Zlib
   with Pure, SPARK_Mode, Always_Terminates
 is
 
+   --  How Inflate ended
    type Result_Kind is
      (Done,         --  Source is a valid stream and Target holds all of its data
       Corrupt,      --  Source is not a valid stream: bad header, malformed or truncated data, wrong Adler-32

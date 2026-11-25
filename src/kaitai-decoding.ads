@@ -15,18 +15,27 @@ is
    function Has (Buffer : Bytes; From : Length; Count : Length) return Boolean
    is (Count = 0 or else (From >= Buffer'First and then From <= Buffer'Last and then Buffer'Last - From >= Count - 1));
 
+   --  The functions from U8_At to U64_BE deliver the unsigned integer of 1, 2, 4
+   --  or 8 bytes that starts at position From of Buffer.  LE means that the
+   --  least significant byte comes first, BE that it comes last.  Their
+   --  precondition is that all the bytes exist.
+
+   --  The byte at From (u1)
    function U8_At (Buffer : Bytes; From : Index) return U8
    is (Buffer (From))
    with Inline, Pre => Has (Buffer, From, 1);
 
+   --  The integer of 2 bytes, least significant first at From (u2le)
    function U16_LE (Buffer : Bytes; From : Index) return U16
    is (U16 (Buffer (From)) or Shift_Left (U16 (Buffer (From + 1)), 8))
    with Inline, Pre => Has (Buffer, From, 2);
 
+   --  The integer of 2 bytes, most significant first at From (u2be)
    function U16_BE (Buffer : Bytes; From : Index) return U16
    is (Shift_Left (U16 (Buffer (From)), 8) or U16 (Buffer (From + 1)))
    with Inline, Pre => Has (Buffer, From, 2);
 
+   --  The integer of 4 bytes, least significant first at From (u4le)
    function U32_LE (Buffer : Bytes; From : Index) return U32
    is (U32 (Buffer (From))
        or Shift_Left (U32 (Buffer (From + 1)), 8)
@@ -34,6 +43,7 @@ is
        or Shift_Left (U32 (Buffer (From + 3)), 24))
    with Inline, Pre => Has (Buffer, From, 4);
 
+   --  The integer of 4 bytes, most significant first at From (u4be)
    function U32_BE (Buffer : Bytes; From : Index) return U32
    is (Shift_Left (U32 (Buffer (From)), 24)
        or Shift_Left (U32 (Buffer (From + 1)), 16)
@@ -41,10 +51,12 @@ is
        or U32 (Buffer (From + 3)))
    with Inline, Pre => Has (Buffer, From, 4);
 
+   --  The integer of 8 bytes, least significant first at From (u8le)
    function U64_LE (Buffer : Bytes; From : Index) return U64
    is (U64 (U32_LE (Buffer, From)) or Shift_Left (U64 (U32_LE (Buffer, From + 4)), 32))
    with Inline, Pre => Has (Buffer, From, 8);
 
+   --  The integer of 8 bytes, most significant first at From (u8be)
    function U64_BE (Buffer : Bytes; From : Index) return U64
    is (Shift_Left (U64 (U32_BE (Buffer, From)), 32) or U64 (U32_BE (Buffer, From + 4)))
    with Inline, Pre => Has (Buffer, From, 8);
@@ -52,18 +64,22 @@ is
    --  Reinterpretation of an unsigned value as a signed one in two's
    --  complement
 
+   --  The signed integer with the same 8 bits as Value
    function To_S8 (Value : U8) return S8
    is (if Value < 2**7 then S8 (Value) else S8 (Integer (Value) - 2**8))
    with Inline;
 
+   --  The signed integer with the same 16 bits as Value
    function To_S16 (Value : U16) return S16
    is (if Value < 2**15 then S16 (Value) else S16 (S32 (Value) - 2**16))
    with Inline;
 
+   --  The signed integer with the same 32 bits as Value
    function To_S32 (Value : U32) return S32
    is (if Value < 2**31 then S32 (Value) else S32 (S64 (Value) - 2**32))
    with Inline;
 
+   --  The signed integer with the same 64 bits as Value
    function To_S64 (Value : U64) return S64
    is (if Value < 2**63 then S64 (Value) else S64 (Value - 2**63) + S64'First)
    with Inline;

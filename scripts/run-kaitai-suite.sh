@@ -40,6 +40,10 @@
 #   KST_DIR   a checkout of kaitai-io/kaitai_struct_tests at the pinned
 #             commit; cloned there if missing
 #             (default: $HOME/.cache/kaitai_struct_tests)
+#   KSF_DIR   optional: a checkout of kaitai-io/kaitai_struct_formats, given to
+#             the compiler as a further import path (imports_abs imports
+#             common/vlq_base128_le.ksy from there); without it that test
+#             does not generate
 #   DIR       --out (default: build/kaitai-suite below the repository)
 #
 # Needs: Java, sbt (or the one build-compiler.sh downloaded), git, patch,
@@ -172,8 +176,11 @@ gen_one() {
 }
 export -f gen_one
 ksc_extra=""
+if [ -n "${KSF_DIR:-}" ]; then
+   ksc_extra="-I $KSF_DIR"
+fi
 if [ "$round_trip" -eq 1 ]; then
-   ksc_extra="--read-write"
+   ksc_extra="$ksc_extra --read-write"
    export ADA_SG_ROUND_TRIP=1
 fi
 export ksc out KST_DIR ksc_extra

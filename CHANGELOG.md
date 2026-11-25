@@ -4,6 +4,10 @@
 
 - Compiler: `_sizeof` and `x._sizeof` are translated (they are the size in bytes of
   the current type or of a value, a constant). They failed with "invalid ID".
+- `scripts/survey.sh` and `scripts/run-kaitai-suite.sh` give the compiler the
+  import path `formats/ks_path` (`imports_abs_abs` and `imports_abs_rel` generate
+  with it) and, if `KSF_DIR` names a checkout of `kaitai_struct_formats`, that
+  as well.
 
 ## 0.1.0 (2026-11-25)
 

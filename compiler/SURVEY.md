@@ -6,7 +6,7 @@ The generator was run over all 334 `.ksy` files of `kaitai_struct_tests/formats`
 |---|---|
 | generated | 213 |
 | rejected by the Ada backend with a clear error | 116 |
-| failed before the backend (the front end of the compiler rejected the input) | 5 |
+| failed before the backend (the compiler did not get as far as the backend: an import was not found) | 5 |
 | crashed (stack trace or internal error) | 0 |
 
 ## Rejected
@@ -60,13 +60,20 @@ The generator was run over all 334 `.ksy` files of `kaitai_struct_tests/formats`
 
 ## Failed before the backend
 
-- `expr_sizeof_value_0`: invalid ID: '_sizeof', expected /^[a-z][a-z0-9_]*$/
-- `expr_sizeof_value_sized`: invalid ID: '_sizeof', expected /^[a-z][a-z0-9_]*$/
-- `imports_abs`: unable to find 'common/vlq_base128_le.ksy' in import search paths, using: List(.
-- `imports_abs_abs`: unable to find 'for_abs_imports/imported_and_abs.ksy' in import search paths, us
-- `imports_abs_rel`: unable to find 'for_abs_imports/imported_and_rel.ksy' in import search paths, us
-
-The `imports_abs*` formats import files from directories (`common/`, `for_abs_imports/`) that the checked-out tests do not have.
+- `expr_sizeof_value_0`, `expr_sizeof_value_sized`: not the front end. The
+  backend asked the type provider for a member called `_sizeof`, which is no
+  valid identifier; the error came from there. The other targets translate
+  `_sizeof` before they look for a member.
+- `imports_abs_abs`, `imports_abs_rel`: the description imports
+  `/for_abs_imports/...`, which is a path below `$KS_PATH`. The tests keep
+  these files in `formats/ks_path/`, a directory the survey did not give the
+  compiler as an import path.
+- `imports_abs`: imports `/common/vlq_base128_le`, a file of the repository
+  `kaitai-io/kaitai_struct_formats`, which is not part of the tests. It is
+  found when `KSF_DIR` names a checkout of that repository; the format is
+  then rejected by the backend like any other that uses
+  `vlq_base128_le` (its type `group` starts with a bit field and is used where
+  the stream may be inside a byte).
 
 ## Compilation and proof of the generated parsers
 

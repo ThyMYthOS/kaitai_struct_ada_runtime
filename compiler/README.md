@@ -129,6 +129,12 @@ scripts/run-kaitai-suite.sh                    # all tests; KST_DIR defaults to 
 scripts/run-kaitai-suite.sh --out /tmp/suite hello_world valid_fail_eq_int
 ```
 
+The compiler gets `formats/` and `formats/ks_path/` (what the tests call
+`$KS_PATH`) as import paths. `imports_abs` also needs `common/vlq_base128_le.ksy`
+from `kaitai-io/kaitai_struct_formats`; `KSF_DIR`, a checkout of that
+repository, is added as a further import path by `scripts/run-kaitai-suite.sh`
+and `scripts/survey.sh` if it is set. Without it that test does not generate.
+
 `KST_DIR` is cloned (blobless, then only `formats spec/ks src translator` are
 checked out) if it is missing. The script copies the overlay and applies the
 patch (both can be repeated), publishes the compiler locally with

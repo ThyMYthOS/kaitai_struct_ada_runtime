@@ -12,6 +12,12 @@
 # --read-write the compiler is asked to generate Write as well.  The
 # result is DIR/survey.tsv, one line per format, and totals on the output.
 #
+# The import path of the compiler holds the directory of the formats and its
+# subdirectory ks_path, which is what the tests mean by $KS_PATH.  KSF_DIR
+# optionally names a checkout of kaitai-io/kaitai_struct_formats, which is
+# added to it; imports_abs imports common/vlq_base128_le.ksy from there, and
+# is "invalid" (the file is not found) without it.
+#
 # KSC names the compiler launcher (default: the one scripts/build-compiler.sh
 # builds in $KSC_DIR).  KST_DIR names a checkout of kaitai_struct_tests.
 set -eu
@@ -20,6 +26,8 @@ here=$(cd "$(dirname "$0")/.." && pwd)
 KSC_DIR=${KSC_DIR:-$HOME/.cache/kaitai_struct_compiler}
 KSC=${KSC:-$KSC_DIR/jvm/target/universal/stage/bin/kaitai-struct-compiler}
 KST_DIR=${KST_DIR:-$HOME/.cache/kaitai_struct_tests}
+KSF_DIR=${KSF_DIR:-}
+[ -z "$KSF_DIR" ] || KSF_DIR=$(cd "$KSF_DIR" && pwd)
 out=$here/obj/survey
 prove=no
 rw=
@@ -38,6 +46,9 @@ done
 [ -x "$KSC" ] || { echo "no compiler at $KSC; run scripts/build-compiler.sh" >&2; exit 1; }
 [ -d "$KST_DIR/formats" ] || { echo "no formats in $KST_DIR" >&2; exit 1; }
 
+imports="-I . -I ks_path"
+[ -n "$KSF_DIR" ] && imports="$imports -I $KSF_DIR"
+
 rm -rf "$out"
 mkdir -p "$out/src" "$out/log"
 
@@ -47,7 +58,7 @@ for ksy in "$KST_DIR"/formats/*.ksy; do
    name=$(basename "$ksy" .ksy)
    mkdir -p "$out/one"
    rm -f "$out"/one/*
-   (cd "$KST_DIR/formats" && "$KSC" -t ada $rw -I . --outdir "$out/one" "$name.ksy") >"$out/log/$name.txt" 2>&1 || true
+   (cd "$KST_DIR/formats" && "$KSC" -t ada $rw $imports --outdir "$out/one" "$name.ksy") >"$out/log/$name.txt" 2>&1 || true
    if grep -q 'not supported by the Ada backend' "$out/log/$name.txt"; then
       reason=$(grep -m1 'not supported by the Ada backend' "$out/log/$name.txt" | sed 's/.*not supported by the Ada backend: //')
       printf '%s\trejected\t%s\n' "$name" "$reason"

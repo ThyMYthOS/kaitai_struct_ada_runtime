@@ -12,9 +12,15 @@ at worst be rejected. GNATprove proves the library and the generated parsers
 automatically.
 
 **Status:** usable for a large part of the language, not complete. The
-compiler generates parsers for more than half of the formats of the Kaitai
-Struct test suite and rejects the rest with an error that names the
-construct; [compiler/SURVEY.md](compiler/SURVEY.md) has the list. The
+compiler generates parsers for 215 of the 334 formats of the Kaitai Struct
+test suite, all of them proven, and rejects the rest with an error that names
+the construct; [compiler/SURVEY.md](compiler/SURVEY.md) has the list. Of the
+320 tests of that suite 211 pass, one fails because of a documented
+difference, one cannot be translated, and 107 are for formats that are
+rejected ([compiler/SUITE.md](compiler/SUITE.md)). With the option
+`--read-write` the compiler also generates `Write`, which writes a parsed
+value again. There are no operations yet that change a value or build one
+from nothing. The
 [plan](https://github.com/ThyMYthOS/kaitai_struct_ada_runtime/issues/1) (in
 German) tracks what is decided, measured and done.
 
@@ -100,7 +106,10 @@ at a pinned commit.
 ```sh
 scripts/build-compiler.sh             # clones upstream, applies the overlay, builds; prints the launcher
 <launcher> -t ada --outdir out format.ksy
+<launcher> -t ada --read-write --outdir out format.ksy   # with Write
 scripts/generate-examples.sh --check  # the parsers under examples/ are what the compiler generates
+scripts/survey.sh --prove             # all formats of the Kaitai Struct tests: generate, compile, prove
+scripts/run-kaitai-suite.sh           # the tests of the Kaitai Struct test suite; --round-trip also writes
 ```
 
 [compiler/README.md](compiler/README.md) lists what is supported and what is

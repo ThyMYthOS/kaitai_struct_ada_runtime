@@ -168,3 +168,86 @@ bits_byte_aligned, bits_byte_aligned_eof_be, bits_byte_aligned_eof_le, bits_enum
 - `--round-trip` (see `compiler/README.md`) is only tried with
   `examples/write_model`, where it prints `round trip: same`; the compiler option
   `--read-write` was not available to try it on the suite.
+
+## Round trip
+
+`scripts/run-kaitai-suite.sh --round-trip` generates the parsers with
+`--read-write`, and each test program writes the parsed value again with
+`Write` into an array of 2 x input + 16 bytes. C is the number of bytes `Parse`
+consumed (a begun byte counts as whole), N the number that `Write` produced:
+
+- `round trip: same`: N = C and the bytes are the first C bytes of the input.
+  The test is `passed`.
+- otherwise the output (N bytes) is parsed again, the value is written again,
+  and the second output must equal the first byte for byte; the asserts of
+  the test must also hold for the value parsed from the output. Then it is
+  `canonical`: `Write` does not give the input back, but something that means
+  the same. It is not a failure and has a class of its own.
+- otherwise `round trip: differs at <offset> (wrote N of C)`, or `not written
+  (<status>)`: `failed`.
+
+Totals of the run:
+
+| Result | Tests |
+|---|---|
+| passed (`round trip: same`) | 172 |
+| canonical | 23 |
+| failed | 0 |
+| error | 0 |
+| build failed | 0 |
+| known difference | 1 |
+| not generated | 123 |
+| not translated | 1 |
+| total | 320 |
+
+`--read-write` rejects 11 more formats than the plain run: `non_standard`,
+`switch_integers`, `switch_multi_bool_ops`, `valid_switch` (an integer of
+different kinds chosen by a value), `str_pad_term_utf16`, `term_strz_utf16_v1`
+to `v4` (a terminator of more than one byte), `struct_pad_term`,
+`struct_pad_term_equal` (a value cut from bytes with a size and a terminator
+or padding).
+
+### The 23 canonical tests, by cause
+
+All causes are listed in "Writing" of `docs/codegen.md`. In every one of
+these tests `Write` produced as many bytes as `Parse` consumed.
+
+| Cause | Tests |
+|---|---|
+| bits that no field reads are written as zero | `bits_byte_aligned`, `bits_enum`, `bits_seq_endian_combo`, `combine_bool`, `expr_bits`, `params_pass_bool` |
+| padding, and what follows a terminator in a field with a size, is written with the padding byte | `bytes_pad_term`, `bytes_pad_term_empty`, `bytes_pad_term_equal`, `bytes_eos_pad_term`, `str_pad_term`, `str_pad_term_empty`, `str_pad_term_equal`, `str_eos_pad_term`, `str_eos_pad_term_empty`, `str_eos_pad_term_equal`, `process_bytes_pad_term`, `process_struct_pad_term`, `repeat_eos_bytes_pad_term`, `repeat_n_bytes_pad_term`, `repeat_until_bytes_pad_term` |
+| the unused rest of a substream is written as zeros | `buffered_struct` |
+| a type that has only instances with `pos` is not written, so its substream is zeros | `str_encodings_escaping_enc` |
+
+### What the first round trip found
+
+The first version of the generated `Write` was proved and passed the tests of
+the examples, and this run still found four defects in it: 12 tests failed.
+In each of them a parse of the output read a value other than the one that
+was written, or the output did not fit. They are fixed, and the rule that they
+broke is now the first rule of "Writing": parsing what `Write` produced gives
+the same value.
+
+1. A terminator was written although the value had none (`term_bytes4`,
+   `term_struct4`, `term_strz4`). A type in a `size: 3` field whose only
+   field has `terminator: 0x7c, eos-error: false` reads `foo` from
+   `foo|bar|baz@` without a terminator; `Write` wrote `foo|` into the 3 byte
+   substream. Now a terminator that may be missing is written only if the
+   writer has room.
+2. A processed field with `size` and `pad-right` or `terminator`
+   (`process_bytes_pad_term`, `process_struct_pad_term`) was written as the
+   cut bytes, not with its size, so every later field moved. Now it is padded
+   like any bytes.
+3. `terminator: 0x40, pad-right: 0x2b, size: 20` (`bytes_pad_term`,
+   `bytes_pad_term_roundtrip`, `str_pad_term`, `str_pad_term_roundtrip`): the
+   value `str+++3bar+++` was written with padding but without the terminator,
+   so the output parsed to `str+++3bar`. Now the terminator is written before
+   the padding.
+4. `size-eos: true, pad-right: 0x40` in a type inside a `size: 20` field
+   (`bytes_eos_pad_term`, `str_eos_pad_term`, `str_eos_pad_term_empty`): the
+   value `str1` was followed by zero bytes instead of the padding byte, so the
+   output parsed to `str1` and 16 NULs. Now the field pads to the end of its
+   window.
+
+The comparison replays the asserts of the test on the value parsed from the
+output; defects that these asserts do not see would not show here.

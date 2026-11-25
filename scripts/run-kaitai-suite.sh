@@ -14,6 +14,8 @@
 # prints how many tests ended in which class:
 #
 #   passed         all asserts hold
+#   canonical      (--round-trip only) the asserts hold, and Write did not give the
+#                  input back but a value that parses and writes to itself; no failure
 #   failed         the program ran and an assert did not hold
 #   error          the program raised an exception or crashed
 #   build failed   the parser or the program does not compile
@@ -28,8 +30,9 @@
 # --round-trip: the compiler is called with --read-write, and each test
 # program writes the parsed value again with <Pkg>.Write into an array as
 # large as the input and prints `round trip: same`, `round trip: differs at
-# <offset>` or `round trip: not written (<status>)`; the last two are
-# failures.  Needs a compiler that has the option.  --jobs defaults to 2.
+# <offset> (wrote N of C)`, `round trip: canonical (...)` or `round trip: not
+# written (<status>)`; the first and the last are failures, `canonical` is not.
+# C is what Parse consumed, N what Write produced; the array is 2 x input + 16.  Needs a compiler that has the option.  --jobs defaults to 2.
 #
 # Environment:
 #   KSC_DIR   the compiler, built by scripts/build-compiler.sh
@@ -268,7 +271,7 @@ from xml.sax.saxutils import escape, quoteattr
 
 out = sys.argv[1]
 names = [l.strip() for l in open(os.path.join(out, "names.txt")) if l.strip()]
-classes = ["passed", "failed", "error", "known difference", "build failed", "not generated", "not translated"]
+classes = ["passed", "canonical", "failed", "error", "known difference", "build failed", "not generated", "not translated"]
 known = dict(l.rstrip("\n").split("|", 1) for l in open(os.path.join(out, "known.txt")) if "|" in l)
 
 def read(path):
@@ -317,8 +320,9 @@ for n in names:
     rc = int((read(os.path.join(out, "log", n + ".run.rc")) or "1").strip())
     lines = run.splitlines()
     fails = [l for l in lines if l.startswith("FAIL")]
+    canon = [l for l in lines if l.startswith("round trip: canonical")]
     if rc == 0 and "PASSED" in lines and not fails:
-        results[n] = ("passed", "")
+        results[n] = ("canonical", canon[0][len("round trip: "):]) if canon else ("passed", "")
     elif "FAILED" in lines and fails:
         results[n] = ("failed", "; ".join(fails[:6]) + (f"; ... ({len(fails)} in all)" if len(fails) > 6 else ""))
     else:

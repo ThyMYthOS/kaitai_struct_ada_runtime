@@ -772,44 +772,108 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
   /** Set by the script with `--round-trip`: the program writes the parsed value again and compares it with the input */
   private val roundTrip: Boolean = sys.env.get("ADA_SG_ROUND_TRIP").exists(v => v.nonEmpty && v != "0")
 
-  /** Writes R with the `Write` of the top-level type into an array as large as the input and compares */
-  private def roundTripLines(): List[String] = {
+  /** Arguments of `Parse` between the stream and the result */
+  private def parseArgs: String =
+    topArgs.map(_ + ", ").getOrElse("") + (if (isRecursiveTop) topPkg + ".Max_Depth, " else "")
+
+  private def isRecursiveTop: Boolean =
+    top.seq.exists(a => containsSelf(a.dataType)) ||
+      top.instances.values.exists { case pi: ParseInstanceSpec => containsSelf(pi.dataType); case _ => false }
+
+  /**
+    * Writes R with the `Write` of the top-level type into an array of 2 x input + 16 bytes, so that a longer
+    * output is seen as a difference. C is what `Parse` consumed, N what `Write` produced.
+    *   same       N = C and the bytes are the first C bytes of the input
+    *   canonical  not the same, but the output parses again and writing that value gives the same output
+    *   differs / not written: failures
+    */
+  private def roundTripLines(asserts: List[String]): List[String] = {
     usedLibs += "Writers"
     useType(KT + "U8")
+    useType(KT + "Bytes")
     val args = if (cc.hasBelongs(top)) "Buffer.all, R" else "R"
-    val i2 = indentStr * 3
-    val i3 = indentStr * 4
-    List(
-      s"${indentStr * 3}declare",
-      s"${i2}${indentStr}Target : Buffer_Access := new ${KT}Bytes (1 .. Size);",
-      s"${i2}${indentStr}W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target.all);",
-      s"${i2}begin",
-      s"${i3}$topPkg.Write ($args, Target.all, W);".replace(s"${i3}", i3),
-      s"${i3}if not Kaitai.Writers.OK (W) then",
-      s"${i3}${indentStr}Fail (\"round trip: not written (\" & ${KT}Status_Kind'Image (Kaitai.Writers.Status (W)) & \")\");",
-      s"${i3}else",
-      s"${i3}${indentStr}Round_Trip_Check : declare",
-      s"${i3}${indentStr}${indentStr}Offset : Natural := 0;",
-      s"${i3}${indentStr}${indentStr}Differs : Boolean := False;",
-      s"${i3}${indentStr}begin",
-      s"${i3}${indentStr}${indentStr}for I in 1 .. Size loop",
-      s"${i3}${indentStr}${indentStr}${indentStr}if I > Kaitai.Writers.Pos (W) or else Target (I) /= Buffer (I) then",
-      s"${i3}${indentStr}${indentStr}${indentStr}${indentStr}Offset := Natural (I) - 1;",
-      s"${i3}${indentStr}${indentStr}${indentStr}${indentStr}Differs := True;",
-      s"${i3}${indentStr}${indentStr}${indentStr}${indentStr}exit;",
-      s"${i3}${indentStr}${indentStr}${indentStr}end if;",
-      s"${i3}${indentStr}${indentStr}end loop;",
-      s"${i3}${indentStr}${indentStr}if Differs then",
-      s"${i3}${indentStr}${indentStr}${indentStr}Fail (\"round trip: differs at \" & Natural'Image (Offset));",
-      s"${i3}${indentStr}${indentStr}else",
-      s"${i3}${indentStr}${indentStr}${indentStr}Put_Line (\"round trip: same\");",
-      s"${i3}${indentStr}${indentStr}end if;",
-      s"${i3}${indentStr}end Round_Trip_Check;",
-      s"${i3}end if;",
-      s"${i3}Free (Target);",
-      s"${i2}end;"
+    val args2 = if (cc.hasBelongs(top)) "Output, R2" else "R2"
+    val body = List(
+      "declare",
+      "   Capacity : constant Kaitai.Types.Length := 2 * Size + 16;",
+      "   Target   : Buffer_Access := new Kaitai.Types.Bytes (1 .. Capacity);",
+      "   W        : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target.all);",
+      "   C        : constant Kaitai.Types.Length := Kaitai.Streams.Pos (S);",
+      "begin",
+      s"   $topPkg.Write ($args, Target.all, W);",
+      "   if not Kaitai.Writers.OK (W) then",
+      "      Fail (\"round trip: not written (\" & Kaitai.Types.Status_Kind'Image (Kaitai.Writers.Status (W)) & \")\");",
+      "   else",
+      "      declare",
+      "         N      : constant Kaitai.Types.Length := Kaitai.Types.Size (Kaitai.Writers.Written (W));",
+      "         Common : constant Kaitai.Types.Length := Kaitai.Types.Length'Min (N, C);",
+      "         First  : Kaitai.Types.Length := Common;",
+      "         Same   : Boolean := N = C;",
+      "      begin",
+      "         for I in 1 .. Common loop",
+      "            if Target (I) /= Buffer (I) then",
+      "               First := I - 1;",
+      "               Same := False;",
+      "               exit;",
+      "            end if;",
+      "         end loop;",
+      "         if Same then",
+      "            Put_Line (\"round trip: same\");",
+      "         else",
+      "            declare",
+      "               Output   : Kaitai.Types.Bytes renames Target (1 .. N);",
+      "               S2       : Kaitai.Streams.Stream := Kaitai.Streams.Open (Output);",
+      s"               R2       : $topPkg.T;",
+      "               Target2  : Buffer_Access := new Kaitai.Types.Bytes (1 .. Capacity);",
+      "               W2       : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target2.all);",
+      "               Canonical : Boolean := False;",
+      "               Values_Differ : Boolean := False;",
+      "            begin",
+      s"               $topPkg.Parse (Output, S2, ${parseArgs}R2);",
+      s"               if $topPkg.Valid (R2) then",
+      s"                  $topPkg.Write ($args2, Target2.all, W2);",
+      "                  Canonical := Kaitai.Writers.OK (W2)",
+      "                    and then Kaitai.Types.Size (Kaitai.Writers.Written (W2)) = N",
+      "                    and then Target2 (1 .. N) = Output;",
+      "               end if;",
+    ) ++ replayAsserts(asserts) ++ List(
+      "               if Canonical and then not Values_Differ then",
+      "                  Put_Line",
+      "                    (\"round trip: canonical (first difference at \" & Num (First) & \", wrote \" & Num (N) & \" of \" & Num (C) & \")\");",
+      "               elsif Canonical then",
+      "                  Fail (\"round trip: differs at \" & Num (First) & \" (wrote \" & Num (N) & \" of \" & Num (C) & \", the output parses but the asserts do not hold for it)\");",
+      "               else",
+      "                  Fail (\"round trip: differs at \" & Num (First) & \" (wrote \" & Num (N) & \" of \" & Num (C) & \")\");",
+      "               end if;",
+      "               Free (Target2);",
+      "            end;",
+      "         end if;",
+      "      end;",
+      "   end if;",
+      "   Free (Target);",
+      "end;"
     )
+    body.map(l => indentStr * 3 + l)
   }
+
+  /** The asserts again, on the value parsed from the output: any that does not hold sets `Values_Differ` */
+  private def replayAsserts(asserts: List[String]): List[String] =
+    if (asserts.isEmpty) Nil
+    else
+      List(
+        "               if Canonical then",
+        "                  declare",
+        "                     Buffer : Buffer_Access := new Kaitai.Types.Bytes'(Output);",
+        "                     R      : constant " + topPkg + ".T := R2;",
+        "                     S      : constant Kaitai.Streams.Stream := S2;",
+        "                  begin",
+        "                     Values_Hold := True;"
+      ) ++ asserts.map(_.trim).map(l => "                     " + l.replace("Check (", "Check_Again (").replace("Undefined (", "Undefined_Again (")) ++ List(
+        "                     Values_Differ := not Values_Hold;",
+        "                     Free (Buffer);",
+        "                  end;",
+        "               end if;"
+      )
 
   /** The data type is, or chooses among, the type of the top-level class itself */
   private def containsSelf(dt: DataType): Boolean = dt match {
@@ -854,7 +918,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
         body += s"${indentStr * 2}else"
         if (generated.isEmpty) body += s"${indentStr * 3}Put_Line (\"ok parse\");"
         generated.foreach { case (_, _, lines) => body ++= lines }
-        if (roundTrip) body ++= roundTripLines()
+        if (roundTrip) body ++= roundTripLines(generated.flatMap(_._3))
         body += s"${indentStr * 2}end if;"
     }
 
@@ -890,6 +954,33 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     p("")
     p("   procedure Put_Line (Item : String) renames Ada.Text_IO.Put_Line;")
     p("")
+    if (roundTrip) {
+      p("   function Num (N : Kaitai.Types.Length) return String is")
+      p("      Image : constant String := Kaitai.Types.Length'Image (N);")
+      p("   begin")
+      p("      return Image (Image'First + 1 .. Image'Last);")
+      p("   end Num;")
+      p("")
+      p("   --  The asserts again, on the value parsed from what Write produced: they only set Values_Hold")
+      p("   Values_Hold : Boolean := True;")
+      p("")
+      if (spec.asserts.nonEmpty) {
+        p("   procedure Undefined_Again (N : Natural; Source : String) is")
+        p("      pragma Unreferenced (N, Source);")
+        p("   begin")
+        p("      Values_Hold := False;")
+        p("   end Undefined_Again;")
+        p("")
+        p("   procedure Check_Again (N : Natural; Source : String; Result : Boolean) is")
+        p("      pragma Unreferenced (N, Source);")
+        p("   begin")
+        p("      if not Result then")
+        p("         Values_Hold := False;")
+        p("      end if;")
+        p("   end Check_Again;")
+        p("")
+      }
+    }
     ph("   function Img (N : Natural) return String is")
     ph("      Image : constant String := Natural'Image (N);")
     ph("   begin")
@@ -941,7 +1032,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     p("      S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer.all);")
     p(s"      R : $topPkg.T;")
     p("   begin")
-    p(s"      $topPkg.Parse (Buffer.all, S, ${topArgs.map(_ + ", ").getOrElse("")}${if (recursive) topPkg + ".Max_Depth, " else ""}R);")
+    p(s"      $topPkg.Parse (Buffer.all, S, ${parseArgs}R);")
     body.foreach(l => p(l))
     p("   end;")
     p("   Free (Buffer);")

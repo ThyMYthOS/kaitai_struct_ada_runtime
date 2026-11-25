@@ -187,11 +187,13 @@ test generator follows the compiler when it changes how it names things.
   is reported as `known difference` and does not make the script fail; if it
   passes, it is `passed`.
 - `--round-trip` calls the compiler with `--read-write` and makes every test
-  program write the parsed value with `<Pkg>.Write` into an array as large as
-  the input and print `round trip: same`, `round trip: differs at <offset>` or
-  `round trip: not written (<status>)`; the last two are failures. The
-  documented exceptions of `docs/codegen.md` (unused bytes of a substream are
-  zeros, padding bytes, instances with a position) show up as `differs`. The
-  mode was tried only on `examples/write_model` (`ADA_SG_ROUND_TRIP=1
-  ADA_SG_TOP_ARGS=3` with a throw-away copy of the tests layout), not against
-  the compiler option, which did not exist yet.
+  program write the parsed value with `<Pkg>.Write` into an array of 2 x input
+  + 16 bytes. C is what `Parse` consumed, N what `Write` produced. The program
+  prints `round trip: same` (N = C and the bytes equal the input), or, if the
+  output differs, parses it again, writes that value again and checks that
+  the second output equals the first and that the asserts of the test hold
+  for the reparsed value: then `round trip: canonical (first difference at
+  <offset>, wrote N of C)`. Otherwise `round trip: differs at <offset> (wrote N
+  of C)` or `round trip: not written (<status>)`. `same` is the class
+  `passed`, `canonical` a class of its own that is not a failure, the others
+  `failed`. The causes found are in the section "Round trip" of `SUITE.md`.

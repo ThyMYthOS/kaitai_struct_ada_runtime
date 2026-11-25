@@ -11,6 +11,7 @@ with Streams_Tests;
 with Strings_Tests;
 with Substreams_Tests;
 with Test_Support;
+with Write_Model_Tests;
 with Writers_Tests;
 with Zlib_Tests;
 
@@ -30,5 +31,6 @@ begin
    Showcase_Tests.Run;
    Extras_Tests.Run;
    Writers_Tests.Run;
+   Write_Model_Tests.Run;
    Test_Support.Summary;
 end All_Tests;

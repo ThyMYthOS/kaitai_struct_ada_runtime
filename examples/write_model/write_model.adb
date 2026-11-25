@@ -1,0 +1,392 @@
+--  See the specification for where this file comes from.
+
+with Kaitai.Strings;
+
+package body Write_Model
+  with SPARK_Mode
+is
+
+   Magic_Expected : constant Kaitai.Types.Bytes := (16#53#, 16#48#);
+
+   package body Entry_Type is
+
+      package body Point_Type is
+
+         procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+         begin
+            Kaitai.Streams.Read_S2le (Buffer, S, This.X);
+            Kaitai.Streams.Read_S2le (Buffer, S, This.Y);
+            This.Is_Valid := Kaitai.Streams.OK (S);
+         end Parse;
+
+         procedure Write (This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+         begin
+            Kaitai.Writers.Write_S2le (Target, W, This.X);
+            Kaitai.Writers.Write_S2le (Target, W, This.Y);
+         end Write;
+
+      end Point_Type;
+
+      package body Text_Type is
+
+         procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+         begin
+            Kaitai.Streams.Read_Bytes_Term
+              (Buffer, S, Term => 0, Include => False, Consume => True, EOS_Error => True, Data => This.Value);
+            if not Kaitai.Strings.Is_Valid (Buffer, This.Value, Kaitai.Strings.US_ASCII) then
+               Kaitai.Streams.Fail (S, Kaitai.Types.Illegal_Sequence);
+            end if;
+            This.Is_Valid := Kaitai.Streams.OK (S);
+         end Parse;
+
+         procedure Write
+           (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+         is
+         begin
+            Kaitai.Writers.Write_Bytes_Term (Target, W, Buffer (This.Value.First .. This.Value.Last), 0);
+         end Write;
+
+      end Text_Type;
+
+      procedure Parse
+        (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Flags : Kaitai.Types.U8; This : out T) is
+      begin
+         This := (others => <>);
+         This.Flags := Flags;
+         Kaitai.Streams.Read_U1 (Buffer, S, This.Code);
+         case This.Code is
+            when 1      =>
+               declare
+                  Value : Entry_Type.Point_Type.T;
+               begin
+                  Entry_Type.Point_Type.Parse (Buffer, S, Value);
+                  This.Body_Field := (Kind => Body_Is_Point, Point => Value);
+               end;
+
+            when 2      =>
+               declare
+                  Value : Entry_Type.Text_Type.T;
+               begin
+                  Entry_Type.Text_Type.Parse (Buffer, S, Value);
+                  This.Body_Field := (Kind => Body_Is_Text, Text => Value);
+               end;
+
+            when others =>
+               This.Body_Field := (Kind => Body_Is_None);
+         end case;
+         if Kaitai.Arithmetic.Bit_And (Kaitai.Types.S64 (This.Flags), 1) /= 0 then
+            This.Has_Extra := True;
+            Kaitai.Streams.Read_U1 (Buffer, S, This.Extra);
+         end if;
+         This.Is_Valid := Kaitai.Streams.OK (S);
+      end Parse;
+
+      procedure Write
+        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+      begin
+         Kaitai.Writers.Write_U1 (Target, W, This.Code);
+         case This.Body_Field.Kind is
+            when Body_Is_Point =>
+               Point_Type.Write (This.Body_Field.Point, Target, W);
+
+            when Body_Is_Text  =>
+               Text_Type.Write (Buffer, This.Body_Field.Text, Target, W);
+
+            when Body_Is_None  =>
+               null;
+         end case;
+         if This.Has_Extra then
+            Kaitai.Writers.Write_U1 (Target, W, This.Extra);
+         end if;
+      end Write;
+
+   end Entry_Type;
+
+   package body Header_Type is
+
+      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      begin
+         Kaitai.Streams.Read_U1 (Buffer, S, This.Version);
+         Kaitai.Streams.Read_U1 (Buffer, S, This.Flags);
+         Kaitai.Streams.Read_U1 (Buffer, S, This.Len_Name);
+         Kaitai.Streams.Read_Bytes (S, Kaitai.Types.To_Size (Kaitai.Types.S64 (This.Len_Name) - 3), This.Name);
+         if not Kaitai.Strings.Is_Valid (Buffer, This.Name, Kaitai.Strings.US_ASCII) then
+            Kaitai.Streams.Fail (S, Kaitai.Types.Illegal_Sequence);
+         end if;
+         This.Is_Valid := Kaitai.Streams.OK (S);
+      end Parse;
+
+      procedure Write
+        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+      begin
+         Kaitai.Writers.Write_U1 (Target, W, This.Version);
+         Kaitai.Writers.Write_U1 (Target, W, This.Flags);
+         Kaitai.Writers.Write_U1 (Target, W, This.Len_Name);
+         Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.Name.First .. This.Name.Last));
+      end Write;
+
+   end Header_Type;
+
+   package body Log_Type is
+
+      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+         Element : Entry_Type.Point_Type.T;
+      begin
+         This.Records_Io := S;
+         This.Records_Count := 0;
+         for I in 1 .. Kaitai.Streams.Remaining (S) loop
+            exit when Kaitai.Streams.Is_EOF (S);
+            Entry_Type.Point_Type.Parse (Buffer, S, Element);
+            exit when not Entry_Type.Point_Type.Valid (Element);
+            This.Records_Count := I;
+            pragma
+              Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
+         end loop;
+         if Kaitai.Streams.OK (S) and then not Kaitai.Streams.Is_EOF (S) then
+            Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
+         end if;
+         This.Is_Valid := Kaitai.Streams.OK (S);
+      end Parse;
+
+      procedure Next
+        (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Records_Cursor; Element : out Entry_Type.Point_Type.T)
+      is
+         pragma Unreferenced (This);
+      begin
+         Entry_Type.Point_Type.Parse (Buffer, Position.Io, Element);
+         Position.Left := (if Entry_Type.Point_Type.Valid (Element) then Position.Left - 1 else 0);
+      end Next;
+
+      procedure Get_Records
+        (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Entry_Type.Point_Type.T)
+      is
+         Position : Records_Cursor := Records_First (This);
+         Result   : Entry_Type.Point_Type.T;
+      begin
+         for I in 0 .. Index loop
+            pragma Loop_Invariant (Belongs_To (Position, Buffer));
+            exit when not Has_Element (Position);
+            Next (Buffer, This, Position, Result);
+         end loop;
+         Element := Result;
+      end Get_Records;
+
+      procedure Write
+        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+      is
+         Position : Records_Cursor := Records_First (This);
+         Element  : Entry_Type.Point_Type.T;
+      begin
+         while Has_Element (Position) loop
+            pragma Loop_Invariant (Belongs_To (Position, Buffer));
+            pragma
+              Loop_Invariant
+                (Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Loop_Entry, W));
+            pragma Loop_Variant (Decreases => Remaining (Position));
+            Next (Buffer, This, Position, Element);
+            if Entry_Type.Point_Type.Valid (Element) then
+               Entry_Type.Point_Type.Write (Element, Target, W);
+            else
+               --  The buffer is not what was parsed
+               Kaitai.Writers.Fail (W, Kaitai.Types.Validation_Expr);
+            end if;
+         end loop;
+      end Write;
+
+   end Log_Type;
+
+   --  Parse one element of Entries
+   procedure Parse_Entries_Element
+     (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : T; Element : out Entry_Type.T)
+   with
+     Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
+     Post =>
+       Kaitai.Streams.Is_Valid (S, Buffer)
+       and then Kaitai.Streams.Advanced (S'Old, S)
+       and then (if Entry_Type.Valid (Element) then Kaitai.Streams.OK (S))
+       and then Entry_Type.Belongs_To (Element, Buffer);
+
+   procedure Parse_Entries_Element
+     (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : T; Element : out Entry_Type.T)
+   is
+      Arg : Kaitai.Types.U8;
+   begin
+      if Header_Type.Valid (This.Header) then
+         Arg := Header_Type.Flags (This.Header);
+      else
+         Kaitai.Streams.Fail (S, Kaitai.Types.Arithmetic_Error);
+         Arg := 0;
+      end if;
+      Entry_Type.Parse (Buffer, S, Arg, Element);
+   end Parse_Entries_Element;
+
+   procedure Parse
+     (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Scale : Kaitai.Types.U16; This : out T)
+   is
+      Element   : Entry_Type.T;
+      Element_2 : Entry_Type.Point_Type.T;
+      Done      : Boolean;
+      Sub       : Kaitai.Streams.Stream;
+   begin
+      This := (others => <>);
+      This.Io := S;
+      This.Scale := Scale;
+      Kaitai.Streams.Read_Contents (Buffer, S, Magic_Expected);
+      Kaitai.Streams.Read_U1 (Buffer, S, This.Kind);
+      Kaitai.Streams.Read_U2le (Buffer, S, This.Num_Entries);
+      Header_Type.Parse (Buffer, S, This.Header);
+      This.Entries_Io := S;
+      This.Entries_Count := Kaitai.Types.To_Count (Kaitai.Types.S64 (This.Num_Entries));
+      for I in 1 .. This.Entries_Count loop
+         Parse_Entries_Element (Buffer, S, This, Element);
+         exit when not Entry_Type.Valid (Element);
+         pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
+      end loop;
+      if Kaitai.Types.S64 (This.Kind) = 2 then
+         This.Has_Tail_Len := True;
+         Kaitai.Streams.Read_U4le (Buffer, S, This.Tail_Len);
+      end if;
+      This.Points_Io := S;
+      This.Points_Count := 0;
+      Done := False;
+      for I in 1 .. Kaitai.Streams.Remaining (S) + 1 loop
+         Entry_Type.Point_Type.Parse (Buffer, S, Element_2);
+         exit when not Entry_Type.Point_Type.Valid (Element_2);
+         This.Points_Count := I;
+         Done := Kaitai.Types.S64 (Entry_Type.Point_Type.X (Element_2)) = 0;
+         exit when Done;
+         pragma
+           Loop_Invariant
+             (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S) and then not Done);
+      end loop;
+      if Kaitai.Streams.OK (S) and then not Done then
+         Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
+      end if;
+      Kaitai.Streams.Read_U1 (Buffer, S, This.Len_Log);
+      Kaitai.Streams.Substream (Buffer, S, Kaitai.Types.To_Size (Kaitai.Types.S64 (This.Len_Log)), Sub);
+      Log_Type.Parse (Buffer, Sub, This.Log);
+      Kaitai.Streams.Join (S, Sub);
+      Kaitai.Streams.Read_Elements_Full (S, 2, This.Samples);
+      This.Is_Valid := Kaitai.Streams.OK (S);
+   end Parse;
+
+   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Entries_Cursor; Element : out Entry_Type.T)
+   is
+   begin
+      Parse_Entries_Element (Buffer, Position.Io, This, Element);
+      Position.Left := (if Entry_Type.Valid (Element) then Position.Left - 1 else 0);
+   end Next;
+
+   procedure Get_Entries
+     (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Entry_Type.T)
+   is
+      Position : Entries_Cursor := Entries_First (This);
+      Result   : Entry_Type.T;
+   begin
+      for I in 0 .. Index loop
+         pragma Loop_Invariant (Belongs_To (Position, Buffer) and then Entry_Type.Belongs_To (Result, Buffer));
+         exit when not Has_Element (Position);
+         Next (Buffer, This, Position, Result);
+      end loop;
+      Element := Result;
+   end Get_Entries;
+
+   procedure Next
+     (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Points_Cursor; Element : out Entry_Type.Point_Type.T)
+   is
+      pragma Unreferenced (This);
+   begin
+      Entry_Type.Point_Type.Parse (Buffer, Position.Io, Element);
+      Position.Left := (if Entry_Type.Point_Type.Valid (Element) then Position.Left - 1 else 0);
+   end Next;
+
+   procedure Get_Points
+     (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Entry_Type.Point_Type.T)
+   is
+      Position : Points_Cursor := Points_First (This);
+      Result   : Entry_Type.Point_Type.T;
+   begin
+      for I in 0 .. Index loop
+         pragma Loop_Invariant (Belongs_To (Position, Buffer));
+         exit when not Has_Element (Position);
+         Next (Buffer, This, Position, Result);
+      end loop;
+      Element := Result;
+   end Get_Points;
+
+   procedure First_Entry
+     (Buffer : Kaitai.Types.Bytes; This : T; Result : out Entry_Type.T; Outcome : out Kaitai.Types.Status_Kind)
+   is
+      L : Kaitai.Streams.Stream := This.Io;
+   begin
+      if Header_Type.Valid (This.Header) then
+         Kaitai.Streams.Seek (L, Kaitai.Types.To_Size (5 + Kaitai.Types.S64 (Header_Type.Len_Name (This.Header))));
+      else
+         Kaitai.Streams.Fail (L, Kaitai.Types.Arithmetic_Error);
+      end if;
+      Entry_Type.Parse (Buffer, L, 0, Result);
+      Outcome := Kaitai.Streams.Status (L);
+   end First_Entry;
+
+   procedure Write
+     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+   is
+      Sub : Kaitai.Writers.Writer;
+   begin
+      Kaitai.Writers.Write_Bytes (Target, W, Magic_Expected);
+      Kaitai.Writers.Write_U1 (Target, W, This.Kind);
+      Kaitai.Writers.Write_U2le (Target, W, This.Num_Entries);
+      Header_Type.Write (Buffer, This.Header, Target, W);
+
+      declare
+         Position : Entries_Cursor := Entries_First (This);
+         Element  : Entry_Type.T;
+      begin
+         while Has_Element (Position) loop
+            pragma Loop_Invariant (Belongs_To (Position, Buffer));
+            pragma
+              Loop_Invariant
+                (Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Loop_Entry, W));
+            pragma Loop_Variant (Decreases => Remaining (Position));
+            Next (Buffer, This, Position, Element);
+            if Entry_Type.Valid (Element) then
+               Entry_Type.Write (Buffer, Element, Target, W);
+            else
+               --  The buffer is not what was parsed
+               Kaitai.Writers.Fail (W, Kaitai.Types.Validation_Expr);
+            end if;
+         end loop;
+      end;
+
+      if This.Has_Tail_Len then
+         Kaitai.Writers.Write_U4le (Target, W, This.Tail_Len);
+      end if;
+
+      declare
+         Position : Points_Cursor := Points_First (This);
+         Element  : Entry_Type.Point_Type.T;
+      begin
+         while Has_Element (Position) loop
+            pragma Loop_Invariant (Belongs_To (Position, Buffer));
+            pragma
+              Loop_Invariant
+                (Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Loop_Entry, W));
+            pragma Loop_Variant (Decreases => Remaining (Position));
+            Next (Buffer, This, Position, Element);
+            if Entry_Type.Point_Type.Valid (Element) then
+               Entry_Type.Point_Type.Write (Element, Target, W);
+            else
+               Kaitai.Writers.Fail (W, Kaitai.Types.Validation_Expr);
+            end if;
+         end loop;
+      end;
+
+      Kaitai.Writers.Write_U1 (Target, W, This.Len_Log);
+      Kaitai.Writers.Subwriter (Target, W, Kaitai.Types.To_Size (Kaitai.Types.S64 (This.Len_Log)), Sub);
+      Log_Type.Write (Buffer, This.Log, Target, Sub);
+      Kaitai.Writers.Join (W, Sub);
+
+      Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.Samples.First .. This.Samples.Last));
+   end Write;
+
+end Write_Model;

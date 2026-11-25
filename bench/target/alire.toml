@@ -1,6 +1,6 @@
 name = "kaitai_bench_target"
 description = "Benchmarks on a simulated low-end target (Renode)"
-version = "0.2.0-dev"
+version = "0.2.0"
 
 licenses = "MIT"
 maintainers = ["Manuel Stahl <thymythos@googlemail.com>"]

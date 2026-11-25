@@ -1,6 +1,6 @@
 name = "kaitai_struct_tests"
 description = "Tests of the Kaitai Struct runtime library"
-version = "0.2.0-dev"
+version = "0.2.0"
 
 licenses = "MIT"
 maintainers = ["Manuel Stahl <thymythos@googlemail.com>"]

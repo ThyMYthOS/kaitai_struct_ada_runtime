@@ -21,14 +21,20 @@ is
 
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
       Element : Nib_Type.T;
+      Before  : Kaitai.Streams.Stream;
    begin
       Kaitai.Streams.Align_To_Byte (S);
       Kaitai.Streams.Read_Bits_Int_Be (Buffer, S, 4, This.A);
       This.Items_Io := S;
       This.Items_Count := 3;
       for I in 1 .. This.Items_Count loop
+         Before := S;
          Nib_Type.Parse (Buffer, S, Element);
          exit when not Nib_Type.Valid (Element);
+         --  An element that read nothing: so will all that follow
+         exit when
+           Kaitai.Streams.Pos (S) = Kaitai.Streams.Pos (Before)
+           and then Kaitai.Streams.Bits_Left (S) = Kaitai.Streams.Bits_Left (Before);
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
       Kaitai.Streams.Read_U1 (Buffer, S, This.D);
@@ -62,6 +68,8 @@ is
       declare
          Position : Items_Cursor := Items_First (This);
          Element  : Nib_Type.T;
+         Read_At  : Kaitai.Streams.Stream;
+         Write_At : Kaitai.Writers.Writer;
       begin
          while Has_Element (Position) loop
             pragma Loop_Invariant (Belongs_To (Position, Buffer));
@@ -69,6 +77,8 @@ is
               Loop_Invariant
                 (Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Loop_Entry, W));
             pragma Loop_Variant (Decreases => Remaining (Position));
+            Read_At := Position.Io;
+            Write_At := W;
             Next (Buffer, This, Position, Element);
             if Nib_Type.Valid (Element) then
                Nib_Type.Write (Element, Target, W);
@@ -76,6 +86,12 @@ is
                --  The buffer is not what was parsed
                Kaitai.Writers.Fail (W, Kaitai.Types.Validation_Expr);
             end if;
+            --  An element that read nothing and wrote nothing: so will all that follow
+            exit when
+              Kaitai.Streams.Pos (Position.Io) = Kaitai.Streams.Pos (Read_At)
+              and then Kaitai.Streams.Bits_Left (Position.Io) = Kaitai.Streams.Bits_Left (Read_At)
+              and then Kaitai.Writers.Pos (W) = Kaitai.Writers.Pos (Write_At)
+              and then Kaitai.Writers.Bits_Free (W) = Kaitai.Writers.Bits_Free (Write_At);
          end loop;
       end;
       Kaitai.Writers.Write_U1 (Target, W, This.D);

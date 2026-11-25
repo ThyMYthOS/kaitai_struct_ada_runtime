@@ -341,6 +341,16 @@ most once per byte that was left when the loop began. This bound is what
 makes the loop terminate, and no element can be empty for it to be reached.
 If it is reached, the stream fails with `Limit_Exceeded`.
 
+`repeat: expr` runs as often as its count says, and the count comes from the
+data. Elements that take at least one byte each end the loop when the stream
+ends. Elements that may read nothing (a type whose fields all have a size
+from an expression, for example) do not, so `Parse` leaves the loop at the
+first element that read nothing: every element after it starts in the same
+state and reads nothing either. The count stays what the expression says.
+`Write` leaves its loop in the same way at an element that neither read nor
+wrote anything. Without this a count of billions in a file of a few bytes
+would keep the parser busy for minutes.
+
 A count is the value of an expression and goes through `To_Count`: a
 negative value means no element.
 
@@ -596,7 +606,9 @@ Where the rules above are silent, the compiler does the following.
   outside the range of the parameter makes the stream fail with
   `Arithmetic_Error`.
 - A string in `ASCII`, `UTF-8`, `UTF-16LE` or `UTF-16BE` is checked; every
-  other encoding is `Single_Byte`, which accepts everything. The encodings
+  other encoding that Kaitai Struct knows is `Single_Byte`, which accepts
+  everything. A name that it does not know is rejected, so that a misspelt
+  encoding is not taken for one that accepts everything. The encodings
   `UTF-16` without byte order, `UTF-32` and the like are rejected.
 - Strings are compared (`==`, `!=`, also a `switch-on` and `valid`) with a literal or with each other byte by byte.
   That is the comparison of the characters because the parser has checked that the string is valid in its encoding and
@@ -666,6 +678,12 @@ Where the rules above are silent, the compiler does the following.
 - An expression that overflows 64 bits makes the stream fail with
   `Arithmetic_Error`. Integer division rounds down, as the tests of Kaitai
   Struct ask for.
+- `%` with a divisor that is not positive is not defined, as in the Java and
+  C++ runtimes of Kaitai Struct, where `mod` raises an error. The Python
+  target computes a value.
+- `rol` and `ror` rotate by the amount modulo 8. For an amount of 8 or more
+  the runtimes of the other targets give results that are not rotations and
+  that differ from each other.
 - A type that starts with bit fields goes on in the byte that the bit fields
   before it left open, as in the other targets, but only where the stream is
   not certainly at a byte boundary. Where it is (see Fields), `Parse` starts

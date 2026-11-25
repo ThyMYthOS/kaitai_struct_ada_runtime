@@ -32,6 +32,17 @@
   `Align_To_Byte` and has the precondition that no bits are left, which callers prove.
   Descriptions that were rejected for this, such as `default_bit_endian_mod`, are
   generated.
+- `scripts/diff-python.sh` compares every generated Ada parser with the Python parser
+  that the same compiler generates, on the test data and on changed copies of it
+  (`compiler/DIFF.md`). What it found is corrected or documented:
+  - Compiler: a repetition with a count leaves its loop at the first element that
+    read nothing, in `Parse` and in `Write`. A count of billions in a file of a few
+    bytes kept `Parse` busy for minutes when the elements could be empty.
+  - Compiler: an encoding name that Kaitai Struct does not know is rejected. It was
+    taken for an encoding of one byte per character, which accepts everything
+    (str_encodings_escaping_enc is rejected now).
+  - `docs/codegen.md` says that `%` with a divisor that is not positive is not defined,
+    as in the Java and C++ runtimes, and that `rol` and `ror` take the amount modulo 8.
 
 ## 0.1.0 (2026-11-25)
 

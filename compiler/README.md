@@ -79,7 +79,7 @@ string concatenation, `substring`, `reverse`, `to_s`, array subscripts and
 arrays in expressions beyond `.size` and subscripts of repetitions of other elements, `_index`, casts, parameters of other
 types, `repeat` on parse instances or on switch fields, `valid` on other repeated
 fields, parse instances used in expressions, encodings `UTF-16` without byte
-order, `UTF-32` and the like, `valid` on a field whose type is chosen by
+order, `UTF-32` and the like, encoding names that Kaitai Struct does not know, `valid` on a field whose type is chosen by
 `switch-on` unless all its cases are integers and it has a `_` case (`in-enum` never), `to_i` of strings in UTF-16, comparisons of
 strings in different encodings other than ASCII and UTF-8, string literals with a character that the compiler cannot encode (it encodes ASCII, UTF-8, ISO-8859-1, UTF-16LE and UTF-16BE, and only ASCII characters in other encodings such as SJIS or IBM437), the ordering of strings in other encodings than ASCII, UTF-8 and ISO-8859-1, and `.length` of
 strings in Shift_JIS, Big5 or EUC-KR.

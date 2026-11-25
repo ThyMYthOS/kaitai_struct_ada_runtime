@@ -115,6 +115,7 @@ is
 
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
       Element : Item_Type.T;
+      Before  : Kaitai.Streams.Stream;
    begin
       Kaitai.Streams.Read_U1 (Buffer, S, This.Key);
       Kaitai.Streams.Read_U1 (Buffer, S, This.Len_Secret);
@@ -124,8 +125,13 @@ is
       This.Items_Io := S;
       This.Items_Count := 2;
       for I in 1 .. This.Items_Count loop
+         Before := S;
          Item_Type.Parse (Buffer, S, This.Len_Secret, This.Key, Element);
          exit when not Item_Type.Valid (Element);
+         --  An element that read nothing: so will all that follow
+         exit when
+           Kaitai.Streams.Pos (S) = Kaitai.Streams.Pos (Before)
+           and then Kaitai.Streams.Bits_Left (S) = Kaitai.Streams.Bits_Left (Before);
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
       Node_Type.Parse (Buffer, S, This.Key, Max_Depth, This.Tree);

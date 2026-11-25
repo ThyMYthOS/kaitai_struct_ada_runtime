@@ -99,8 +99,10 @@ fi
 # the side that parsed) matches the regexps.  Keep the list short and specific.
 KNOWN_DIFFERENCES=(
    "encoding-not-checked@@py-fails@@.*@@.*@@^UnicodeDecodeError: '(?!ascii|utf-8|utf-16)@@Ada checks strings only in ASCII, UTF-8 and UTF-16; in any other encoding every byte is accepted (docs/codegen.md, Rules of the compiler)@@"
-   "depth-or-repetition-limit@@ada-fails@@.*@@^parse LIMIT_EXCEEDED$@@.*@@a type that contains itself is parsed to a depth of 8, and a repetition without progress ends with Limit_Exceeded (docs/codegen.md, Types that contain themselves)@@"
+   "depth-or-repetition-limit@@ada-fails@@.*@@^parse LIMIT_EXCEEDED\$@@.*@@a type that contains itself is parsed to a depth of 8, and a repetition without progress ends with Limit_Exceeded (docs/codegen.md, Types that contain themselves)@@"
    "overflow-64@@ada-fails@@.*@@^undefined @@.*@@an expression that does not fit into 64 bits is not defined in Ada, Python has integers of any size (docs/codegen.md, What differs); only if the Python value of the instance is outside S64@@outside-s64"
+   "mod-divisor-not-positive@@ada-fails@@x_expr@@^undefined r\\.rest\$@@.*@@\`%\` with a divisor that is not positive is not defined in Ada, as in the Java and C++ runtimes, where mod raises an error; the Python target computes a value (docs/codegen.md, What differs); only if the divisor b is not positive@@x-expr-b-not-positive"
+   "rotate-beyond-7@@value@@process_rotate@@r\\.buf3@@.*@@rol and ror rotate by the amount modulo 8 in Ada; for an amount of 8 or more the runtimes of the other targets give results that are not rotations and differ from each other (docs/codegen.md, What differs); only if key is 8 or more@@rotate-key-beyond-7"
 )
 
 # ---------------------------------------------------------------- tools
@@ -703,10 +705,26 @@ def outside_s64(aw, plines):
     return False
 
 
+def value_of(plines, path, test):
+    """Whether the Python dump has the integer `path` and `test` holds for it"""
+    for l in plines:
+        p, _, value = l.partition(" = ")
+        if p == path:
+            try:
+                return test(int(value))
+            except ValueError:
+                return False
+    return False
+
+
 def known_id(n, cls, aw, pw, plines=()):
     for kid, kcls, kfmt, kada, kpy, why, check in known:
         if kcls == cls and re.fullmatch(kfmt, n) and re.search(kada, aw) and re.search(kpy, pw):
             if check == "outside-s64" and not outside_s64(aw, plines):
+                continue
+            if check == "x-expr-b-not-positive" and not value_of(plines, "r.b", lambda v: v <= 0):
+                continue
+            if check == "rotate-key-beyond-7" and not value_of(plines, "r.key", lambda v: v >= 8):
                 continue
             return kid
     return None
@@ -740,7 +758,8 @@ for n in work:
             if f == "seed.bin":
                 leaves_seed = len(a[1])
         if cls in ("ada-fails", "py-fails", "value"):
-            kid = known_id(n, cls, a[2], p[2], p[1]) if cls != "value" else None
+            # for values that differ, the entry is matched against the first difference
+            kid = known_id(n, cls, first if cls == "value" else a[2], p[2], p[1])
             if kid is not None:
                 c["known"] += 1
                 known_counts[kid] += 1

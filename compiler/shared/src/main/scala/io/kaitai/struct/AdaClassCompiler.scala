@@ -147,6 +147,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     case "UTF-16BE" => "Kaitai.Strings.UTF_16BE"
     case e if e.startsWith("UTF-16") || e.startsWith("UTF-32") || e.startsWith("UCS") || e.startsWith("UTF-7") =>
       throw new AdaUnsupported(s"encoding $enc")
+    case _ if !EncodingList.canonicalSet.contains(enc) =>
+      // Without this a misspelt name would be taken for an encoding of one byte per character, which accepts everything.
+      throw new AdaUnsupported(s"encoding `$enc`, which is not one that Kaitai Struct knows")
     case _ => "Kaitai.Strings.Single_Byte"
   }
 
@@ -1618,13 +1621,23 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       if (isSlice) body
       else List(s"if ${elPkg}Valid (Element) then") ++ ind(body) ++ List("else", "   --  The buffer is not what was parsed",
         s"   ${KW}Fail (W, ${KT}Validation_Expr);", "end if;")
-    List("declare", s"   Position : $cur := ${bs}_First (This);", s"   Element  : $elT;", "begin") ++
+    // As in Parse: an element that neither read nor wrote anything ends the loop, since all that follow do the same.
+    val idle = a.cond.repeat.isInstanceOf[RepeatExpr] && minBytes(dt) == 0
+    val (idleDecls, idleBefore, idleExit) =
+      if (!idle) (Nil, Nil, Nil)
+      else (
+        List(s"   Read_At  : ${KS}Stream;", s"   Write_At : ${KW}Writer;"),
+        List("   Read_At := Position.Io;", "   Write_At := W;"),
+        List("   --  An element that read nothing and wrote nothing: so will all that follow",
+          s"   exit when ${KS}Pos (Position.Io) = ${KS}Pos (Read_At) and then ${KS}Bits_Left (Position.Io) = ${KS}Bits_Left (Read_At)",
+          s"     and then ${KW}Pos (W) = ${KW}Pos (Write_At) and then ${KW}Bits_Free (W) = ${KW}Bits_Free (Write_At);"))
+    List("declare", s"   Position : $cur := ${bs}_First (This);", s"   Element  : $elT;") ++ idleDecls ++ List("begin") ++
       ind(List(
         "while Has_Element (Position) loop",
         "   pragma Loop_Invariant (Belongs_To (Position, Buffer));",
         s"   pragma Loop_Invariant (${KW}Is_Valid (W, Target) and then ${KW}Same_Window (W'Loop_Entry, W));",
-        "   pragma Loop_Variant (Decreases => Remaining (Position));",
-        "   Next (Buffer, This, Position, Element);") ++ ind(write) ++ List("end loop;")) ++ List("end;")
+        "   pragma Loop_Variant (Decreases => Remaining (Position));") ++ idleBefore ++ List(
+        "   Next (Buffer, This, Position, Element);") ++ ind(write) ++ idleExit ++ List("end loop;")) ++ List("end;")
   }
 
   private def genMembers(cs: ClassSpec, o: Out, sc: Scope): Unit = {
@@ -2351,6 +2364,25 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     o.parse ++= wrapCond(a, hasOpt, stmts ++ validStmts, rc)
   }
 
+  /**
+    * The least number of whole bytes that a successful read of a value of the type takes from the stream, as far as
+    * the description alone tells: 0 where a value may read nothing.
+    */
+  private def minBytes(dt: DataType, seen: List[ClassSpec] = Nil): Int = dt match {
+    case Int1Type(_) => 1
+    case IntMultiType(_, w, _) => w.width
+    case FloatMultiType(w, _) => w.width
+    case EnumType(_, _, b) => minBytes(b, seen)
+    case ut: UserTypeInstream =>
+      ut.classSpec match {
+        case Some(c) if !seen.exists(_ eq c) =>
+          c.seq.filter(a => a.cond.ifExpr.isEmpty && a.cond.repeat == NoRepeat)
+            .foldLeft(0)((n, a) => (n + minBytes(a.dataType, c :: seen)).min(1 << 20))
+        case _ => 0
+      }
+    case _ => 0
+  }
+
   private def genRepeatCursor(cs: ClassSpec, a: AttrSpec, dt: DataType, rep: RepeatSpec, pre: String, hasOpt: Option[String], comment: List[String], o: Out, rc: RC): Unit = {
     val nm = plain(idRaw(a.id))
     val bs = base(idRaw(a.id))
@@ -2465,9 +2497,21 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val loop: List[String] = rep match {
       case RepeatExpr(e) =>
         val t = T(e, rc)
+        // The count comes from the data. Elements that take at least a byte each end the loop when the stream does;
+        // elements that may read nothing do not, so the loop is left at the first one that reads nothing: all that
+        // follow start in the same state and read nothing either.
+        val (before, same) =
+          if (minBytes(dt) > 0) (Nil, Nil)
+          else {
+            val at = rc.scope.fresh("Before")
+            rc.scope.decls += s"$at : ${KS}Stream;"
+            (List(s"$at := S;"),
+             List("--  An element that read nothing: so will all that follow",
+               s"exit when ${KS}Pos (S) = ${KS}Pos ($at) and then ${KS}Bits_Left (S) = ${KS}Bits_Left ($at);"))
+          }
         guarded(t.guards, List(s"This.${bs}_Count := ${countCode(t)};"), rc, Nil) ++ List(
           s"for $Iv in 1 .. This.${bs}_Count loop"
-        ) ++ ind(List(parseCall, s"exit when not ${valid(el).replace("OK (S)", "OK (S)")};",
+        ) ++ ind(before ++ List(parseCall, s"exit when not ${valid(el).replace("OK (S)", "OK (S)")};") ++ same ++ List(
           s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv);")) ++ List("end loop;")
       case RepeatEos =>
         List(s"This.${bs}_Count := 0;", s"for $Iv in 1 .. ${KS}Remaining (S) loop") ++

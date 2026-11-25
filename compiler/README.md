@@ -80,7 +80,7 @@ arrays in expressions beyond `.size` and subscripts of repetitions of other elem
 types, `repeat` on parse instances or on switch fields, `valid` on other repeated
 fields, parse instances used in expressions, encodings `UTF-16` without byte
 order, `UTF-32` and the like, `valid` on a field whose type is chosen by
-`switch-on`, comparisons and `to_i` of strings in UTF-16, comparisons of
+`switch-on` unless all its cases are integers and it has a `_` case (`in-enum` never), comparisons and `to_i` of strings in UTF-16, comparisons of
 strings in different encodings other than ASCII and UTF-8, and `.length` of
 strings in Shift_JIS, Big5 or EUC-KR.
 

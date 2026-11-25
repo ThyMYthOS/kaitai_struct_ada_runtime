@@ -1922,7 +1922,14 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val nm = plain(idRaw(a.id))
     val bs = base(idRaw(a.id))
     val cases = st.cases.toList
-    if (a.valid.isDefined) unsupported("`valid` on a field whose type depends on a value")
+    a.valid.foreach { v =>
+      if (!cases.forall(c => isIntCase(c._2)))
+        unsupported("`valid` on a field whose type depends on a value and has cases that are not integers")
+      if (!cases.exists(_._1 == SwitchType.ELSE_CONST))
+        unsupported("`valid` on a field whose type depends on a value and has no `_` case: the value does not exist where no case matches")
+      if (v.isInstanceOf[ValidationInEnum])
+        unsupported("`valid: in-enum` on a field whose type depends on a value")
+    }
     if (cases.exists(c => AdaTranslator.hasProcess(c._2))) unsupported("`process` in a field whose type depends on a value")
     if (cases.exists { case (_, ut: UserType) => ut.classSpec.get eq cs; case _ => false })
       unsupported("a field whose type depends on a value and can be the type itself")
@@ -2018,7 +2025,14 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         labeled.map { case (k, dt) => (Some(k), intBranch(dt, nm, adaT, adaPlain, hasN, rc, a)) } ++
           elseCase.toList.map(dt => (None, intBranch(dt, nm, adaT, adaPlain, hasN, rc, a)))
       if (elseCase.isEmpty) rc.scope.needsInit = true
-      o.parse ++= wrapCond(a, if (hasCond(a)) Some(hasName) else None, choose(branches), rc)
+      // the value is checked as it is held, whichever case read it
+      val valueType: DataType = adaPlain match {
+        case "U8" => Int1Type(false)
+        case "S8" => Int1Type(true)
+        case other => IntMultiType(other.head == 'S', other.drop(1).toInt match { case 16 => Width2; case 32 => Width4; case _ => Width8 }, None)
+      }
+      val checks = a.valid.toList.flatMap(v => validate(v, valueType, s"This.$nm", rc))
+      o.parse ++= wrapCond(a, if (hasCond(a)) Some(hasName) else None, choose(branches) ++ checks, rc)
       return
     }
 

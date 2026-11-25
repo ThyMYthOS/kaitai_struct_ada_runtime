@@ -10,6 +10,8 @@
   import path `formats/ks_path` (`imports_abs_abs` and `imports_abs_rel` generate
   with it) and, if `KSF_DIR` names a checkout of `kaitai_struct_formats`, that
   as well.
+- - Compiler: `valid` on a field whose type is chosen by `switch-on` is checked when
+  all cases are integers and there is a `_` case (valid_switch); it was rejected.
 
 ## 0.1.0 (2026-11-25)
 

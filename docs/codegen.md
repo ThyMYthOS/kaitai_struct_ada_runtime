@@ -565,7 +565,11 @@ Where the rules above are silent, the compiler does the following.
   different encodings, unless both are ASCII or UTF-8, and `.length` of a
   string in Shift_JIS, Big5 or EUC-KR, whose characters the library cannot
   count.
-- `valid` on a field whose type is chosen by `switch-on` is rejected.
+- `valid` on a field whose type is chosen by `switch-on` is checked after the cases, on the value that was read, like
+  `valid` on a field of the integer type of the cases: `if S64 (This.B) /= 17217 then Fail (S, Validation_Not_Equal);`. It
+  is supported where all cases are integers (the value is held in the component of the widest type) and there is a `_`
+  case. It is rejected where a case is not an integer, where no `_` case makes the value exist for every input (in the
+  other targets the check there reads a field that was never set), and for `in-enum`.
 - A field of a type with `terminator` or `pad-right` (alone or with `size`,
   `size-eos`) reads the bytes as a field of bytes does, cuts them, and
   parses the value from `Open (Buffer, Item)` of the slice, then `Join`. If

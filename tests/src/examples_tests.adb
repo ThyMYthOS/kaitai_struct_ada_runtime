@@ -35,6 +35,7 @@ with Term_Struct;
 with Test_Support;   use Test_Support;
 with Valid_Fail_Eq_Int;
 with Valid_Fail_Repeat_Eq_Int;
+with Valid_Switch;
 
 package body Examples_Tests is
 
@@ -1062,6 +1063,23 @@ package body Examples_Tests is
       end if;
    end Test_Switch_Else_Only;
 
+   procedure Test_Valid_Switch is
+      use Valid_Switch;
+      Data : Bytes := Sample_Data.Fixed_Struct;
+      S    : Stream := Open (Data);
+      This : Valid_Switch.T;
+   begin
+      Group ("examples valid_switch");
+      Parse (Data, S, This);
+      Check
+        (Valid (This) and then A (This) = 16#50# and then B (This) = 16#4341#, "the value of the switch is checked");
+      Data (3) := 16#44#;
+      S := Open (Data);
+      Parse (Data, S, This);
+      Check
+        (not Valid (This) and then Status (S) = Validation_Not_Equal, "another value of the switch is not accepted");
+   end Test_Valid_Switch;
+
    procedure Run is
    begin
       Test_Hello_World;
@@ -1101,6 +1119,7 @@ package body Examples_Tests is
       Test_Subscripts;
       Test_Switch_Bytearray;
       Test_Switch_Else_Only;
+      Test_Valid_Switch;
    end Run;
 
 end Examples_Tests;

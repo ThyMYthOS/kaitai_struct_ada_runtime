@@ -34,6 +34,7 @@ with Term_Strz;
 with Term_Strz4;
 with Valid_Fail_Eq_Int;
 with Valid_Fail_Repeat_Eq_Int;
+with Valid_Switch;
 with Write_Model;
 
 package body Fuzz_Targets is
@@ -232,6 +233,9 @@ package body Fuzz_Targets is
 
          when Switch_Else_Only_Parser          =>
             return Sample_Data.Switch_Opcodes;
+
+         when Valid_Switch_Parser              =>
+            return Sample_Data.Fixed_Struct;
       end case;
    end Seed;
 
@@ -720,6 +724,8 @@ package body Fuzz_Targets is
    procedure Run_Switch_Else_Only is new
      Run_Parse_Only (Switch_Else_Only.T, Switch_Else_Only.Parse, Switch_Else_Only.Valid);
 
+   procedure Run_Valid_Switch is new Run_Parse_Only (Valid_Switch.T, Valid_Switch.Parse, Valid_Switch.Valid);
+
    procedure Run (T : Target; Input : Bytes; Argument : U16; Fields : out Natural) is
    begin
       case T is
@@ -824,6 +830,9 @@ package body Fuzz_Targets is
 
          when Switch_Else_Only_Parser          =>
             Run_Switch_Else_Only (Input, Fields);
+
+         when Valid_Switch_Parser              =>
+            Run_Valid_Switch (Input, Fields);
       end case;
    end Run;
 

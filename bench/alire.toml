@@ -1,6 +1,6 @@
 name = "kaitai_bench"
 description = "Performance measurements for the Kaitai Struct Ada runtime"
-version = "0.1.0"
+version = "0.2.0-dev"
 
 licenses = "MIT"
 maintainers = ["Manuel Stahl <thymythos@googlemail.com>"]

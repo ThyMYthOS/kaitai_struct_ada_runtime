@@ -1,6 +1,6 @@
 name = "kaitai_struct_tests_target"
 description = "Tests of the Kaitai Struct runtime library on a simulated STM32F4"
-version = "0.1.0"
+version = "0.2.0-dev"
 
 licenses = "MIT"
 maintainers = ["Manuel Stahl <thymythos@googlemail.com>"]

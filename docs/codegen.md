@@ -591,7 +591,9 @@ Where the rules above are silent, the compiler does the following.
 
 ## Writing
 
-A parsed value can be written again. Every type gets, next to `Parse`,
+The compiler generates `Write` when it is given `--read-write`; without it
+nothing of this section is generated. A parsed value can then be written
+again. Every type gets, next to `Parse`,
 
 ```ada
 procedure Write (Buffer : Bytes; This : T; Target : in out Bytes; W : in out Writer)
@@ -609,28 +611,85 @@ room is `Capacity_Exceeded`.
 
 | Field | In `Write` |
 |---|---|
-| integer, float, enumeration | `Write_U4le (Target, W, This.X)` and the like, the integer as it was read |
-| bit field | `Write_Bits_Int_Be (Target, W, N, This.X)` |
+| integer, float, enumeration | `Write_U4le (Target, W, This.X)` and the like, the integer as it was read; with a byte order decided at run time `Write_U4 (Target, W, This.Order, This.X)` |
+| bit field | `Write_Bits_Int_Be (Target, W, N, This.X)`; `b1` writes 1 or 0 |
 | bytes or string with a size | `Write_Bytes (Target, W, Buffer (This.X.First .. This.X.Last))` |
 | bytes or string with a terminator | `Write_Bytes_Term (…, Term)`; with `pad-right` and a size `Write_Padded` |
 | `contents` | `Write_Bytes (Target, W, X_Expected)` |
-| field of a type | `Foo_Type.Write (Buffer, This.X, Target, W)` |
+| field of a type | `Foo_Type.Write (Buffer, This.X, Target, W)`; for a type of another description `Foo.Write` |
 | field of a type with `size` | `Subwriter (Target, W, To_Size (Size), Sub); Foo_Type.Write (Buffer, This.X, Target, Sub); Join (W, Sub);` |
-| field with `if`, field chosen by `switch-on` | under the same condition, the variant that is there |
+| field with `if`, field chosen by `switch-on` | under the same condition (`Has_X`), the variant that is there |
 | repetition of a fixed size | the slice, with `Write_Bytes` |
 | other repetition | a loop over the cursor that writes each element |
 | field with `process` | the bytes as they were in the input |
 
-What comes out is the input again, with three exceptions that follow from
-what a parsed value keeps: bytes of a substream that the value inside does
-not use are written as zeros, padding is written with the padding byte
-whatever was there, and instances with a position are not written. An
+The loop over a cursor has the invariants `Belongs_To (Position, Buffer)` and
+that `W` is valid and has the same window as when the loop began, and the
+variant `Decreases => Remaining (Position)`. An element is parsed again with
+`Next` to be written.
+
+The rule that `Write` follows: parsing what it wrote gives the same value
+again, with the same field values and slices with the same contents. The
+output is the input again in the normal case. The differences are these and
+no others, all of them follow from what a parsed value keeps: bytes of a
+substream that the value inside does not use are written as zeros, bits that
+no field reads (a description that skips bits) are written as zero, bytes
+that follow a terminator in a field with a size are written as the
+terminator byte, padding is written with the padding byte whatever was there,
+a terminator that `eos-error: false` allows to be missing is written if the
+writer has room for it, and instances with a position are not written. An
 element of a repetition is parsed again to be written; if the buffer is no
 longer what was parsed, the writer fails with `Validation_Expr`.
 
+Where the section was silent, the compiler does the following.
+
+- A bit field after a field that is not a bit field starts a new byte, like
+  the reader. `Align_To_Byte (W)` is the first statement of `Write` exactly
+  where `Parse` starts with `Align_To_Byte (S)`.
+- Bytes or a string with a size and a terminator or padding: `Write_Padded
+  (…, Size, Pad)`, the padding byte being `pad-right` or else the
+  terminator. Where `pad-right` is another byte than the terminator, the
+  value, then the terminator if the size leaves room for it, then the
+  padding, since the padding is stripped before the terminator is looked for
+  and would otherwise eat the end of the value. The same holds for a field
+  with `process`: its raw bytes are padded and cut like any bytes.
+- Bytes with `size-eos`: the bytes, the terminator if there is one that is
+  not included and the writer has room for it, then the padding byte up to
+  the end of the window of the writer. The window is the substream of the
+  field that contains the value; at the end of a target that is larger than
+  the output the padding fills the rest of it.
+- Bytes with a terminator and no size: with `include: false` and `consume:
+  true` the bytes and the terminator; with `eos-error: false` the terminator
+  only if the writer has room for it, as the field may have ended at the end
+  of the stream; with `include: true` and `consume: true` the bytes; with
+  `consume: false` the bytes and no terminator, since the next field reads it
+  again. A target without room for a missing terminator is not an error;
+  with `eos-error: true` the terminator was there, and a target without room
+  for it is `Capacity_Exceeded`.
+- A value of a type that is cut from bytes with a terminator and no size is
+  written directly, followed by the terminator if it is neither included nor
+  left in the stream, and for `eos-error: false` only if there is room. A value of a type with `size-eos` is written directly.
+- A field whose type is chosen by `switch-on` writes the variant that is
+  there; for a switch of integers the cases must have the same type, since
+  the width to write is not kept.
+- `contents`, parameters, `Parent_X`, `Root_X` and `Order` are not parsed
+  from the input again: `contents` is written from its constant, the others
+  are not written. Instances are not written. `valid` is not checked again.
+- A size or a condition that the expression of a field needs is computed
+  from `This` as in `Parse`; where it is not defined, the writer fails with
+  `Arithmetic_Error`.
+- The unit of a type that contains itself would need a `Subprogram_Variant`
+  for `Write` that the library cannot prove from what `Next` delivers; the
+  compiler rejects `--read-write` for such a type. It also rejects a
+  terminator of more than one byte, a terminator that is included but not
+  consumed, a value cut from bytes with both a size and a terminator or
+  padding, `contents` with a condition, a field with a condition whose type
+  depends on a value and has no `else`, and expressions that use `_io`.
+
 There are no operations yet that change a parsed value or build one from
-nothing. `examples/write_model` is the model for this section, written by
-hand; the compiler does not generate `Write` yet.
+nothing. `examples/write_model` is generated with `--read-write`; a file
+`options` in the directory of an example holds the options that
+`scripts/generate-examples.sh` gives the compiler.
 
 ## Building generated code
 

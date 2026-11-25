@@ -13,9 +13,10 @@
 # scripts/build-compiler.sh builds in $KSC_DIR.
 set -eu
 
-# Examples that are written by hand, as the model for constructs the
-# compiler does not generate yet.  They are left alone.
-HANDWRITTEN="write_model"
+# Examples that are written by hand are listed here and left alone.  None is
+# at the moment.  A file examples/<name>/options holds options for the
+# compiler, for example --read-write.
+HANDWRITTEN=""
 
 here=$(cd "$(dirname "$0")/.." && pwd)
 KSC_DIR=${KSC_DIR:-$HOME/.cache/kaitai_struct_compiler}
@@ -50,7 +51,10 @@ for ksy in examples/*/*.ksy; do
    # The compiler also writes the files of the descriptions that this one
    # imports; those belong to examples of their own
    tmp=$(mktemp -d)
-   "$KSC" -t ada --outdir "$tmp" "$ksy" 2>&1 | grep -v '^Picked up' || true
+   opts=""
+   [ -f "$dir/options" ] && opts=$(cat "$dir/options")
+   # shellcheck disable=SC2086
+   "$KSC" -t ada $opts --outdir "$tmp" "$ksy" 2>&1 | grep -v '^Picked up' || true
    cp "$tmp/$name.ads" "$tmp/$name.adb" "$dir/"
    rm -rf "$tmp"
    files="$files $dir/$name.ads $dir/$name.adb"

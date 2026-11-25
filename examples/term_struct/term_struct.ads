@@ -2,6 +2,7 @@
 
 with Kaitai.Streams;
 with Kaitai.Types;
+with Kaitai.Writers;
 
 package Term_Struct
   with SPARK_Mode, Always_Terminates
@@ -28,6 +29,12 @@ is
 
       function Value (This : T) return Kaitai.Types.Slice
       with Pre => Valid (This);
+
+      procedure Write
+        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+      with
+        Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Kaitai.Writers.Is_Valid (W, Target),
+        Post => Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Old, W);
 
    private
 
@@ -70,6 +77,12 @@ is
 
    function S3 (This : T) return Bytes_Wrapper_Type.T
    with Pre => Valid (This), Post => Bytes_Wrapper_Type.Valid (S3'Result);
+
+   procedure Write
+     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+   with
+     Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Kaitai.Writers.Is_Valid (W, Target),
+     Post => Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Old, W);
 
 private
 

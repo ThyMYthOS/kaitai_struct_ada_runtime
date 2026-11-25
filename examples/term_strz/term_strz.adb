@@ -26,4 +26,12 @@ is
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 
+   procedure Write
+     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+   begin
+      Kaitai.Writers.Write_Bytes_Term (Target, W, Buffer (This.S1.First .. This.S1.Last), 124);
+      Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.S2.First .. This.S2.Last));
+      Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.S3.First .. This.S3.Last));
+   end Write;
+
 end Term_Strz;

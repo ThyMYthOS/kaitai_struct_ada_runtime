@@ -79,7 +79,20 @@ string concatenation, `substring`, `reverse`, `to_s`, array subscripts and
 arrays in expressions beyond `.size`, `_index`, casts, parameters of other
 types, `repeat` on parse instances or on switch fields, `valid` on repeated
 fields, parse instances used in expressions, encodings `UTF-16` without byte
-order, `UTF-32` and the like, and `--read-write`.
+order, `UTF-32` and the like.
+
+## Writing
+
+With `--read-write` the compiler also generates `procedure Write` for every
+type, as described in the section "Writing" of `docs/codegen.md`. An example
+can carry compiler options in a file `options` next to its `.ksy`;
+`examples/write_model` and some others have `--read-write` there. Under the
+option these are rejected, each with an error that names the construct: a
+type that contains itself, a terminator of more than one byte, a terminator
+that is included but not consumed, a value cut from bytes with a size and a
+terminator or padding, an integer switch whose cases have different types,
+`contents` with a condition. `scripts/survey.sh --read-write` repeats the
+survey with the option.
 
 `compiler/SURVEY.md` lists what happens to the formats of the Kaitai
 Struct test suite.

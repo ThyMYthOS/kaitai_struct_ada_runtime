@@ -2,13 +2,14 @@
 # Run the compiler backend over all formats of the Kaitai Struct test suite
 # and tell for each what comes of it.
 #
-#   scripts/survey.sh [--prove] [--jobs N] [--out DIR]
+#   scripts/survey.sh [--prove] [--read-write] [--jobs N] [--out DIR]
 #
 # Every formats/*.ksy of the test suite is given to the compiler.  A format
 # is "generated", "rejected" (the Ada backend names a construct it does not
 # support) or "invalid" (the compiler does not accept the description at
 # all).  The generated parsers are compiled, and with --prove GNATprove runs
-# over all of them, with the switches the examples are proven with.  The
+# over all of them, with the switches the examples are proven with.  With
+# --read-write the compiler is asked to generate Write as well.  The
 # result is DIR/survey.tsv, one line per format, and totals on the output.
 #
 # KSC names the compiler launcher (default: the one scripts/build-compiler.sh
@@ -21,10 +22,12 @@ KSC=${KSC:-$KSC_DIR/jvm/target/universal/stage/bin/kaitai-struct-compiler}
 KST_DIR=${KST_DIR:-$HOME/.cache/kaitai_struct_tests}
 out=$here/obj/survey
 prove=no
+rw=
 jobs=0
 while [ $# -gt 0 ]; do
    case $1 in
       --prove) prove=yes ;;
+      --read-write) rw=--read-write ;;
       --jobs) jobs=$2; shift ;;
       --out) out=$2; shift ;;
       *) echo "unknown argument $1" >&2; exit 2 ;;
@@ -44,7 +47,7 @@ for ksy in "$KST_DIR"/formats/*.ksy; do
    name=$(basename "$ksy" .ksy)
    mkdir -p "$out/one"
    rm -f "$out"/one/*
-   (cd "$KST_DIR/formats" && "$KSC" -t ada -I . --outdir "$out/one" "$name.ksy") >"$out/log/$name.txt" 2>&1 || true
+   (cd "$KST_DIR/formats" && "$KSC" -t ada $rw -I . --outdir "$out/one" "$name.ksy") >"$out/log/$name.txt" 2>&1 || true
    if grep -q 'not supported by the Ada backend' "$out/log/$name.txt"; then
       reason=$(grep -m1 'not supported by the Ada backend' "$out/log/$name.txt" | sed 's/.*not supported by the Ada backend: //')
       printf '%s\trejected\t%s\n' "$name" "$reason"

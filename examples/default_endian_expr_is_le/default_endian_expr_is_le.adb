@@ -23,6 +23,13 @@ is
             This.Is_Valid := Kaitai.Streams.OK (S);
          end Parse;
 
+         procedure Write (This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+         begin
+            Kaitai.Writers.Write_U4 (Target, W, This.Order, This.Some_Int);
+            Kaitai.Writers.Write_U2be (Target, W, This.Some_Int_Be);
+            Kaitai.Writers.Write_U2le (Target, W, This.Some_Int_Le);
+         end Write;
+
       end Main_Obj_Type;
 
       procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
@@ -37,6 +44,13 @@ is
          Doc_Type.Main_Obj_Type.Parse (Buffer, S, Order, This.Main);
          This.Is_Valid := Kaitai.Streams.OK (S);
       end Parse;
+
+      procedure Write
+        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+      begin
+         Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.Indicator.First .. This.Indicator.Last));
+         Doc_Type.Main_Obj_Type.Write (This.Main, Target, W);
+      end Write;
 
    end Doc_Type;
 
@@ -76,5 +90,29 @@ is
       end loop;
       Element := Result;
    end Get_Docs;
+
+   procedure Write
+     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+   begin
+      declare
+         Position : Docs_Cursor := Docs_First (This);
+         Element  : Doc_Type.T;
+      begin
+         while Has_Element (Position) loop
+            pragma Loop_Invariant (Belongs_To (Position, Buffer));
+            pragma
+              Loop_Invariant
+                (Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Loop_Entry, W));
+            pragma Loop_Variant (Decreases => Remaining (Position));
+            Next (Buffer, This, Position, Element);
+            if Doc_Type.Valid (Element) then
+               Doc_Type.Write (Buffer, Element, Target, W);
+            else
+               --  The buffer is not what was parsed
+               Kaitai.Writers.Fail (W, Kaitai.Types.Validation_Expr);
+            end if;
+         end loop;
+      end;
+   end Write;
 
 end Default_Endian_Expr_Is_Le;

@@ -655,7 +655,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   }
 
   /** Context of the statements of a read */
-  private case class RC(s: String, order: String, scope: Scope, path: List[String])
+  private case class RC(s: String, order: String, scope: Scope, path: List[String], w: Boolean = false)
 
   private class Out {
     val pub = ListBuffer[String]()
@@ -668,6 +668,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val bodyConsts = ListBuffer[String]()
     val bodyBefore = ListBuffer[String]()
     val bodyAfter = ListBuffer[String]()
+    val write = ListBuffer[String]()
+    val wscope = new Scope
   }
 
   private def T(e: Ast.expr, rc: RC): ATr = {
@@ -681,7 +683,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
   private def conjoin(gs: List[String]): String = gs.mkString(" and then ")
 
-  private def failStmt(rc: RC, reason: String): String = s"${KS}Fail (${rc.s}, $KT$reason);"
+  private def failStmt(rc: RC, reason: String): String =
+    if (rc.w) s"${KW}Fail (W, $KT$reason);" else s"${KS}Fail (${rc.s}, $KT$reason);"
 
   /** Statements that run only where all guards hold; otherwise the stream fails. */
   private def guarded(gs: List[String], thenStmts: List[String], rc: RC, elseStmts: List[String] = Nil, init: Boolean = true): List[String] =
@@ -1046,7 +1049,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
   override def compile: CompileLog.SpecSuccess = {
     if (config.readWrite)
-      fail(topClass.path, "`--read-write`")
+      allClasses.find(c => classFile(c) == classFile(topClass) && isRecursive(c)).foreach { c =>
+        fail(c.path, s"`--read-write` for type ${c.nameAsStr}, which contains itself")
+      }
     if (topClass.meta.isOpaque)
       fail(topClass.path, "opaque types")
     if (topAdaName == "Kaitai" || Reserved.contains(topAdaName.toLowerCase) || topAdaName.contains("__"))
@@ -1080,7 +1085,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     if (ws.isEmpty) Nil else ws
   }
 
-  private val LibPackages = List("Streams", "Types", "Arithmetic", "Decoding", "Strings", "Byte_Arrays", "Floats", "Processing", "Zlib")
+  private val LibPackages = List("Streams", "Types", "Arithmetic", "Decoding", "Strings", "Byte_Arrays", "Floats", "Processing", "Zlib", "Writers")
 
   private def usedLibs(text: String): Set[String] = {
     val clean = text.split("\n").map(l => l.takeWhile(_ != '-')).mkString("\n")
@@ -1146,6 +1151,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         (if (!isRecursive(cs)) Nil
          else wrapComment("Depth is the number of levels of nesting that are accepted below this value; deeper ones make the stream fail with Limit_Exceeded."))
     val belongsOk = hasBelongs(cs)
+    val writeParams = (if (belongsOk) s"Buffer : ${KT}Bytes; " else "") + s"This : T; Target : in out ${KT}Bytes; W : in out ${KW}Writer"
 
     specB += "type T is private;"
     specB += ""
@@ -1164,6 +1170,13 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     if (isRecursive(cs)) specB += "  Subprogram_Variant => (Decreases => Depth, Decreases => 1);"
     specB += ""
     specB ++= o.pub
+    if (config.readWrite) {
+      specB += s"   procedure Write ($writeParams)"
+      specB += "   with"
+      specB += s"     Pre  => Valid (This) and then ${if (belongsOk) "Belongs_To (This, Buffer) and then " else ""}${KW}Is_Valid (W, Target),"
+      specB += s"     Post => ${KW}Is_Valid (W, Target) and then ${KW}Same_Window (W'Old, W);"
+      specB += ""
+    }
     specB += "private"
     specB += ""
     specB ++= ind(o.privTypes.toList)
@@ -1228,6 +1241,19 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     bodyB ++= bodyParse
     bodyB += ""
     bodyB ++= o.bodyAfter
+    if (config.readWrite) {
+      val text = o.write.mkString("\n")
+      val unused = List("Buffer" -> belongsOk, "This" -> true, "Target" -> true, "W" -> true).collect {
+        case (n, true) if !("\\b" + n + "\\b").r.findFirstIn(text).isDefined => n
+      }
+      val warn = unused.map(n => s"pragma Warnings (Off, $n);")
+      bodyB += s"procedure Write ($writeParams) is"
+      bodyB ++= ind(o.wscope.decls.toList ++ warn)
+      bodyB += "begin"
+      bodyB ++= ind(if (o.write.isEmpty) List("null;") else o.write.toList)
+      bodyB += "end Write;"
+      bodyB += ""
+    }
     if (isTop) {
       bodyOut += s"package body $pkgName"
       bodyOut += "  with SPARK_Mode"
@@ -1296,6 +1322,195 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
   // ------------------------------------------------------------------ members
 
+  // ------------------------------------------------------------------ writing
+
+  private def writeCtx(cs: ClassSpec, sc: Scope, path: List[String]): RC =
+    RC("Unavailable_Stream", if (storesOrder(cs)) "This.Order" else "", sc, path, w = true)
+
+  private def writeInt(dt: DataType, target: String, rc: RC): List[String] = dt match {
+    case Int1Type(sg) => List(s"${KW}Write_${if (sg) "S1" else "U1"} (Target, W, $target);")
+    case IntMultiType(sg, w, e) =>
+      val nm = s"Write_${if (sg) "S" else "U"}${w.width}"
+      e match {
+        case Some(fe) => List(s"$KW$nm${fe.toSuffix} (Target, W, $target);")
+        case None => List(s"$KW$nm (Target, W, ${orderOf(rc, dt)}, $target);")
+      }
+    case FloatMultiType(w, e) =>
+      val nm = s"Write_U${w.width}"
+      e match {
+        case Some(fe) => List(s"$KW$nm${fe.toSuffix} (Target, W, $target);")
+        case None => List(s"$KW$nm (Target, W, ${orderOf(rc, dt)}, $target);")
+      }
+    case BitsType1(be) =>
+      List(s"${KW}Write_Bits_Int_${if (be == BigBitEndian) "Be" else "Le"} (Target, W, 1, (if $target then 1 else 0));")
+    case BitsType(w, be) =>
+      List(s"${KW}Write_Bits_Int_${if (be == BigBitEndian) "Be" else "Le"} (Target, W, $w, $target);")
+    case EnumType(_, _, b) => writeInt(b, target, rc)
+    case other => throw new AdaUnsupported(s"type $other")
+  }
+
+  /**
+    * Statements that write a field of bytes that is kept as the slice `target`, so that parsing what is written
+    * gives the same slice again.
+    */
+  private def writeBytes(bt: BytesType, target: String, rc: RC): List[String] = {
+    val src = s"Buffer ($target.First .. $target.Last)"
+    val none = "(1 .. 0 => 0)"
+    def single(term: Seq[Byte]): Int =
+      if (term.size != 1) throw new AdaUnsupported("a terminator of more than one byte") else unsignedByte(term.head)
+    bt match {
+      case BytesLimitType(_, None, _, None, _) => List(s"${KW}Write_Bytes (Target, W, $src);")
+      case BytesLimitType(size, term, include, pad, _) =>
+        val padByte = pad.getOrElse(single(term.get))
+        term.foreach(single)
+        val t = T(size, rc)
+        val sz = sizeCode(t)
+        val body =
+          if (term.isDefined && pad.isDefined && !include && padByte != single(term.get) && !(t.isLiteral && t.lo == 0))
+            // padding is stripped before the terminator is looked for: the terminator has to be written
+            { opTypes += "Length"; List(s"${KW}Write_Bytes (Target, W, $src);", s"if ${KT}Size ($target) < $sz then",
+              s"   ${KW}Write_U1 (Target, W, ${single(term.get)});",
+              s"   ${KW}Write_Padded (Target, W, $none, $sz - ${KT}Size ($target) - 1, $padByte);", "end if;") }
+          else List(s"${KW}Write_Padded (Target, W, $src, $sz, $padByte);")
+        guarded(t.guards, body, rc)
+      case BytesEosType(term, include, pad, _) =>
+        term.foreach(single)
+        List(s"${KW}Write_Bytes (Target, W, $src);") ++
+          (if (term.isDefined && !include) {
+             opTypes += "Length"
+             List(s"if ${KW}Remaining (W) > 0 then", s"   ${KW}Write_U1 (Target, W, ${single(term.get)});", "end if;")
+           } else Nil) ++
+          pad.toList.map(p => s"${KW}Write_Padded (Target, W, $none, ${KW}Remaining (W), $p);")
+      case BytesTerminatedType(term, include, consume, eosError, _) =>
+        val t = single(term)
+        if (include && !consume) throw new AdaUnsupported("a terminator that is included but not consumed")
+        if (!include && consume && eosError) List(s"${KW}Write_Bytes_Term (Target, W, $src, $t);")
+        else if (!include && consume) {
+          opTypes += "Length"
+          List(s"${KW}Write_Bytes (Target, W, $src);", s"if ${KW}Remaining (W) > 0 then", s"   ${KW}Write_U1 (Target, W, $t);", "end if;")
+        }
+        else List(s"${KW}Write_Bytes (Target, W, $src);")
+      case other => throw new AdaUnsupported(s"bytes $other")
+    }
+  }
+
+  /** The call of `Write` of the type of a field kept as `target` */
+  private def writeCall(callee: ClassSpec, target: String, writer: String): String = {
+    val buf = if (hasBelongs(callee)) "Buffer, " else ""
+    s"${qualOf(callee)}Write ($buf$target, Target, $writer);"
+  }
+
+  private def writeValue(dt: DataType, target: String, rc: RC): List[String] = withPath(rc.path) {
+    dt match {
+      case _: IntType | _: EnumType | _: FloatType | _: BooleanType => writeInt(dt, target, rc)
+      case bt: BytesType => writeBytes(bt, target, rc)
+      case StrFromBytesType(bt, _, _) => writeBytes(bt, target, rc)
+      case ut: UserTypeInstream => List(writeCall(ut.classSpec.get, target, "W"))
+      case ut: UserTypeFromBytes =>
+        val callee = ut.classSpec.get
+        ut.bytes match {
+          case BytesLimitType(size, None, false, None, None) =>
+            val t = T(size, rc)
+            val sub = rc.scope.fresh("Sub")
+            rc.scope.decls += s"$sub : ${KW}Writer;"
+            guarded(t.guards,
+              List(s"${KW}Subwriter (Target, W, ${sizeCode(t)}, $sub);", writeCall(callee, target, sub), s"${KW}Join (W, $sub);"), rc)
+          case BytesEosType(None, false, None, None) => List(writeCall(callee, target, "W"))
+          case BytesTerminatedType(term, include, consume, eosError, _) =>
+            if (term.size != 1) throw new AdaUnsupported("a terminator of more than one byte")
+            if (include && !consume) throw new AdaUnsupported("a terminator that is included but not consumed")
+            val t = unsignedByte(term.head)
+            List(writeCall(callee, target, "W")) ++
+              (if (!include && consume && eosError) List(s"${KW}Write_U1 (Target, W, $t);")
+               else if (!include && consume) {
+                 opTypes += "Length"
+                 List(s"if ${KW}Remaining (W) > 0 then", s"   ${KW}Write_U1 (Target, W, $t);", "end if;")
+               } else Nil)
+          case _ => throw new AdaUnsupported("a value cut from bytes with a size and a terminator or padding")
+        }
+      case other => throw new AdaUnsupported(s"type $other")
+    }
+  }
+
+  private def genWriteAttr(cs: ClassSpec, a: AttrSpec, first: Boolean, o: Out, rc: RC): Unit = {
+    val nm = plain(idRaw(a.id))
+    val bs = base(idRaw(a.id))
+    def wrapIf(stmts: List[String]): List[String] =
+      if (!hasCond(a)) stmts else List(s"if This.${hasNm(bs)} then") ++ ind(stmts) ++ List("end if;")
+    val align =
+      if (first && a.cond.repeat == NoRepeat && (a.dataType match {
+            case _: BitsType | _: BitsType1 => true
+            case EnumType(_, _, _: BitsType) => true
+            case _ => false
+          })) List(s"${KW}Align_To_Byte (W);")
+      else Nil
+    val stmts: List[String] =
+      if (isContents(a)) {
+        if (hasCond(a)) throw new AdaUnsupported("`contents` with a condition")
+        List(s"${KW}Write_Bytes (Target, W, ${bs}_Expected);")
+      } else if (AdaTranslator.hasProcess(a.dataType)) {
+        if (a.cond.repeat != NoRepeat) throw new AdaUnsupported("`process` on a repeated field")
+        wrapIf(a.dataType match {
+          case b: BytesType => writeBytes(b, s"This.$nm", rc)
+          case ut: UserTypeFromBytes => writeBytes(ut.bytes, s"This.$nm", rc)
+          case _ => throw new AdaUnsupported("`process` on a string")
+        })
+      } else
+        a.cond.repeat match {
+          case NoRepeat =>
+            a.dataType match {
+              case st: SwitchType => wrapIf(writeSwitch(cs, a, st, nm, bs, rc))
+              case dt => wrapIf(writeValue(dt, s"This.$nm", rc))
+            }
+          case _ => wrapIf(writeRepeat(cs, a, nm, bs, rc))
+        }
+    o.write ++= align ++ stmts
+    if (o.write.exists(_.contains("Unavailable_Stream"))) throw new AdaUnsupported("`_io` in an expression of a field that is written")
+  }
+
+  private def writeSwitch(cs: ClassSpec, a: AttrSpec, st: SwitchType, nm: String, bs: String, rc: RC): List[String] = {
+    val cases = st.cases.toList
+    val elseCase = cases.find(_._1 == SwitchType.ELSE_CONST)
+    if (cases.forall(c => isIntCase(c._2))) {
+      if (cases.map(_._2).distinct.size != 1)
+        throw new AdaUnsupported("a field whose type is an integer of different kinds, chosen by a value")
+      if (elseCase.isEmpty && hasCond(a)) throw new AdaUnsupported("a field with a condition whose type depends on a value and has no else case")
+      val write = writeValue(cases.head._2, s"This.$nm", rc)
+      if (elseCase.isEmpty) List(s"if This.${hasNm(bs)} then") ++ ind(write) ++ List("end if;") else write
+    } else {
+      val variants = switchVariants(st)
+      val branches = variants.flatMap { case (dt, n) =>
+        List(s"when ${bs}_Is_$n =>") ++ ind(writeValue(dt, s"This.$nm.$n", rc))
+      }
+      List(s"case This.$nm.Kind is") ++ ind(branches ++ List(s"when ${bs}_Is_None =>", "   null;")) ++ List("end case;")
+    }
+  }
+
+  private def writeRepeat(cs: ClassSpec, a: AttrSpec, nm: String, bs: String, rc: RC): List[String] = {
+    val dt = a.dataType
+    if (AdaTranslator.fixedElement(dt).isDefined)
+      return List(s"${KW}Write_Bytes (Target, W, Buffer (This.$nm.First .. This.$nm.Last));")
+    val (elT, elPkg) = dt match {
+      case ut: UserType => (userPkg(ut) + ".T", qualOf(ut.classSpec.get))
+      case _: BytesType | _: StrType => (KT + "Slice", "")
+      case other => throw new AdaUnsupported(s"repetition of $other")
+    }
+    val isSlice = !dt.isInstanceOf[UserType]
+    val body = writeValue(dt, "Element", rc)
+    val cur = s"${bs}_Cursor"
+    val write =
+      if (isSlice) body
+      else List(s"if ${elPkg}Valid (Element) then") ++ ind(body) ++ List("else", "   --  The buffer is not what was parsed",
+        s"   ${KW}Fail (W, ${KT}Validation_Expr);", "end if;")
+    List("declare", s"   Position : $cur := ${bs}_First (This);", s"   Element  : $elT;", "begin") ++
+      ind(List(
+        "while Has_Element (Position) loop",
+        "   pragma Loop_Invariant (Belongs_To (Position, Buffer));",
+        s"   pragma Loop_Invariant (${KW}Is_Valid (W, Target) and then ${KW}Same_Window (W'Loop_Entry, W));",
+        "   pragma Loop_Variant (Decreases => Remaining (Position));",
+        "   Next (Buffer, This, Position, Element);") ++ ind(write) ++ List("end loop;")) ++ List("end;")
+  }
+
   private def genMembers(cs: ClassSpec, o: Out, sc: Scope): Unit = {
     val rc = RC("S", if (storesOrder(cs)) "Order" else "", sc, cs.path)
     // parameters
@@ -1305,6 +1520,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       val rcA = rc.copy(path = a.path)
       curSeqIdx = i
       guard(a.path)(genSeqAttr(cs, a, i == 0, o, rcA))
+      if (config.readWrite) guard(a.path)(genWriteAttr(cs, a, i == 0, o, writeCtx(cs, o.wscope, a.path)))
     }
     // instances
     curSeqIdx = Int.MaxValue
@@ -2262,6 +2478,7 @@ object AdaClassCompiler extends LanguageCompilerStatic {
   val KS = "Kaitai.Streams."
   val KB = "Kaitai.Byte_Arrays."
   val KStr = "Kaitai.Strings."
+  val KW = "Kaitai.Writers."
 
   /** Names of local variables of Parse, which a parameter must not take */
   val ParamReserved: Set[String] = Set("sub", "bit", "element", "done", "value", "l", "result", "outcome", "position", "i", "start", "arg", "index", "kind", "raw", "target", "storage", "last", "inflated", "none")
@@ -2275,7 +2492,7 @@ object AdaClassCompiler extends LanguageCompilerStatic {
     "range", "record", "rem", "renames", "requeue", "return", "reverse", "select", "separate", "some", "subtype",
     "synchronized", "tagged", "task", "terminate", "then", "type", "until", "use", "when", "while", "with", "xor",
     // names the generated code uses itself
-    "t", "parse", "valid", "belongs_to", "next", "has_element", "remaining", "max_depth", "this", "buffer", "s", "order",
+    "t", "parse", "valid", "belongs_to", "next", "has_element", "remaining", "max_depth", "write", "this", "buffer", "s", "order",
     "is_valid", "io",
     // Standard
     "kaitai", "boolean", "true", "false", "natural", "positive", "integer", "string", "character", "standard"

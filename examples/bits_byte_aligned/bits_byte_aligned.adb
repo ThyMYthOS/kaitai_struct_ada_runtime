@@ -13,6 +13,12 @@ is
          This.Is_Valid := Kaitai.Streams.OK (S);
       end Parse;
 
+      procedure Write (This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+      begin
+         Kaitai.Writers.Align_To_Byte (W);
+         Kaitai.Writers.Write_Bits_Int_Be (Target, W, 19, This.Inner);
+      end Write;
+
    end Foo_Type;
 
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
@@ -38,5 +44,27 @@ is
       Kaitai.Streams.Read_Bits_Int_Be (Buffer, S, 8, This.Six);
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
+
+   procedure Write
+     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+   is
+      Sub : Kaitai.Writers.Writer;
+   begin
+      Kaitai.Writers.Align_To_Byte (W);
+      Kaitai.Writers.Write_Bits_Int_Be (Target, W, 6, This.One);
+      Kaitai.Writers.Write_U1 (Target, W, This.Byte_1);
+      Kaitai.Writers.Write_Bits_Int_Be (Target, W, 3, This.Two);
+      Kaitai.Writers.Write_Bits_Int_Be (Target, W, 1, (if This.Three then 1 else 0));
+      Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.Byte_2.First .. This.Byte_2.Last));
+      Kaitai.Writers.Write_Bits_Int_Be (Target, W, 14, This.Four);
+      Kaitai.Writers.Subwriter (Target, W, 3, Sub);
+      Foo_Type.Write (This.Byte_3, Target, Sub);
+      Kaitai.Writers.Join (W, Sub);
+      Kaitai.Writers.Write_Bits_Int_Be (Target, W, 8, This.Full_Byte);
+      Kaitai.Writers.Write_U1 (Target, W, This.Byte_4);
+      Kaitai.Writers.Write_Bits_Int_Be (Target, W, 22, This.Five);
+      Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.Bytes_Term.First .. This.Bytes_Term.Last));
+      Kaitai.Writers.Write_Bits_Int_Be (Target, W, 8, This.Six);
+   end Write;
 
 end Bits_Byte_Aligned;

@@ -2,6 +2,7 @@
 
 with Kaitai.Streams;
 with Kaitai.Types;
+with Kaitai.Writers;
 
 package Default_Endian_Expr_Is_Le
   with SPARK_Mode, Always_Terminates
@@ -41,6 +42,11 @@ is
 
          function Some_Int_Le (This : T) return Kaitai.Types.U16
          with Pre => Valid (This);
+
+         procedure Write (This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+         with
+           Pre  => Valid (This) and then Kaitai.Writers.Is_Valid (W, Target),
+           Post => Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Old, W);
 
       private
 
@@ -86,6 +92,12 @@ is
 
       function Main (This : T) return Doc_Type.Main_Obj_Type.T
       with Pre => Valid (This), Post => Doc_Type.Main_Obj_Type.Valid (Main'Result);
+
+      procedure Write
+        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+      with
+        Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Kaitai.Writers.Is_Valid (W, Target),
+        Post => Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Old, W);
 
    private
 
@@ -153,6 +165,12 @@ is
    with
      Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Index < Docs_Count (This),
      Post => Doc_Type.Belongs_To (Element, Buffer);
+
+   procedure Write
+     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+   with
+     Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Kaitai.Writers.Is_Valid (W, Target),
+     Post => Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Old, W);
 
 private
 

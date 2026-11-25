@@ -3,6 +3,7 @@
 with Kaitai.Streams;
 with Kaitai.Types;
 with Kaitai.Arithmetic;
+with Kaitai.Writers;
 
 package Bits_Enum
   with SPARK_Mode, Always_Terminates
@@ -70,6 +71,11 @@ is
        Valid (This)
        and then Kaitai.Arithmetic.Fits (Three_Value (This))
        and then Is_Animal_Enum (Kaitai.Types.S64 (Three_Value (This)));
+
+   procedure Write (This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+   with
+     Pre  => Valid (This) and then Kaitai.Writers.Is_Valid (W, Target),
+     Post => Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Old, W);
 
 private
 

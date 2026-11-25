@@ -13,4 +13,12 @@ is
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 
+   procedure Write (This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+   begin
+      Kaitai.Writers.Align_To_Byte (W);
+      Kaitai.Writers.Write_Bits_Int_Be (Target, W, 4, This.One);
+      Kaitai.Writers.Write_Bits_Int_Be (Target, W, 8, This.Two);
+      Kaitai.Writers.Write_Bits_Int_Be (Target, W, 1, This.Three);
+   end Write;
+
 end Bits_Enum;

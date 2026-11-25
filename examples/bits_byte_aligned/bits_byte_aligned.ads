@@ -2,6 +2,7 @@
 
 with Kaitai.Streams;
 with Kaitai.Types;
+with Kaitai.Writers;
 
 package Bits_Byte_Aligned
   with SPARK_Mode, Always_Terminates
@@ -27,6 +28,11 @@ is
 
       function Inner (This : T) return Kaitai.Types.U64
       with Pre => Valid (This);
+
+      procedure Write (This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+      with
+        Pre  => Valid (This) and then Kaitai.Writers.Is_Valid (W, Target),
+        Post => Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Old, W);
 
    private
 
@@ -93,6 +99,12 @@ is
 
    function Six (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
+
+   procedure Write
+     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+   with
+     Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Kaitai.Writers.Is_Valid (W, Target),
+     Post => Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Old, W);
 
 private
 

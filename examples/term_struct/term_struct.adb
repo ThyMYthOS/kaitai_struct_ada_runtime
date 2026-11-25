@@ -12,6 +12,12 @@ is
          This.Is_Valid := Kaitai.Streams.OK (S);
       end Parse;
 
+      procedure Write
+        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+      begin
+         Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.Value.First .. This.Value.Last));
+      end Write;
+
    end Bytes_Wrapper_Type;
 
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
@@ -51,5 +57,14 @@ is
       end if;
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
+
+   procedure Write
+     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+   begin
+      Bytes_Wrapper_Type.Write (Buffer, This.S1, Target, W);
+      Kaitai.Writers.Write_U1 (Target, W, 124);
+      Bytes_Wrapper_Type.Write (Buffer, This.S2, Target, W);
+      Bytes_Wrapper_Type.Write (Buffer, This.S3, Target, W);
+   end Write;
 
 end Term_Struct;

@@ -1,6 +1,7 @@
 with Bits_Byte_Aligned;
 with Bits_Enum;
 with Bits_Simple;
+with Bytes_Pad_Term;
 with Bytes_Pad_Term_Equal;
 with Default_Endian_Expr_Is_Le;
 with Enum_0;
@@ -13,15 +14,18 @@ with Imports0;
 with Instance_Std;
 with Kaitai.Streams; use Kaitai.Streams;
 with Kaitai.Types;   use Kaitai.Types;
+with Kaitai.Writers;
 with Params_Def;
 with Position_Abs;
 with Repeat_Eos_U4;
 with Repeat_N_Struct;
 with Repeat_Until_Complex;
 with Sample_Data;    use Sample_Data;
+with Str_Eos_Pad_Term;
 with Str_Encodings;
 with Switch_Manual_Int;
 with Term_Strz;
+with Term_Strz4;
 with Term_Struct;
 with Test_Support;   use Test_Support;
 with Valid_Fail_Eq_Int;
@@ -660,6 +664,264 @@ package body Examples_Tests is
       end if;
    end Test_Imports0;
 
+   --  Round trips: parse a sample, write the value, compare with the sample
+
+   procedure Test_Write_Bits_Enum is
+      Data   : Bytes renames Sample_Data.Fixed_Struct;
+      S      : Stream := Open (Data);
+      This   : Bits_Enum.T;
+      Target : Bytes (1 .. 8) := (others => 16#EE#);
+      W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples write bits_enum");
+      Bits_Enum.Parse (Data, S, This);
+      if Bits_Enum.Valid (This) then
+         Bits_Enum.Write (This, Target, W);
+         Check (Kaitai.Writers.OK (W) and then Size (Kaitai.Writers.Written (W)) = 2, "two bytes are written");
+         --  The three bits of the second byte that no field reads are written as zero
+         Check
+           (Target (1) = Data (1) and then (Target (2) and 16#F8#) = (Data (2) and 16#F8#), "the bits that were read");
+         Check ((Target (2) and 16#07#) = 0, "and zero for the others");
+      else
+         Check (False, "parses");
+      end if;
+   end Test_Write_Bits_Enum;
+
+   procedure Test_Write_Bits_Byte_Aligned is
+      use Bits_Byte_Aligned;
+      Data   : Bytes renames Sample_Data.Fixed_Struct;
+      S      : Stream := Open (Data);
+      This   : Bits_Byte_Aligned.T;
+      Again  : Bits_Byte_Aligned.T;
+      Target : Bytes (1 .. 40) := (others => 16#EE#);
+      W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples write bits_byte_aligned");
+      Parse (Data, S, This);
+      if Valid (This) then
+         Write (Data, This, Target, W);
+         Check (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = Pos (S), "as many bytes as were read");
+         --  Bits that no field reads (the description skips some) are written as zero, so the bytes are not
+         --  the same; what is written reads back as the same values
+         declare
+            Last : constant Length := Kaitai.Writers.Pos (W);
+            S2   : Stream := Open (Target (1 .. Last));
+         begin
+            Parse (Target (1 .. Last), S2, Again);
+            Check (Valid (Again), "the output parses");
+            if Valid (Again) then
+               Check
+                 (One (Again) = One (This)
+                  and then Byte_1 (Again) = Byte_1 (This)
+                  and then Two (Again) = Two (This)
+                  and then Three (Again) = Three (This)
+                  and then Four (Again) = Four (This)
+                  and then Foo_Type.Inner (Byte_3 (Again)) = Foo_Type.Inner (Byte_3 (This))
+                  and then Full_Byte (Again) = Full_Byte (This)
+                  and then Byte_4 (Again) = Byte_4 (This)
+                  and then Five (Again) = Five (This)
+                  and then Six (Again) = Six (This),
+                  "the same values");
+               Check
+                 (Text (Target, Bytes_Term (Again)) = "-DE" and then Target (Byte_2 (Again).First) = 16#4B#,
+                  "the same bytes and strings");
+            end if;
+         end;
+      else
+         Check (False, "parses");
+      end if;
+   end Test_Write_Bits_Byte_Aligned;
+
+   procedure Test_Write_Term_Struct is
+      Data   : Bytes renames Sample_Term_Strz;
+      S      : Stream := Open (Data);
+      This   : Term_Struct.T;
+      Target : Bytes (1 .. 20) := (others => 16#EE#);
+      W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples write term_struct");
+      Term_Struct.Parse (Data, S, This);
+      if Term_Struct.Valid (This) then
+         Term_Struct.Write (Data, This, Target, W);
+         --  The terminator of s1 is written, that of s2 is not consumed and left to s3, which includes it
+         Check
+           (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = 12 and then Target (1 .. 12) = Data,
+            "the same bytes");
+      else
+         Check (False, "parses");
+      end if;
+   end Test_Write_Term_Struct;
+
+   procedure Test_Write_Term_Strz is
+      Data   : Bytes renames Sample_Term_Strz;
+      S      : Stream := Open (Data);
+      This   : Term_Strz.T;
+      Target : Bytes (1 .. 20) := (others => 16#EE#);
+      W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples write term_strz");
+      Term_Strz.Parse (Data, S, This);
+      if Term_Strz.Valid (This) then
+         Term_Strz.Write (Data, This, Target, W);
+         Check
+           (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = 12 and then Target (1 .. 12) = Data,
+            "the same bytes");
+         W := Kaitai.Writers.Open (Target (1 .. 11));
+         Term_Strz.Write (Data, This, Target (1 .. 11), W);
+         Check (Kaitai.Writers.Status (W) = Capacity_Exceeded, "a target that is too small");
+      else
+         Check (False, "parses");
+      end if;
+   end Test_Write_Term_Strz;
+
+   procedure Test_Write_Bytes_Pad_Term_Equal is
+      Data   : Bytes renames Sample_Data.Str_Pad_Term;
+      S      : Stream := Open (Data);
+      This   : Bytes_Pad_Term_Equal.T;
+      Target : Bytes (1 .. 100) := (others => 16#EE#);
+      W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples write bytes_pad_term_equal");
+      Bytes_Pad_Term_Equal.Parse (Data, S, This);
+      if Bytes_Pad_Term_Equal.Valid (This) then
+         Bytes_Pad_Term_Equal.Write (Data, This, Target, W);
+         Check (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = 80, "four fields of 20 bytes");
+         Check (Target (1 .. 40) = Data (1 .. 40), "padding that is the terminator, or is not");
+         --  s3 ends at its terminator; what the input has behind it is not kept, and is written as padding
+         Check
+           (Target (41 .. 43) = Data (41 .. 43) and then Target (44 .. 60) = (44 .. 60 => 16#2B#),
+            "padding is written with the padding byte");
+         Check (Target (61 .. 80) = Data (61 .. 80), "terminator included");
+      else
+         Check (False, "parses");
+      end if;
+   end Test_Write_Bytes_Pad_Term_Equal;
+
+   procedure Test_Write_Default_Endian is
+      Data   : Bytes renames Sample_Data.Endian_Expr;
+      S      : Stream := Open (Data);
+      This   : Default_Endian_Expr_Is_Le.T;
+      Target : Bytes (1 .. 64) := (others => 16#EE#);
+      W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples write default_endian_expr_is_le");
+      Default_Endian_Expr_Is_Le.Parse (Data, S, This);
+      if Default_Endian_Expr_Is_Le.Valid (This) and then Data'Length <= 64 then
+         Default_Endian_Expr_Is_Le.Write (Data, This, Target, W);
+         Check (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = Data'Length, "all bytes are written");
+         Check (Target (1 .. Data'Length) = Data, "with the byte order that was calculated");
+      else
+         Check (False, "parses");
+      end if;
+   end Test_Write_Default_Endian;
+
+   --  Fields that end at the end of their substream without the terminator that eos-error: false allows:
+   --  the terminator is written only where there is room for it
+   procedure Test_Write_Term_Strz4 is
+      Data   : Bytes renames Sample_Term_Strz;
+      S      : Stream := Open (Data);
+      This   : Term_Strz4.T;
+      Again  : Term_Strz4.T;
+      Target : Bytes (1 .. 20) := (others => 16#EE#);
+      W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples write term_strz4");
+      Term_Strz4.Parse (Data, S, This);
+      if Term_Strz4.Valid (This) then
+         Term_Strz4.Write (Data, This, Target, W);
+         Check
+           (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = 11,
+            "written, without a terminator that was not there");
+         Check (Target (1 .. 11) = Data (1 .. 11), "the same bytes");
+         declare
+            S2 : Stream := Open (Target (1 .. 11));
+         begin
+            Term_Strz4.Parse (Target (1 .. 11), S2, Again);
+            Check
+              (Term_Strz4.Valid (Again)
+               and then Text (Target, Term_Strz4.S1_Type_Type.Value (Term_Strz4.S1 (Again))) = "foo"
+               and then Text (Target, Term_Strz4.S2_Type_Type.Value (Term_Strz4.S2 (Again))) = "bar"
+               and then Text (Target, Term_Strz4.S3_Type_Type.Value (Term_Strz4.S3 (Again))) = "baz",
+               "the output reads back as the same values");
+         end;
+      else
+         Check (False, "parses");
+      end if;
+   end Test_Write_Term_Strz4;
+
+   --  The terminator of a field with a size and padding is written, since the padding is stripped first
+   procedure Test_Write_Bytes_Pad_Term is
+      use Bytes_Pad_Term;
+      Data   : Bytes renames Sample_Data.Str_Pad_Term;
+      S      : Stream := Open (Data);
+      This   : Bytes_Pad_Term.T;
+      Again  : Bytes_Pad_Term.T;
+      Target : Bytes (1 .. 80) := (others => 16#EE#);
+      W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples write bytes_pad_term");
+      Parse (Data, S, This);
+      if Valid (This) then
+         Write (Data, This, Target, W);
+         Check (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = 80, "four fields of 20 bytes");
+         Check (Target (1 .. 20) = Data (1 .. 20), "padding");
+         Check
+           (Target (21 .. 28) = Data (21 .. 28) and then Target (29 .. 40) = (29 .. 40 => 16#40#),
+            "terminator, and the rest is written as terminator");
+         Check (Target (41 .. 60) = Data (41 .. 60), "terminator and padding");
+         Check (Target (61 .. 68) = Data (61 .. 68), "terminator included; what follows it is written as terminator");
+         declare
+            S2 : Stream := Open (Target);
+         begin
+            Parse (Target, S2, Again);
+            Check
+              (Valid (Again)
+               and then Text (Target, Str_Pad (Again)) = Text (Data, Str_Pad (This))
+               and then Text (Target, Str_Term (Again)) = Text (Data, Str_Term (This))
+               and then Text (Target, Str_Term_And_Pad (Again)) = Text (Data, Str_Term_And_Pad (This))
+               and then Text (Target, Str_Term_Include (Again)) = Text (Data, Str_Term_Include (This)),
+               "the output reads back as the same values");
+         end;
+      else
+         Check (False, "parses");
+      end if;
+   end Test_Write_Bytes_Pad_Term;
+
+   --  A value cut from a field of 20 bytes: padding and terminator go to the end of its substream
+   procedure Test_Write_Str_Eos_Pad_Term is
+      use Str_Eos_Pad_Term;
+      Data   : Bytes renames Sample_Data.Str_Pad_Term;
+      S      : Stream := Open (Data);
+      This   : Str_Eos_Pad_Term.T;
+      Again  : Str_Eos_Pad_Term.T;
+      Target : Bytes (1 .. 80) := (others => 16#EE#);
+      W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples write str_eos_pad_term");
+      Parse (Data, S, This);
+      if Valid (This) then
+         Write (Data, This, Target, W);
+         Check (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = 80, "four fields of 20 bytes");
+         Check (Target (1 .. 20) = Data (1 .. 20), "padding up to the end of the substream");
+         Check (Target (21 .. 28) = Data (21 .. 28), "terminator; the rest is not what was there, and is zero");
+         Check (Target (41 .. 60) = Data (41 .. 60), "terminator with padding");
+         Check (Target (61 .. 68) = Data (61 .. 68), "terminator included; the rest of the substream is zero");
+         declare
+            S2 : Stream := Open (Target);
+         begin
+            Parse (Target, S2, Again);
+            Check
+              (Valid (Again)
+               and then Text (Target, Str_Pad_Type_Type.Value (Str_Pad (Again))) = "str1"
+               and then Text (Target, Str_Term_Type_Type.Value (Str_Term (Again))) = "str2foo"
+               and then Text (Target, Str_Term_And_Pad_Type_Type.Value (Str_Term_And_Pad (Again))) = "str+++3bar+++",
+               "the output reads back as the same values");
+         end;
+      else
+         Check (False, "parses");
+      end if;
+   end Test_Write_Str_Eos_Pad_Term;
+
    procedure Run is
    begin
       Test_Hello_World;
@@ -685,6 +947,15 @@ package body Examples_Tests is
       Test_Expr_Sizeof_Type_0;
       Test_Term_Struct;
       Test_Imports0;
+      Test_Write_Bits_Enum;
+      Test_Write_Bits_Byte_Aligned;
+      Test_Write_Term_Struct;
+      Test_Write_Term_Strz;
+      Test_Write_Bytes_Pad_Term_Equal;
+      Test_Write_Default_Endian;
+      Test_Write_Term_Strz4;
+      Test_Write_Bytes_Pad_Term;
+      Test_Write_Str_Eos_Pad_Term;
    end Run;
 
 end Examples_Tests;

@@ -20,4 +20,13 @@ is
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 
+   procedure Write
+     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+   begin
+      Kaitai.Writers.Write_Padded (Target, W, Buffer (This.S1.First .. This.S1.Last), 20, 64);
+      Kaitai.Writers.Write_Padded (Target, W, Buffer (This.S2.First .. This.S2.Last), 20, 43);
+      Kaitai.Writers.Write_Padded (Target, W, Buffer (This.S3.First .. This.S3.Last), 20, 43);
+      Kaitai.Writers.Write_Padded (Target, W, Buffer (This.S4.First .. This.S4.Last), 20, 46);
+   end Write;
+
 end Bytes_Pad_Term_Equal;

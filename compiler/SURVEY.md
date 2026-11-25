@@ -74,3 +74,25 @@ Every generated parser (and every imported description that came with it) was co
 - No parser has a message or an unproved check.
 
 The formats that are examples (`examples/`) are proved by `scripts/check.sh prove` as well.
+
+## With `--read-write`
+
+`scripts/survey.sh --read-write --prove --jobs 3` gives the compiler the
+option that makes it generate `Write` for every type.
+
+| Result | Formats |
+|---|---|
+| generated | 199 |
+| rejected by the Ada backend with a clear error | 130 |
+| failed before the backend | 5 |
+| crashed | 0 |
+
+All 199 parsers, with their `Write`, compile without a message and are
+proved without a message (no unproved check, no warning). Of the 210
+formats that generate without the option, 11 are rejected with it:
+
+| Count | Reason | Formats |
+|---|---|---|
+| 4 | a field whose type is an integer of different kinds, chosen by a value | non_standard, switch_integers, switch_multi_bool_ops, valid_switch |
+| 5 | a terminator of more than one byte | str_pad_term_utf16, term_strz_utf16_v1, term_strz_utf16_v2, term_strz_utf16_v3, term_strz_utf16_v4 |
+| 2 | a value cut from bytes with a size and a terminator or padding | struct_pad_term, struct_pad_term_equal |

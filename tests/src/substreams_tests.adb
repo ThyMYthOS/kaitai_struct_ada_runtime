@@ -231,8 +231,40 @@ package body Substreams_Tests is
       Check (To_Count (S64'Last) = Length'Last, "the largest count");
    end Test_Elements;
 
+   procedure Test_Open_Slice is
+      S : Stream := Open (Data, (First => 8, Last => 11));
+      V : U8;
+      D : Slice;
+   begin
+      Group ("Streams over a slice");
+      Check (OK (S) and then Size (S) = 4 and then Pos (S) = 0 and then Next_Index (S) = 8, "covers the slice");
+      Read_U1 (Data, S, V);
+      Check (V = 124 and then Pos (S) = 1, "reads its first byte");
+      Read_Bytes_Full (S, D);
+      Check (D = (First => 9, Last => 11) and then Is_EOF (S), "ends where the slice ends");
+      Read_U1 (Data, S, V);
+      Check (Status (S) = End_Of_Stream, "and not where the buffer ends");
+      Seek (S, 0);
+      Check (Status (S) = End_Of_Stream, "a failure stays");
+
+      S := Open (Data, (First => 8, Last => 11));
+      Seek (S, 3);
+      Read_U1 (Data, S, V);
+      Check (OK (S) and then V = 124, "positions count from the start of the slice");
+
+      S := Open (Data, (First => 5, Last => 14));
+      Check (Size (S) = 10 and then Next_Index (S) = 5, "the whole buffer");
+      S := Open (Data, (First => 9, Last => 8));
+      Check (OK (S) and then Size (S) = 0 and then Is_EOF (S), "an empty slice");
+      Read_U1 (Data, S, V);
+      Check (Status (S) = End_Of_Stream, "has nothing to read");
+      S := Open (Data, (First => 1, Last => 0));
+      Check (OK (S) and then Is_EOF (S), "an empty slice outside the buffer");
+   end Test_Open_Slice;
+
    procedure Run is
    begin
+      Test_Open_Slice;
       Test_Elements;
       Test_Term;
       Test_Term_Multi;

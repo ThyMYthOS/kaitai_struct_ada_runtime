@@ -123,6 +123,21 @@ is
        and then Bits_Left (Open'Result) = 0
        and then Size (Open'Result) = Buffer'Length;
 
+   --  A stream over the bytes of Item, positioned at its start.  A byte
+   --  array that was cut to its size, its terminator or its padding is
+   --  parsed as a value through such a stream.
+   function Open (Buffer : Bytes; Item : Slice) return Stream
+   with
+     Inline,
+     Pre  => Within (Item, Buffer),
+     Post =>
+       Is_Valid (Open'Result, Buffer)
+       and then OK (Open'Result)
+       and then Pos (Open'Result) = 0
+       and then Bits_Left (Open'Result) = 0
+       and then Size (Open'Result) = Size (Item)
+       and then Rest (Open'Result) = Item;
+
    --  Move to the position To, counted from the start of the stream.  Fails
    --  with End_Of_Stream if To is beyond the end.
    procedure Seek (S : in out Stream; To : Length)

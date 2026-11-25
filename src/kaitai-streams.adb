@@ -67,6 +67,13 @@ is
       end if;
    end Open;
 
+   function Open (Buffer : Bytes; Item : Slice) return Stream is
+      --  Buffer only serves the contract
+      pragma Warnings (Off, Buffer);
+   begin
+      return (First => Item.First, Last => Item.Last, Next => Item.First, State => Success, Unread => 0);
+   end Open;
+
    procedure Seek (S : in out Stream; To : Length) is
    begin
       if S.State = Success and then To <= S.Last - S.First + 1 then

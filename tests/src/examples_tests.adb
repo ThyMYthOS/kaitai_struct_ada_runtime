@@ -13,6 +13,7 @@ with Hello_World;
 with If_Struct;
 with Imports0;
 with Instance_Std;
+with Kaitai.Byte_Arrays;
 with Kaitai.Streams; use Kaitai.Streams;
 with Kaitai.Types;   use Kaitai.Types;
 with Kaitai.Writers;
@@ -25,6 +26,8 @@ with Sample_Data;    use Sample_Data;
 with Str_Eos_Pad_Term;
 with Str_Encodings;
 with Subscripts;
+with Switch_Bytearray;
+with Switch_Else_Only;
 with Switch_Manual_Int;
 with Term_Strz;
 with Term_Strz4;
@@ -985,6 +988,80 @@ package body Examples_Tests is
       end;
    end Test_Subscripts;
 
+   procedure Test_Switch_Bytearray is
+      use Switch_Bytearray;
+      use type Opcode_Type.Body_Kind;
+      Data     : Bytes renames Sample_Data.Switch_Opcodes;
+      S        : Stream := Open (Data);
+      This     : Switch_Bytearray.T;
+      O        : Opcode_Type.T;
+      Position : Opcodes_Cursor;
+      Seen     : Natural := 0;
+   begin
+      Group ("examples switch_bytearray");
+      Parse (Data, S, This);
+      Check (Valid (This) and then Is_EOF (S), "parses to the end");
+      if Valid (This) then
+         Check (Opcodes_Count (This) = 4, "count");
+         Get_Opcodes (Data, This, 0, O);
+         Check
+           (Opcode_Type.Valid (O)
+            and then Opcode_Type.Body_Case (O) = Opcode_Type.Body_Is_Strval
+            and then Text (Data, Opcode_Type.Strval_Type.Value (Opcode_Type.Body_As_Strval (O))) = "foobar",
+            "a case that is the byte array [83] is a string");
+         Get_Opcodes (Data, This, 1, O);
+         Check
+           (Opcode_Type.Valid (O)
+            and then Opcode_Type.Body_Case (O) = Opcode_Type.Body_Is_Intval
+            and then Opcode_Type.Intval_Type.Value (Opcode_Type.Body_As_Intval (O)) = 16#42#,
+            "[73] is an integer");
+         Get_Opcodes (Data, This, 3, O);
+         Check
+           (Opcode_Type.Valid (O)
+            and then Opcode_Type.Body_Case (O) = Opcode_Type.Body_Is_Strval
+            and then Is_Empty (Opcode_Type.Strval_Type.Value (Opcode_Type.Body_As_Strval (O))),
+            "opcodes[3] is an empty string");
+         Position := Opcodes_First (This);
+         while Has_Element (Position) loop
+            Next (Data, This, Position, O);
+            exit when not Opcode_Type.Valid (O);
+            Seen := Seen + 1;
+         end loop;
+         Check (Seen = 4, "cursor");
+      end if;
+
+      --  a code that no case names is not an error
+      declare
+         Other : constant Bytes := (16#41#, 16#01#, 16#02#);
+      begin
+         S := Open (Other);
+         Parse (Other, S, This);
+         Check (Valid (This) and then Opcodes_Count (This) = 3, "parses a code that no case names, which has no body");
+         Get_Opcodes (Other, This, 0, O);
+         Check
+           (Opcode_Type.Valid (O) and then Opcode_Type.Body_Case (O) = Opcode_Type.Body_Is_None, "none of the cases");
+      end;
+   end Test_Switch_Bytearray;
+
+   procedure Test_Switch_Else_Only is
+      use Switch_Else_Only;
+      Data : Bytes renames Sample_Data.Switch_Opcodes;
+      S    : Stream := Open (Data);
+      This : Switch_Else_Only.T;
+   begin
+      Group ("examples switch_else_only");
+      Parse (Data, S, This);
+      Check (Valid (This), "parses");
+      if Valid (This) then
+         Check (Opcode (This) = 16#53#, "opcode");
+         Check (Prim_Byte (This) = 16#66#, "a switch of integers that has only the else case");
+         Check (Ut_Case (This) = Ut_Is_Data, "a switch of bytes that has only the else case");
+         Check
+           (Kaitai.Byte_Arrays.Equal (Data, Data_Type.Value (Ut_As_Data (This)), (16#72#, 16#00#, 16#49#, 16#42#)),
+            "ut.value");
+      end if;
+   end Test_Switch_Else_Only;
+
    procedure Run is
    begin
       Test_Hello_World;
@@ -1022,6 +1099,8 @@ package body Examples_Tests is
       Test_Write_Str_Eos_Pad_Term;
       Test_Valid_Fail_Repeat_Eq_Int;
       Test_Subscripts;
+      Test_Switch_Bytearray;
+      Test_Switch_Else_Only;
    end Run;
 
 end Examples_Tests;

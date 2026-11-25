@@ -40,7 +40,9 @@ package Fuzz_Targets is
       Str_Eos_Pad_Term_Parser,
       Subscripts_Parser,
       Valid_Fail_Repeat_Eq_Int_Parser,
-      Expr_Sizeof_Value_Sized_Parser);
+      Expr_Sizeof_Value_Sized_Parser,
+      Switch_Bytearray_Parser,
+      Switch_Else_Only_Parser);
 
    --  An input the parser accepts.  Round selects one where there are
    --  several.

@@ -26,6 +26,8 @@ with Showcase;
 with Str_Encodings;
 with Str_Eos_Pad_Term;
 with Subscripts;
+with Switch_Bytearray;
+with Switch_Else_Only;
 with Switch_Manual_Int;
 with Term_Struct;
 with Term_Strz;
@@ -224,6 +226,12 @@ package body Fuzz_Targets is
 
          when Valid_Fail_Repeat_Eq_Int_Parser  =>
             return (if Round mod 2 = 0 then Repeat_Eq_Int_Empty else Repeat_Eq_Int_Data);
+
+         when Switch_Bytearray_Parser          =>
+            return Sample_Data.Switch_Opcodes;
+
+         when Switch_Else_Only_Parser          =>
+            return Sample_Data.Switch_Opcodes;
       end case;
    end Seed;
 
@@ -706,6 +714,12 @@ package body Fuzz_Targets is
         Read_Str_Eos_Pad_Term,
         True);
 
+   procedure Run_Switch_Bytearray is new
+     Run_Parse_Only (Switch_Bytearray.T, Switch_Bytearray.Parse, Switch_Bytearray.Valid);
+
+   procedure Run_Switch_Else_Only is new
+     Run_Parse_Only (Switch_Else_Only.T, Switch_Else_Only.Parse, Switch_Else_Only.Valid);
+
    procedure Run (T : Target; Input : Bytes; Argument : U16; Fields : out Natural) is
    begin
       case T is
@@ -804,6 +818,12 @@ package body Fuzz_Targets is
 
          when Expr_Sizeof_Value_Sized_Parser   =>
             Run_Expr_Sizeof_Value_Sized (Input, Fields);
+
+         when Switch_Bytearray_Parser          =>
+            Run_Switch_Bytearray (Input, Fields);
+
+         when Switch_Else_Only_Parser          =>
+            Run_Switch_Else_Only (Input, Fields);
       end case;
    end Run;
 

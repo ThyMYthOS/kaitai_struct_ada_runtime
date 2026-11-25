@@ -530,7 +530,9 @@ Where the rules above are silent, the compiler does the following.
   `Bytes`/`Str` for a slice), named `X_Is_<Type>`; `X_Is_None` is the variant
   of a value that no case covers and is always there. The cases of the
   switch are Ada cases when the expression is an integer or an enumeration
-  and all labels are literals, and an `if` chain for strings.
+  and all labels are literals, and an `if` chain for strings and for bytes: `Byte_Arrays.Equal (Buffer, X, (16#49#))` compares
+  with a case that is a byte array. A switch that has only the `_` case does not compare anything; the expression is
+  still evaluated, and the stream fails with `Arithmetic_Error` where it is not defined.
 - A repetition of integers or floats of a fixed size is one slice. `repeat:
   until` reads the elements one by one and takes the slice with `Between`;
   its `Valid` does not state that the size is a multiple of the element

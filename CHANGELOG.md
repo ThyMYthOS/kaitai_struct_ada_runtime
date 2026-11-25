@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Compiler: `switch-on` of bytes with cases that are byte arrays, and a switch that has
+  only the `_` case, are generated (switch_bytearray, switch_else_only).
 - Compiler: `_sizeof` and `x._sizeof` are translated (they are the size in bytes of
   the current type or of a value, a constant). They failed with "invalid ID".
 - `scripts/survey.sh` and `scripts/run-kaitai-suite.sh` give the compiler the

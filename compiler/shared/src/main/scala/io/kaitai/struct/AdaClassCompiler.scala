@@ -1978,7 +1978,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
           lines ++= ind(elseB, 2)
           lines += "end case;"
           guarded(if (useNative) Nil else onT.guards, lines.toList, rc)
-        case VStr(_) | VStrLit(_) =>
+        case VStr(_) | VStrLit(_) | VBytes | VBytesLit(_) =>
+          // strings and bytes are compared one case after the other; a switch that has only `_` does not compare
           val lines = ListBuffer[String]()
           others.zipWithIndex.foreach { case ((Some(k), stmts), i) =>
             val c = T(Ast.expr.Compare(st.on, Ast.cmpop.Eq, k), rc)
@@ -1986,7 +1987,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
             lines ++= ind(stmts)
             case _ =>
           }
-          if (others.isEmpty) elseB else {
+          if (others.isEmpty) guarded(onT.guards, elseB, rc) else {
             lines += "else"
             lines ++= ind(elseB)
             lines += "end if;"

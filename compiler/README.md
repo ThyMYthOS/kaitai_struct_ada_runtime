@@ -42,7 +42,7 @@ as raw bits with the accessor pair, bytes and strings with `size`,
 `size-eos`, `terminator` (also several bytes), `pad-right`, `include`,
 `consume`, `eos-error`, string encodings, `contents`, `valid` (`eq`, `min`,
 `max`, range, `any-of`, `in-enum`, `expr`; also on repetitions of integers of a fixed size), `if`, enumerations, `switch-on`
-with structures or with integers, `size`, `size-eos`, `terminator` and
+with structures or with integers (on integers, enumerations, strings or bytes, with byte-array cases; also a switch that has only `_`), `size`, `size-eos`, `terminator` and
 `pad-right` on fields of a type (the value is parsed from the cut bytes),
 `repeat: expr/eos/until` (structures and byte/string elements with a cursor,
 integers and floats of a fixed size as a slice), value instances (integer,

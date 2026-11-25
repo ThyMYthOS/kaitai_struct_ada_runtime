@@ -243,6 +243,8 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     * An operand of a comparison. Only here an integer, or the value of a label of an enumeration, can be above the
     * largest S64: it is compared with an unsigned 64-bit field in U64. Everywhere else such a value is an error.
     */
+  def translateOperand(e: Ast.expr): ATr = operand(e)
+
   private def operand(e: Ast.expr): ATr = {
     def big(n: BigInt): ATr = ATr(n.toString, 0, Nil, VU64Lit(n), n, n, isLiteral = true)
     e match {

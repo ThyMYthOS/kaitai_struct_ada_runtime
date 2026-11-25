@@ -11,7 +11,7 @@ import io.kaitai.struct.datatype._
 import io.kaitai.struct.exprlang.Ast
 import io.kaitai.struct.format._
 import io.kaitai.struct.testtranslator.{Main, TestAssert, TestEquals, TestException, TestSpec}
-import io.kaitai.struct.translators.{AdaTranslator, AdaUnsupported, VEnum, VInt}
+import io.kaitai.struct.translators.{AdaTranslator, AdaUnsupported, VEnum, VInt, VU64Lit}
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
@@ -424,6 +424,17 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
 
   private def attribute(ctx: Ctx, v: AV, attr: String): AV = v match {
     case AUser(cs, obj, buf) => member(ctx, cs, obj, attr, buf)
+    case ASwitch(cs, obj, a, st, buf) if variants(st).size == 1 && variants(st).head._1.isInstanceOf[UserType] =>
+      // a switch with one type of case: the member is that of the only variant, where the switch chose it
+      val pkg = pkgOf(cs)
+      val bs = cc.memberBase(a.id)
+      val (dt, n) = variants(st).head
+      ctx.need(s"$pkg.${bs}_Case ($obj) = $pkg.${bs}_Is_$n")
+      useType(s"$pkg.${bs}_Kind")
+      val code = s"$pkg.${bs}_As_$n ($obj)"
+      val ut = dt.asInstanceOf[UserType]
+      ctx.need(s"${pkgOf(ut.classSpec.get)}.Valid ($code)")
+      member(ctx, ut.classSpec.get, code, attr, buf)
     case AIo(s) =>
       attr match {
         case "pos" => usedLibs += "Streams"; AInt(s"Kaitai.Streams.Pos ($s)", "Length", None)
@@ -521,8 +532,9 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
         case Some(n) => Some((n, None))
         case None =>
           try {
-            val t = tr.translate(e)
+            val t = tr.translateOperand(e)
             t.vt match {
+              case VU64Lit(n) => Some((n, None))
               case VInt if t.isLiteral => Some((t.lo, None))
               case VEnum(sp) if t.isLiteral => Some((t.lo, Some(sp)))
               case _ => None

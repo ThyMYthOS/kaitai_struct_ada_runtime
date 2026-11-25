@@ -63,3 +63,47 @@ jobs:
 
       - name: Benchmarks
         run: scripts/check.sh bench
+
+  # The parsers under examples/ are what the compiler backend in compiler/
+  # generates.  The job builds the Kaitai Struct compiler with that backend
+  # and compares.
+  generator:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache toolchain
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.local/bin/alr
+            ~/.local/bin/renode
+            ~/.local/share/alire
+            ~/.local/share/renode
+            ~/.alire
+            ~/.config/alire
+          key: toolchain-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/install-toolchain.sh', '**/alire.toml') }}
+
+      - name: Install toolchain
+        run: scripts/install-toolchain.sh
+
+      # The checkout of the upstream compiler with its build, and what sbt
+      # has downloaded.  A build from nothing takes several minutes.
+      - name: Cache compiler
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cache/kaitai_struct_compiler
+            ~/.cache/coursier
+            ~/.ivy2
+            ~/.sbt
+          key: compiler-${{ runner.os }}-${{ hashFiles('compiler/shared/**', 'compiler/upstream.patch', 'scripts/build-compiler.sh') }}
+          restore-keys: |
+            compiler-${{ runner.os }}-
+
+      - name: Build the compiler
+        run: scripts/build-compiler.sh
+
+      - name: Examples are what the compiler generates
+        run: scripts/generate-examples.sh --check

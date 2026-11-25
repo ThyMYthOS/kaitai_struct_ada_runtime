@@ -23,12 +23,14 @@ with Repeat_Until_Complex;
 with Sample_Data;    use Sample_Data;
 with Str_Eos_Pad_Term;
 with Str_Encodings;
+with Subscripts;
 with Switch_Manual_Int;
 with Term_Strz;
 with Term_Strz4;
 with Term_Struct;
 with Test_Support;   use Test_Support;
 with Valid_Fail_Eq_Int;
+with Valid_Fail_Repeat_Eq_Int;
 
 package body Examples_Tests is
 
@@ -922,6 +924,49 @@ package body Examples_Tests is
       end if;
    end Test_Write_Str_Eos_Pad_Term;
 
+   procedure Test_Valid_Fail_Repeat_Eq_Int is
+      use Valid_Fail_Repeat_Eq_Int;
+      Data : Bytes := (16#12#, 16#34#, 16#56#, 16#78#, 16#12#, 16#34#, 16#56#, 16#78#);
+      S    : Stream := Open (Data);
+      This : Valid_Fail_Repeat_Eq_Int.T;
+   begin
+      Group ("examples valid_fail_repeat_eq_int");
+      Parse (Data, S, This);
+      Check (Valid (This) and then Foo_Count (This) = 2, "every element is as required");
+      Data (6) := 0;
+      S := Open (Data);
+      Parse (Data, S, This);
+      Check (not Valid (This) and then Status (S) = Validation_Not_Equal, "a wrong element is found");
+      S := Open (Sample_Fixed_Struct);
+      Parse (Sample_Fixed_Struct, S, This);
+      Check (not Valid (This) and then Status (S) = Validation_Not_Equal, "so is one in the sample");
+   end Test_Valid_Fail_Repeat_Eq_Int;
+
+   procedure Test_Subscripts is
+      use Subscripts;
+      Data : constant Bytes := (2, 1, 16#34#, 16#12#, 16#78#, 16#56#, 10, 20, 30, 40, 5, 6, 7, 0, 8, 9);
+      S    : Stream := Open (Data);
+      This : Subscripts.T;
+   begin
+      Group ("examples subscripts");
+      Parse (Data, S, This);
+      Check (Valid (This) and then Is_EOF (S), "parses; records end at the first that starts with 0");
+      if Valid (This) then
+         Check (Has_First_Item (Data, This) and then First_Item (Data, This) = 16#1234#, "items[0]");
+         Check (Has_Chosen_Item (Data, This) and then Chosen_Item (Data, This) = 16#5678#, "items[pick]");
+         Check (Has_Raw_Mid (Data, This) and then Raw_Mid (Data, This) = 20, "raw[1]");
+         Check (Has_Chosen_Raw (Data, This) and then Chosen_Raw (Data, This) = 20, "raw[pick]");
+      end if;
+      declare
+         Bad : Bytes := Data;
+      begin
+         Bad (2) := 2;
+         S := Open (Bad);
+         Parse (Bad, S, This);
+         Check (Valid (This) and then not Has_Chosen_Item (Bad, This), "an index past the end is not defined");
+      end;
+   end Test_Subscripts;
+
    procedure Run is
    begin
       Test_Hello_World;
@@ -956,6 +1001,8 @@ package body Examples_Tests is
       Test_Write_Term_Strz4;
       Test_Write_Bytes_Pad_Term;
       Test_Write_Str_Eos_Pad_Term;
+      Test_Valid_Fail_Repeat_Eq_Int;
+      Test_Subscripts;
    end Run;
 
 end Examples_Tests;

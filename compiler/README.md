@@ -41,7 +41,7 @@ time, `endian: switch-on`), bit fields `b1`..`b64` with `bit-endian`, floats
 as raw bits with the accessor pair, bytes and strings with `size`,
 `size-eos`, `terminator` (also several bytes), `pad-right`, `include`,
 `consume`, `eos-error`, string encodings, `contents`, `valid` (`eq`, `min`,
-`max`, range, `any-of`, `in-enum`, `expr`), `if`, enumerations, `switch-on`
+`max`, range, `any-of`, `in-enum`, `expr`; also on repetitions of integers of a fixed size), `if`, enumerations, `switch-on`
 with structures or with integers, `size`, `size-eos`, `terminator` and
 `pad-right` on fields of a type (the value is parsed from the cut bytes),
 `repeat: expr/eos/until` (structures and byte/string elements with a cursor,
@@ -62,7 +62,7 @@ Expressions: integer arithmetic in S64 with the guards of `Kaitai.Arithmetic`
 (dropped where interval arithmetic shows they hold), comparisons, `and`,
 `or`, `not`, `?:`, enumeration labels, fields of nested values, `.size` of
 repetitions, `_io.size/pos/eof`, `.length`, `.to_i`, `.min/.max/.first/.last`
-of bytes, comparison of bytes and strings with literals, `sizeof`.
+of bytes, subscripts of bytes and of repetitions of integers of a fixed size, comparison of bytes and strings with literals, `sizeof`.
 
 ## What is rejected
 
@@ -76,8 +76,8 @@ that are not integers, booleans or enumerations, `process` that is custom, on a 
 a switch field or on a parse instance, and an expression or `valid` that
 depends on a processed value, opaque types, floating-point arithmetic,
 string concatenation, `substring`, `reverse`, `to_s`, array subscripts and
-arrays in expressions beyond `.size`, `_index`, casts, parameters of other
-types, `repeat` on parse instances or on switch fields, `valid` on repeated
+arrays in expressions beyond `.size` and subscripts of repetitions of other elements, `_index`, casts, parameters of other
+types, `repeat` on parse instances or on switch fields, `valid` on other repeated
 fields, parse instances used in expressions, encodings `UTF-16` without byte
 order, `UTF-32` and the like.
 

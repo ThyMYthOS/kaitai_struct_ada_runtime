@@ -545,7 +545,7 @@ Where the rules above are silent, the compiler does the following.
   The result is an `out` parameter of the type of the value; the postcondition
   says `Within (Result, Buffer)` for a slice.
 - An expression of a repeated field, `_index`, `_parent._io`, floats, string operations other than comparison with a
-  literal or another string, `.length`, `.to_i`, and array subscripts are
+  literal or another string, `.length` and `.to_i` are
   supported only as the translator lists in `compiler/README.md`; whatever is
   not supported is a compile error with the path of the attribute.
 - The argument of a type is passed without conversion when it is a field of
@@ -567,6 +567,17 @@ Where the rules above are silent, the compiler does the following.
   such package it uses. The compiler writes the files of every description of
   the compilation, the imported ones included. A type that the compiler is
   told to treat as opaque is rejected.
+- `valid` on a repetition of integers of a fixed size holds for every
+  element. After the read, a loop decodes each element again and applies the
+  check, which fails the stream like the check of a single field; with
+  `repeat: until` each element is checked as it is read. `valid` on other
+  repetitions is rejected.
+- A subscript `x[i]` is defined for bytes and for a repetition of integers
+  of a fixed size that is not `repeat: until`. It is defined where `0 <= i`
+  and `i` is below the number of elements, which becomes a condition of the
+  expression like the others. The element is decoded from `Buffer`, so the
+  expression needs the buffer like a string length does. A subscript with a
+  literal index of an array literal is the value. `_index` is rejected.
 - `contents` is a constant `X_Expected` of the body, compared by
   `Read_Contents`. `valid` is checked after the read and fails the stream
   with the matching `Validation_*` status.

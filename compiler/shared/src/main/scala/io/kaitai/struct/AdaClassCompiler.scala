@@ -1630,7 +1630,12 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       return
     }
     a.valid.foreach { v =>
-      if (a.cond.repeat != NoRepeat) throw new AdaUnsupported("`valid` on a repeated field")
+      val sliceInts = a.cond.repeat != NoRepeat && (AdaTranslator.fixedElement(a.dataType).isDefined && (a.dataType match {
+        case _: FloatMultiType | _: BitsType | _: BitsType1 | EnumType(_, _, _: BitsType) => false
+        case _ => true
+      }))
+      if (a.cond.repeat != NoRepeat && !sliceInts)
+        throw new AdaUnsupported("`valid` on a repeated field that is not a repetition of integers of a fixed size")
     }
     if (a.cond.repeat != NoRepeat && AdaTranslator.hasProcess(a.dataType)) throw new AdaUnsupported("`process` on a repeated field")
     a.cond.repeat match {
@@ -2159,9 +2164,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         tr.iterator = Some((dt, value))
         val ct = guard(a.path)(tr.translate(cond))
         tr.iterator = None
-        val check = guarded(ct.guards, List(s"$done := ${ct.code};"), rc, List(s"$done := True;"))
+        val check = guarded(ct.guards, List(s"$done := ${ct.code};"), rc, List(s"$done := True;"), init = false)
         List(s"$start := S;", s"$done := False;", s"for I in 1 .. ${KS}Remaining (S) + 1 loop") ++
-          ind(readValue(base0, value, rc) ++ List(s"exit when not ${KS}OK (S);") ++ check ++ List(
+          ind(readValue(base0, value, rc) ++ List(s"exit when not ${KS}OK (S);") ++ a.valid.toList.flatMap(v => validate(v, dt, value, rc)) ++ check ++ List(
             s"exit when $done;",
             s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced ($start, S) and then not $done);"
           )) ++ List(
@@ -2172,7 +2177,36 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
           s"$target := ${KS}Between ($start, S);"
         )
     }
-    o.parse ++= wrapCond(a, hasOpt, stmts, rc)
+    // `valid` of a repetition holds for every element: the elements are decoded again and checked
+    val validStmts: List[String] = a.valid match {
+      case Some(v) if !rep.isInstanceOf[RepeatUntil] =>
+        val value = rc.scope.fresh("Value")
+        val (valT, _) = storedType(base0, a.path)
+        rc.scope.decls += s"$value : $valT;"
+        opTypes += "Length"
+        val atJ = s"This.$nm.First + (J - 1) * $size"
+        val decoded = base0 match {
+          case Int1Type(sg) =>
+            val r = s"${dec}U8_At (Buffer, $atJ)"
+            if (sg) s"${dec}To_S8 ($r)" else r
+          case IntMultiType(sg, w, fe) =>
+            val bits = w.width * 8
+            val le = s"${dec}U${bits}_LE (Buffer, $atJ)"
+            val be = s"${dec}U${bits}_BE (Buffer, $atJ)"
+            val r = fe match {
+              case Some(LittleEndian) => le
+              case Some(BigEndian) => be
+              case _ => { opTypes += "Byte_Order"; s"(if This.Order = ${KT}Little_Endian then $le else $be)" }
+            }
+            if (sg) s"${dec}To_S$bits ($r)" else r
+          case other => throw new AdaUnsupported(s"`valid` on a repetition of $other")
+        }
+        List(s"if ${KS}OK (S) then", s"   for J in 1 .. ${KT}Size ($target) / $size loop", s"      $value := $decoded;") ++
+          ind(validate(v, dt, value, rc), 2) ++
+          List(s"      pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S));", "   end loop;", "end if;")
+      case _ => Nil
+    }
+    o.parse ++= wrapCond(a, hasOpt, stmts ++ validStmts, rc)
   }
 
   private def genRepeatCursor(cs: ClassSpec, a: AttrSpec, dt: DataType, rep: RepeatSpec, pre: String, hasOpt: Option[String], comment: List[String], o: Out, rc: RC): Unit = {
@@ -2307,7 +2341,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         val ct = guard(a.path)(tr.translate(cond))
         tr.iterator = None
         tr.knownValid = Set()
-        val check = guarded(ct.guards, List(s"$done := ${ct.code};"), rc, List(s"$done := True;"))
+        val check = guarded(ct.guards, List(s"$done := ${ct.code};"), rc, List(s"$done := True;"), init = false)
         List(s"This.${bs}_Count := 0;", s"$done := False;", s"for $Iv in 1 .. ${KS}Remaining (S) + 1 loop") ++
           ind(List(parseCall, s"exit when not ${valid(el)};", s"This.${bs}_Count := $Iv;") ++ check ++ List(
             s"exit when $done;",

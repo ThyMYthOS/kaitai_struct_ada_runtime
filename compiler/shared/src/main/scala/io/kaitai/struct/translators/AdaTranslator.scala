@@ -1,7 +1,7 @@
 package io.kaitai.struct.translators
 
 import io.kaitai.struct.ClassTypeProvider
-import io.kaitai.struct.datatype.DataType
+import io.kaitai.struct.datatype.{BigEndian, DataType, LittleEndian}
 import io.kaitai.struct.datatype.DataType._
 import io.kaitai.struct.exprlang.Ast
 import io.kaitai.struct.format._
@@ -219,12 +219,81 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     case Ast.expr.IfExp(c, a, b) => translateIf(translate(c), translate(a), translate(b))
     case Ast.expr.Attribute(value, attr) => translateAttribute(value, attr.name)
     case Ast.expr.Call(func, args) => translateCall(func, args)
-    case Ast.expr.Subscript(_, _) => unsupported("subscript of an array or of bytes")
+    case Ast.expr.Subscript(a, b) => translateSubscript(a, b)
     case Ast.expr.CastToType(_, _) => unsupported("cast (`.as<...>`)")
     case Ast.expr.ByteSizeOfType(t) => sizeOf(t, 8)
     case Ast.expr.BitSizeOfType(t) => sizeOf(t, 1)
   }
 
+
+  /** `a[b]`: a byte of bytes, or an element of a repetition of integers of a fixed size */
+  private def translateSubscript(a: Ast.expr, b: Ast.expr): ATr = {
+    val cs = provider.nowClass
+    a match {
+      case Ast.expr.Name(id) if isRepeatedMember(cs, id.name) =>
+        val i = translate(b)
+        requireInt(i)
+        val m = provider.resolveMember(cs, id.name) match {
+          case at: AttrSpec => at
+          case _ => unsupported(s"subscript of the repeated member `${id.name}`")
+        }
+        if (hasProcess(m.dataType)) unsupported(s"field `${id.name}` has `process`; its value exists only when it is asked for")
+        m.cond.repeat match {
+          case RepeatUntil(_) => unsupported("subscript of a repetition until a condition")
+          case _ =>
+        }
+        val base = m.dataType match {
+          case EnumType(_, _, bb) => bb
+          case other => other
+        }
+        base match {
+          case _: FloatMultiType | _: BitsType | _: BitsType1 => unsupported("subscript of a repetition of floats or of bit fields")
+          case _ =>
+        }
+        val size = fixedElement(m.dataType).getOrElse(unsupported(s"subscript of the repeated member `${id.name}`"))
+        val comp = env.memberName(cs, m.id)
+        val has = if (m.cond.ifExpr.isDefined) List(s"$thisName.${env.presenceName(cs, m.id)}") else Nil
+        ops += "Length"
+        val count = s"Kaitai.Types.S64 (Kaitai.Types.Size ($thisName.$comp) / $size)"
+        val guards = i.guards ++ has ++ (if (i.lo >= 0) Nil else List(s"${i.atom} >= 0")) ++ List(s"${i.atom} < $count")
+        val at = s"$thisName.$comp.First + Kaitai.Types.Length (${i.code}) * $size"
+        val dec = "Kaitai.Decoding."
+        val decoded = base match {
+          case Int1Type(sg) =>
+            val r = s"${dec}U8_At (${useBuffer()}, $at)"
+            if (sg) s"${dec}To_S8 ($r)" else r
+          case IntMultiType(sg, w, fe) =>
+            val bits = w.width * 8
+            val le = s"${dec}U${bits}_LE (${useBuffer()}, $at)"
+            val be = s"${dec}U${bits}_BE (${useBuffer()}, $at)"
+            val r = fe match {
+              case Some(LittleEndian) => le
+              case Some(BigEndian) => be
+              case _ => ops += "Byte_Order"; s"(if $thisName.Order = Kaitai.Types.Little_Endian then $le else $be)"
+            }
+            if (sg) s"${dec}To_S$bits ($r)" else r
+          case other => unsupported(s"subscript of a repetition of $other")
+        }
+        fromValue(m.dataType, decoded, guards).copy(usesBuffer = true)
+      case _ =>
+        val v = translate(a)
+        val i = translate(b)
+        requireInt(i)
+        v.vt match {
+          case VBytesLit(bytes) =>
+            if (!i.isLiteral || i.lo < 0 || i.lo >= bytes.size) unsupported("subscript of an array literal that is not a literal inside it")
+            val n = BigInt(bytes(i.lo.toInt))
+            ATr(n.toString, 0, Nil, VInt, n, n, isLiteral = true)
+          case VBytes =>
+            val bf = useBuffer()
+            ops += "Length"
+            val guards = v.guards ++ i.guards ++ (if (i.lo >= 0) Nil else List(s"${i.atom} >= 0")) ++
+              List(s"${i.atom} < Kaitai.Types.S64 (Kaitai.Types.Size (${v.code}))")
+            int(s"Kaitai.Types.S64 ($bf (${v.atom}.First + Kaitai.Types.Length (${i.code})))", 0, guards, 0, 255, ub = true)
+          case _ => unsupported("subscript of something that is not bytes or a repetition of integers")
+        }
+    }
+  }
 
   private def sizeOf(t: Ast.typeId, factor: Int): ATr = {
     // the size in bits; the sizes of the compiler front end are in bits

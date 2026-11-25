@@ -58,6 +58,30 @@ index 16ffe5a..e9c8dee 100644
    java: JavaRuntimeConfig = JavaRuntimeConfig(),
    dotNetNamespace: String = "Kaitai",
    phpNamespace: String = "",
+diff --git a/shared/src/main/scala/io/kaitai/struct/format/MetaSpec.scala b/shared/src/main/scala/io/kaitai/struct/format/MetaSpec.scala
+index c83f9228..702b455d 100644
+--- a/shared/src/main/scala/io/kaitai/struct/format/MetaSpec.scala
++++ b/shared/src/main/scala/io/kaitai/struct/format/MetaSpec.scala
+@@ -13,7 +13,8 @@ case class MetaSpec(
+   forceDebug: Boolean,
+   opaqueTypes: Option[Boolean],
+   zeroCopySubstream: Option[Boolean],
+-  imports: List[String]
++  imports: List[String],
++  title: Option[String] = None
+ ) extends YAMLPath {
+   def fillInDefaults(defSpec: MetaSpec): MetaSpec = {
+     fillInEncoding(defSpec.encoding)
+@@ -148,7 +149,8 @@ object MetaSpec {
+       forceDebug,
+       opaqueTypes,
+       zeroCopySubstream,
+-      imports
++      imports,
++      ParseUtils.getOptValueStr(srcMap, "title", path)
+     )
+   }
+ }
 diff --git a/shared/src/main/scala/io/kaitai/struct/languages/components/LanguageCompilerStatic.scala b/shared/src/main/scala/io/kaitai/struct/languages/components/LanguageCompilerStatic.scala
 index c8284f8..fa2bc32 100644
 --- a/shared/src/main/scala/io/kaitai/struct/languages/components/LanguageCompilerStatic.scala

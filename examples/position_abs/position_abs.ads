@@ -7,18 +7,52 @@ package Position_Abs
   with SPARK_Mode, Always_Terminates
 is
 
+   --  Parser for `position_abs`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : Position_Abs.T;
+   --     ...
+   --     Position_Abs.Parse (Buffer, S, V);
+   --     if Position_Abs.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  V does not hold byte arrays, strings and repetitions but says where they are in Buffer. Buffer must stay
+   --  unchanged while V is used, and the functions and procedures that take a buffer must be given the same one.
+   --
+   --  Nothing here allocates memory or raises an exception.
+
    use type Kaitai.Types.Status_Kind;
 
-   --  type position_abs::index_obj
-
+   --  The type `index_obj` of the description (`position_abs::index_obj`)
    package Index_Obj_Type is
 
+      --  A parsed `position_abs::index_obj`. A variable that Parse has not filled is not valid (see Valid). It has no
+      --  pointers and can be copied and kept freely; it refers to the buffer it was parsed from, which must not change
+      --  while it is used.
       type T is private;
 
+      --  True if This is the result of a Parse that succeeded. The accessors below require it.
       function Valid (This : T) return Boolean;
 
+      --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from.
+      --  The operations below that take a buffer require it, for This or for a position taken from This; give them that
+      --  same buffer.
       function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+      --  Parses one `position_abs::index_obj` at the position of S and leaves S behind it.
+      --
+      --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+      --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
+      --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+      --
+      --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+      --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+      --  @param This The result. Valid if and only if S has not failed
       procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -28,6 +62,9 @@ is
           and then Valid (This) = Kaitai.Streams.OK (S)
           and then Belongs_To (This, Buffer);
 
+      --  Field `entry`, a string in UTF-8, as the slice of the buffer that holds it, up to the first terminator, which
+      --  it does not include; the terminator is consumed; Parse fails if there is none. Parse has checked that it is
+      --  valid in that encoding.
       function Entry_Field (This : T) return Kaitai.Types.Slice
       with Pre => Valid (This);
 
@@ -49,12 +86,32 @@ is
 
    end Index_Obj_Type;
 
+   --  A parsed `position_abs`. A variable that Parse has not filled is not valid (see Valid). It has no pointers and
+   --  can be copied and kept freely; it refers to the buffer it was parsed from, which must not change while it is
+   --  used.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it.
    function Valid (This : T) return Boolean;
 
+   --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from. The
+   --  operations below that take a buffer require it, for This or for a position taken from This; give them that same
+   --  buffer.
    function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+   --  Parses one `position_abs` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  Not looked at here at all, so that an error in them shows only when they are asked for: Index.
+   --
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   --  @param This The result. Valid if and only if S has not failed
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -64,10 +121,16 @@ is
        and then Valid (This) = Kaitai.Streams.OK (S)
        and then Belongs_To (This, Buffer);
 
+   --  Field `index_offset`, an unsigned integer of 4 bytes, little endian
    function Index_Offset (This : T) return Kaitai.Types.U32
    with Pre => Valid (This);
 
-   --  instance index: parsed when asked for
+   --  Instance `index`, an `index_obj`. It has a position of its own in the data (`pos`), which Parse does not read:
+   --  this procedure parses it at every call, and This does not keep it.
+   --  @param Buffer The buffer that This was parsed from, unchanged
+   --  @param This The value that has the instance
+   --  @param Result The instance. Valid if and only if Outcome is Success
+   --  @param Outcome Success, or why the instance could not be parsed
    procedure Index
      (Buffer : Kaitai.Types.Bytes; This : T; Result : out Index_Obj_Type.T; Outcome : out Kaitai.Types.Status_Kind)
    with

@@ -7,12 +7,42 @@ package Valid_Fail_Eq_Int
   with SPARK_Mode, Always_Terminates
 is
 
+   --  Parser for `valid_fail_eq_int`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : Valid_Fail_Eq_Int.T;
+   --     ...
+   --     Valid_Fail_Eq_Int.Parse (Buffer, S, V);
+   --     if Valid_Fail_Eq_Int.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  Nothing here allocates memory or raises an exception.
+
    use type Kaitai.Types.S64;
 
+   --  A parsed `valid_fail_eq_int`. A variable that Parse has not filled is not valid (see Valid). It has no pointers
+   --  and can be copied and kept freely.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it.
    function Valid (This : T) return Boolean;
 
+   --  Parses one `valid_fail_eq_int` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   --  @param This The result. Valid if and only if S has not failed
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -21,6 +51,7 @@ is
        and then Kaitai.Streams.Advanced (S'Old, S)
        and then Valid (This) = Kaitai.Streams.OK (S);
 
+   --  Field `foo`, an unsigned integer of 1 byte
    function Foo (This : T) return Kaitai.Types.U8
    with Pre => Valid (This);
 

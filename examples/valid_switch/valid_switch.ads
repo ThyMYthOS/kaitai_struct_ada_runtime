@@ -7,12 +7,42 @@ package Valid_Switch
   with SPARK_Mode, Always_Terminates
 is
 
+   --  Parser for `valid_switch`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : Valid_Switch.T;
+   --     ...
+   --     Valid_Switch.Parse (Buffer, S, V);
+   --     if Valid_Switch.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  Nothing here allocates memory or raises an exception.
+
    use type Kaitai.Types.S64;
 
+   --  A parsed `valid_switch`. A variable that Parse has not filled is not valid (see Valid). It has no pointers and
+   --  can be copied and kept freely.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it.
    function Valid (This : T) return Boolean;
 
+   --  Parses one `valid_switch` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   --  @param This The result. Valid if and only if S has not failed
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -21,9 +51,11 @@ is
        and then Kaitai.Streams.Advanced (S'Old, S)
        and then Valid (This) = Kaitai.Streams.OK (S);
 
+   --  Field `a`, an unsigned integer of 1 byte
    function A (This : T) return Kaitai.Types.U8
    with Pre => Valid (This);
 
+   --  Field `b`, an integer that the cases of its `switch-on` read in different forms, held as Kaitai.Types.U16
    function B (This : T) return Kaitai.Types.U16
    with Pre => Valid (This);
 

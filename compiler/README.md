@@ -13,7 +13,7 @@ upstream tree and are copied over a checkout of the compiler.
 |---|---|
 | `shared/src/main/scala/io/kaitai/struct/AdaClassCompiler.scala` | the emitter; it walks the `ClassSpec` tree itself and writes `<id>.ads` and `<id>.adb` |
 | `shared/src/main/scala/io/kaitai/struct/translators/AdaTranslator.scala` | translation of expressions to Ada, with the conditions under which they are defined |
-| `upstream.patch` | the edits of existing upstream files: the registry (`LanguageCompilerStatic`), `Main.scala`, the option `--ada-max-depth` (`RuntimeConfig.scala`, `JavaMain.scala`), and `project/plugins.sbt` (`sbt-scalajs-crossproject` 1.3.2 instead of 1.0.0, which is no longer found) |
+| `upstream.patch` | the edits of existing upstream files: the registry (`LanguageCompilerStatic`), `Main.scala`, the option `--ada-max-depth` (`RuntimeConfig.scala`, `JavaMain.scala`), `MetaSpec.scala` (keeps `meta/title`, which upstream checks and drops), and `project/plugins.sbt` (`sbt-scalajs-crossproject` 1.3.2 instead of 1.0.0, which is no longer found) |
 
 Pinned upstream: `kaitai-io/kaitai_struct_compiler` at commit
 `963fd6b3c633e87ed197c5a065f5c8a7d31c1328`.
@@ -70,7 +70,7 @@ happens to each of the 334 formats of the Kaitai Struct test suite, and
 | Parameters | integer, boolean, enumeration | any other type (strings, bytes, user types, arrays, streams) |
 | `_parent`, `_root` | for values that are integers, booleans or enumerations, chains such as `_parent._parent.x` included; they become parameters of `Parse` | other values (a string, bytes, a user type, `_parent._io`); `_parent` in the top-level type; `_root` in a type of another description that is used from elsewhere, or in a description whose top-level type contains itself; the key `parent` on a field whose type uses `_parent` |
 | Instances | with a value: integer, boolean, enumeration, and bytes or a string that is a field (`value: name`); with a position: `pos`, `size`, `io: _root._io` | a value of bytes or a string that is not a field (a literal, a concatenation); an instance with a position that is used in an expression, has `repeat` or `process` |
-| `doc`, `doc-ref` | as comments | – |
+| `doc`, `doc-ref`, `meta/title` | in the documentation comments of the generated specification, next to the comments that the compiler writes for what it generates (see "Documentation" in `docs/codegen.md`) | – |
 
 ### Expressions
 

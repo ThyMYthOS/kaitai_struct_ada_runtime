@@ -7,15 +7,51 @@ package Valid_Long
   with SPARK_Mode, Always_Terminates
 is
 
+   --  Parser for `valid_long`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : Valid_Long.T;
+   --     ...
+   --     Valid_Long.Parse (Buffer, S, V);
+   --     if Valid_Long.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  V does not hold byte arrays, strings and repetitions but says where they are in Buffer. Buffer must stay
+   --  unchanged while V is used, and the functions and procedures that take a buffer must be given the same one.
+   --
+   --  Nothing here allocates memory or raises an exception.
+
    use type Kaitai.Types.U64;
    use type Kaitai.Types.S64;
 
+   --  A parsed `valid_long`. A variable that Parse has not filled is not valid (see Valid). It has no pointers and can
+   --  be copied and kept freely; it refers to the buffer it was parsed from, which must not change while it is used.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it.
    function Valid (This : T) return Boolean;
 
+   --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from. The
+   --  operations below that take a buffer require it, for This or for a position taken from This; give them that same
+   --  buffer.
    function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+   --  Parses one `valid_long` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   --  @param This The result. Valid if and only if S has not failed
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -25,33 +61,45 @@ is
        and then Valid (This) = Kaitai.Streams.OK (S)
        and then Belongs_To (This, Buffer);
 
+   --  Field `uint8`, an unsigned integer of 1 byte
    function Uint8 (This : T) return Kaitai.Types.U8
    with Pre => Valid (This);
 
+   --  Field `sint8`, a signed integer of 1 byte
    function Sint8 (This : T) return Kaitai.Types.S8
    with Pre => Valid (This);
 
+   --  Field `magic_uint`, a string in UTF-8, as the slice of the buffer that holds it. Parse has checked that it is
+   --  valid in that encoding.
    function Magic_Uint (This : T) return Kaitai.Types.Slice
    with Pre => Valid (This);
 
+   --  Field `uint16`, an unsigned integer of 2 bytes, little endian
    function Uint16 (This : T) return Kaitai.Types.U16
    with Pre => Valid (This);
 
+   --  Field `uint32`, an unsigned integer of 4 bytes, little endian
    function Uint32 (This : T) return Kaitai.Types.U32
    with Pre => Valid (This);
 
+   --  Field `uint64`, an unsigned integer of 8 bytes, little endian
    function Uint64 (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `magic_sint`, a string in UTF-8, as the slice of the buffer that holds it. Parse has checked that it is
+   --  valid in that encoding.
    function Magic_Sint (This : T) return Kaitai.Types.Slice
    with Pre => Valid (This);
 
+   --  Field `sint16`, a signed integer of 2 bytes, little endian
    function Sint16 (This : T) return Kaitai.Types.S16
    with Pre => Valid (This);
 
+   --  Field `sint32`, a signed integer of 4 bytes, little endian
    function Sint32 (This : T) return Kaitai.Types.S32
    with Pre => Valid (This);
 
+   --  Field `sint64`, a signed integer of 8 bytes, little endian
    function Sint64 (This : T) return Kaitai.Types.S64
    with Pre => Valid (This);
 

@@ -7,12 +7,45 @@ package Bits_Simple
   with SPARK_Mode, Always_Terminates
 is
 
+   --  Parser for `bits_simple`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : Bits_Simple.T;
+   --     ...
+   --     Bits_Simple.Parse (Buffer, S, V);
+   --     if Bits_Simple.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  Nothing here allocates memory or raises an exception.
+
    use type Kaitai.Types.U64;
 
+   --  A parsed `bits_simple`. A variable that Parse has not filled is not valid (see Valid). It has no pointers and can
+   --  be copied and kept freely.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it.
    function Valid (This : T) return Boolean;
 
+   --  Parses one `bits_simple` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  S must be at a byte boundary (Kaitai.Streams.Bits_Left (S) = 0) unless it has failed. That holds for a stream
+   --  that was just opened and after a read of whole bytes, such as an integer or a byte array.
+   --
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   --  @param This The result. Valid if and only if S has not failed
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
    with
      Pre  =>
@@ -22,50 +55,65 @@ is
        and then Kaitai.Streams.Advanced (S'Old, S)
        and then Valid (This) = Kaitai.Streams.OK (S);
 
+   --  Field `byte_1`, a bit field of 8 bits
    function Byte_1 (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `byte_2`, a bit field of 8 bits
    function Byte_2 (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `bits_a`, a single bit
    function Bits_A (This : T) return Boolean
    with Pre => Valid (This);
 
+   --  Field `bits_b`, a bit field of 3 bits
    function Bits_B (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `bits_c`, a bit field of 4 bits
    function Bits_C (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `large_bits_1`, a bit field of 10 bits
    function Large_Bits_1 (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `spacer`, a bit field of 3 bits
    function Spacer (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `large_bits_2`, a bit field of 11 bits
    function Large_Bits_2 (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `normal_s2`, a signed integer of 2 bytes, big endian
    function Normal_S2 (This : T) return Kaitai.Types.S16
    with Pre => Valid (This);
 
+   --  Field `byte_8_9_10`, a bit field of 24 bits
    function Byte_8_9_10 (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `byte_11_to_14`, a bit field of 32 bits
    function Byte_11_To_14 (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `byte_15_to_19`, a bit field of 40 bits
    function Byte_15_To_19 (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `byte_20_to_27`, a bit field of 64 bits
    function Byte_20_To_27 (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
-   --  instance test_if_b1
-
+   --  True if the instance `test_if_b1` has a value. Its condition (`if`) must be defined and hold, and its expression
+   --  must be defined.
    function Has_Test_If_B1 (This : T) return Boolean
    with Pre => Valid (This);
 
+   --  Instance `test_if_b1`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Requires
+   --  Has_Test_If_B1.
    function Test_If_B1 (This : T) return Kaitai.Types.S64
    with Pre => Valid (This) and then Has_Test_If_B1 (This);
 

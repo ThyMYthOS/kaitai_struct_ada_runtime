@@ -8,14 +8,50 @@ package Expr_1
   with SPARK_Mode, Always_Terminates
 is
 
+   --  Parser for `expr_1`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : Expr_1.T;
+   --     ...
+   --     Expr_1.Parse (Buffer, S, V);
+   --     if Expr_1.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  V does not hold byte arrays, strings and repetitions but says where they are in Buffer. Buffer must stay
+   --  unchanged while V is used, and the functions and procedures that take a buffer must be given the same one.
+   --
+   --  Nothing here allocates memory or raises an exception.
+
    use type Kaitai.Types.S64;
 
+   --  A parsed `expr_1`. A variable that Parse has not filled is not valid (see Valid). It has no pointers and can be
+   --  copied and kept freely; it refers to the buffer it was parsed from, which must not change while it is used.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it.
    function Valid (This : T) return Boolean;
 
+   --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from. The
+   --  operations below that take a buffer require it, for This or for a position taken from This; give them that same
+   --  buffer.
    function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+   --  Parses one `expr_1` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   --  @param This The result. Valid if and only if S has not failed
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -25,19 +61,21 @@ is
        and then Valid (This) = Kaitai.Streams.OK (S)
        and then Belongs_To (This, Buffer);
 
+   --  Field `len_of_1`, an unsigned integer of 2 bytes, little endian
    function Len_Of_1 (This : T) return Kaitai.Types.U16
    with Pre => Valid (This);
 
+   --  Field `str1`, a string in ASCII, as the slice of the buffer that holds it. Parse has checked that it is valid in
+   --  that encoding.
    function Str1 (This : T) return Kaitai.Types.Slice
    with Pre => Valid (This);
 
-   --  instance len_of_1_mod
-
+   --  Instance `len_of_1_mod`, an integer (a Kaitai.Types.S64). Computed from the fields at every call.
    function Len_Of_1_Mod (This : T) return Kaitai.Types.S64
    with Pre => Valid (This);
 
-   --  instance str1_len
-
+   --  Instance `str1_len`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Buffer is the
+   --  buffer that This was parsed from.
    function Str1_Len (Buffer : Kaitai.Types.Bytes; This : T) return Kaitai.Types.S64
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 

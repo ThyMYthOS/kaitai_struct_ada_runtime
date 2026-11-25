@@ -734,22 +734,152 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   private def ind(lines: Seq[String], n: Int = 1): List[String] =
     lines.toList.map(l => if (l.isEmpty) l else ("   " * n) + l)
 
-  private def wrapComment(text: String, width: Int = 90): List[String] =
-    text.split("\n").toList.flatMap { para =>
-      val words = para.trim.split("\\s+").filter(_.nonEmpty).toList
-      val lines = ListBuffer[String]()
-      var cur = ""
-      words.foreach { w =>
-        if (cur.isEmpty) cur = w
-        else if (cur.length + 1 + w.length > width) { lines += cur; cur = w }
-        else cur = cur + " " + w
-      }
-      if (cur.nonEmpty) lines += cur
-      if (lines.isEmpty) List("") else lines.toList
-    }.map(l => if (l.isEmpty) "--" else s"--  $l")
+  // ------------------------------------------------------------ documentation
 
-  private def docLines(doc: DocSpec): List[String] =
-    doc.summary.map(wrapComment(_)).getOrElse(Nil)
+  /**
+    * Nesting depth of the package that is generated: 0 for the library-level one. The declarations of its visible
+    * part are indented by three blanks more than the package itself, which decides how long a line of a comment may
+    * be: gnatformat does the indenting afterwards, and the style checks of the generated code ask for 120 columns.
+    */
+  private var level = 0
+
+  private def columns(indent: Int): Int = 120 - indent - 4
+
+  private def memberColumns: Int = columns(3 * (level + 1))
+
+  /** Control characters and line separators, which would end a comment or confuse a reader, become blanks. */
+  private def sanitize(s: String): String =
+    s.map { c =>
+      val t = Character.getType(c)
+      if (Character.isISOControl(c) || t == Character.LINE_SEPARATOR || t == Character.PARAGRAPH_SEPARATOR ||
+          (c >= '\u202a' && c <= '\u202e') || (c >= '\u2066' && c <= '\u2069')) ' ' else c
+    }
+
+  /**
+    * The width of a text in the source. A character beyond ASCII counts as twice its bytes in UTF-8: gnatformat reads a
+    * source as Latin-1 and writes every byte of it as a character of UTF-8, so the line must be short enough then too.
+    */
+  private def bytesOf(s: String): Int =
+    s.codePoints.toArray.map(cp => if (cp < 128) 1 else 2 * new String(Character.toChars(cp)).getBytes("UTF-8").length).sum
+
+  /** A word that is longer than a line is cut into pieces that fit. */
+  private def pieces(w: String, width: Int): List[String] =
+    if (bytesOf(w) <= width) List(w)
+    else {
+      var i = 0
+      var n = 0
+      def step: Int = Character.charCount(w.codePointAt(i))
+      while (i < w.length && n + bytesOf(w.substring(i, i + step)) <= width) {
+        n += bytesOf(w.substring(i, i + step))
+        i += step
+      }
+      if (i == 0) List(w) else w.substring(0, i) :: pieces(w.substring(i), width)
+    }
+
+  /** The lines of a text, each at most `width` bytes long. */
+  private def wrapText(text: String, width: Int): List[String] = {
+    val words = sanitize(text).split("\\s+").toList.filter(_.nonEmpty)
+    // A word that starts with `@` stays with the word before it, so that no line starts with a tag of GNATdoc
+    val tokens = ListBuffer[String]()
+    words.foreach { w =>
+      if (w.startsWith("@") && tokens.nonEmpty) tokens(tokens.size - 1) = tokens.last + " " + w else tokens += w
+    }
+    val lines = ListBuffer[String]()
+    var cur = ""
+    tokens.toList.flatMap { t =>
+      if (!t.contains(' ')) pieces(t, width)
+      else if (bytesOf(t) <= width) List(t)
+      else t.split(" ").toList.flatMap(pieces(_, width))
+    }.foreach { w =>
+      if (cur.isEmpty) cur = w
+      else if (bytesOf(cur) + 1 + bytesOf(w) > width) { lines += cur; cur = w }
+      else cur = cur + " " + w
+    }
+    if (cur.nonEmpty) lines += cur
+    lines.toList
+  }
+
+  /** A paragraph of a comment, or the blank line between two */
+  private type Item = Option[String]
+  private def P(text: String): Item = Some(text)
+  private val Gap: Item = None
+
+  private def render(items: List[Item], indent: Int = -1): List[String] = {
+    val width = columns(if (indent < 0) 3 * (level + 1) else indent)
+    items.flatMap {
+      case Some(t) => wrapText(t, width).map(l => s"--  $l")
+      case None => List("--")
+    }
+  }
+
+  /** A comment of one paragraph */
+  private def wrapComment(text: String): List[String] = render(List(P(text)))
+
+  private def q(name: String): String = "`" + name + "`"
+
+  private def endSentence(s: String): String = {
+    val t = s.trim
+    if (t.isEmpty || t.endsWith(".") || t.endsWith("!") || t.endsWith("?") || t.endsWith(":")) t else t + "."
+  }
+
+  /** One phrase has no full stop, several sentences have one each. */
+  private def sentences(parts: List[String]): String = parts.filter(_.trim.nonEmpty) match {
+    case List(one) => one.trim
+    case many => many.map(endSentence).mkString(" ")
+  }
+
+  /** The text of a `doc` in paragraphs, as it is written: a blank line ends a paragraph, a list item begins one. */
+  private def docItems(doc: DocSpec): List[Item] = {
+    val out = ListBuffer[Item]()
+    val cur = new StringBuilder
+    def flush(): Unit = if (cur.nonEmpty) { out += Some(cur.toString); cur.clear() }
+    val listItem = "^([-*+]|[0-9]+[.)])\\s.*".r
+    doc.summary.toList.flatMap(_.split("\r\n|\r|\n", -1)).foreach { raw =>
+      val line = sanitize(raw).trim
+      if (line.isEmpty) { flush(); if (out.nonEmpty && out.last.isDefined) out += Gap }
+      else if (listItem.pattern.matcher(line).matches) { flush(); cur ++= line }
+      else { if (cur.nonEmpty) cur += ' '; cur ++= line }
+    }
+    flush()
+    while (out.nonEmpty && out.last.isEmpty) out.remove(out.size - 1)
+    out.toList
+  }
+
+  private def refText(r: RefSpec): String = r match {
+    case TextRef(t) => t
+    case UrlRef(u, t) => if (t == "Source") u else s"$u $t"
+  }
+
+  private def refItems(doc: DocSpec): List[Item] = doc.ref.map(r => P("See " + refText(r)))
+
+  /**
+    * The comment of a declaration: `head` as phrases or sentences, then the first paragraph of the description,
+    * then `after`; the other paragraphs of the description, and its references, follow.
+    */
+  private def describe(head: List[String], doc: DocSpec, after: List[String] = Nil): List[String] = {
+    val items = docItems(doc)
+    val refs = refItems(doc)
+    val (first, rest) = items match {
+      case Some(p) :: tl => (List(p), tl)
+      case _ => (Nil, Nil)
+    }
+    val parts = head ++ first ++ after
+    val main: List[Item] =
+      if (rest.isEmpty) {
+        val t = sentences(parts)
+        List(P(if (refs.nonEmpty && parts.size == 1) endSentence(t) else t))
+      } else List(P(sentences(head ++ first))) ++ rest ++ (if (after.isEmpty) Nil else List(Gap, P(sentences(after))))
+    render(main ++ refs)
+  }
+
+  /** The description of an enumeration value, a parameter, ... as one line of text, for a tag of GNATdoc */
+  private def oneLine(doc: DocSpec): List[String] = (docItems(doc).flatten ++ refItems(doc).flatten).toList
+
+  /** `@param Name text` and the like; the text goes on in the lines that follow */
+  private def tag(kind: String, name: String, text: String): List[String] =
+    render(List(P(s"@$kind $name $text")))
+
+  private def docLines(doc: DocSpec): List[String] = describe(Nil, doc)
 
   private class Scope {
     val decls = ListBuffer[String]()
@@ -780,6 +910,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val bodyAfter = ListBuffer[String]()
     val write = ListBuffer[String]()
     val wscope = new Scope
+    /** Fields that `Parse` goes over once but does not keep, and parse instances and processed fields that it does not look at */
+    val rereads = ListBuffer[String]()
+    val unread = ListBuffer[String]()
   }
 
   private def T(e: Ast.expr, rc: RC): ATr = {
@@ -1188,6 +1321,71 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     )
   }
 
+  /** The names that a caller gives `Parse` between the stream and the result */
+  private def parseArgNames(cs: ClassSpec): List[String] =
+    (if (hasOrderParam(cs)) List("Order") else Nil) ++ cs.params.map(p => paramName(idRaw(p.id))) ++
+      refsOf(cs).map(_.adaName) ++ (if (isRecursive(cs)) List("Depth") else Nil)
+
+  /** A call as lines of code in a comment: one line, or the name and then the arguments */
+  private def callLines(name: String, args: List[String]): List[String] = {
+    val one = s"$name (${args.mkString(", ")});"
+    if (one.length <= 90) List(one)
+    else name :: wrapText(s"(${args.mkString(", ")});", 80).map("  " + _)
+  }
+
+  /** What the description is: its name, its title, and the `doc` and `doc-ref` of its top-level type */
+  private def parserItems: List[Item] = {
+    val cs = topClass
+    val title = cs.meta.title.map(sanitize(_).trim.replaceAll("\\s+", " ")).filter(_.nonEmpty)
+    val doc = docItems(cs.doc) ++ refItems(cs.doc)
+    List(P(s"Parser for ${q(cs.name.head)}${title.map(t => ": " + t.stripSuffix(".")).getOrElse("")}.")) ++
+      (if (doc.isEmpty) Nil else Gap :: doc)
+  }
+
+  /**
+    * The comment of the library-level package: what the description is, and how to use the parser. It is the first
+    * thing after the `is` of the package, which is where GNATdoc looks for the description of a package before it
+    * takes the comment at the top of the file: with the comment at the top, GNATdoc took the comment of the first
+    * declaration after the `use type` clauses for that of the package.
+    */
+  private def libraryDoc: List[String] = {
+    val cs = topClass
+    val pkg = topAdaName
+    val args = parseArgNames(cs).map(n => if (n == "Depth") s"$pkg.Max_Depth" else n)
+    val belongs = hasBelongs(cs)
+    val code = ListBuffer[String]()
+    code += "S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);"
+    code += s"V : $pkg.T;"
+    code += "..."
+    code ++= callLines(s"$pkg.Parse", List("Buffer", "S") ++ args :+ "V")
+    code ++= List(s"if $pkg.Valid (V) then", "   --  read V with the functions below", "else",
+      "   --  Kaitai.Streams.Status (S) tells why the data were not accepted", "end if;")
+    val items = ListBuffer[Item]()
+    items ++= parserItems
+    items += Gap
+    items += P("Use, where Buffer is the data (a Kaitai.Types.Bytes):")
+    val out = ListBuffer[String]()
+    out ++= render(items.toList, 3)
+    out += "--"
+    code.foreach(l => out += "--     " + l)
+    val tail = ListBuffer[Item]()
+    if (belongs)
+      tail ++= List(Gap, P("V does not hold byte arrays, strings and repetitions but says where they are in Buffer. Buffer must stay unchanged while V is used, and the functions and procedures that take a buffer must be given the same one."))
+    tail ++= List(Gap, P("Nothing here allocates memory or raises an exception."))
+    if (config.readWrite) {
+      val wr = ListBuffer[String]()
+      wr += "W : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);"
+      wr ++= callLines(s"$pkg.Write", (if (belongs) List("Buffer") else Nil) ++ List("V", "Target", "W"))
+      wr ++= List("if Kaitai.Writers.OK (W) then", "   --  Kaitai.Writers.Written (W) is the part of Target that holds the bytes",
+        "else", "   --  Kaitai.Writers.Status (W) tells why they could not be written", "end if;")
+      tail ++= List(Gap, P("Write, which the compiler generates because of --read-write, puts a valid value back into bytes:"))
+      out ++= render(tail.toList, 3)
+      out += "--"
+      wr.foreach(l => out += "--     " + l)
+    } else out ++= render(tail.toList, 3)
+    out.toList
+  }
+
   /** `with` clauses for the packages of other descriptions that the lines use and that are not named yet */
   private def importedWiths(lines: List[String], known: List[String] = Nil): List[String] = {
     val clean = lines.map(l => l.takeWhile(_ != '-')).mkString("\n")
@@ -1218,6 +1416,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   private def genClass(cs: ClassSpec): (List[String], List[String]) = {
     if (cs.meta.isOpaque) fail(cs.path, s"opaque type ${cs.nameAsStr}")
     val isTop = cs.upClass.isEmpty && cs.name.size == 1
+    level = cs.name.size - 1
     val pkgName = if (isTop) topAdaName else typePkg(cs.name.last)
     val specB = ListBuffer[String]()
     val bodyB = ListBuffer[String]()
@@ -1239,13 +1438,12 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       val (s, bd) = genClass(c)
       (c, s, bd)
     }
-    childOut.foreach { case (c, s, _) =>
-      specB += s"--  type ${c.nameAsStr}"
-      specB += ""
+    childOut.foreach { case (_, s, _) =>
       specB ++= s
       specB += ""
     }
 
+    level = cs.name.size - 1
     provider.nowClass = cs
     val o = new Out
     val sc = new Scope
@@ -1257,23 +1455,34 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val refDecls = refsOf(cs).map(r => s"${r.adaName} : ${refParamType(refTypes((cs.nameAsStr, r)), r)}")
     val depthDecl = if (isRecursive(cs)) List("Depth : Natural") else Nil
     val parseParams = (List(s"Buffer : ${KT}Bytes", s"S : in out ${KS}Stream") ++ orderPar ++ paramDecls ++ refDecls ++ depthDecl :+ "This : out T").mkString("; ")
-    val parseNotes =
-      (if (refsOf(cs).isEmpty) Nil
-       else wrapComment(refsOf(cs).map(r => s"${r.adaName} is ${r.source}").mkString(", ") + ".")) ++
-        (if (!isRecursive(cs)) Nil
-         else wrapComment("Depth is the number of levels of nesting that are accepted below this value; deeper ones make the stream fail with Limit_Exceeded."))
     val belongsOk = hasBelongs(cs)
     val writeParams = (if (belongsOk) s"Buffer : ${KT}Bytes; " else "") + s"This : T; Target : in out ${KT}Bytes; W : in out ${KW}Writer"
 
+    val tName = q(cs.nameAsStr)
+    specB ++= render(List(P(sentences(List(
+      s"A parsed $tName",
+      "A variable that Parse has not filled is not valid (see Valid)",
+      "It has no pointers and can be copied and kept freely" +
+        (if (belongsOk) "; it refers to the buffer it was parsed from, which must not change while it is used" else "")
+    )))))
     specB += "type T is private;"
     specB += ""
+    specB ++= render(List(P(sentences(List(
+      "True if This is the result of a Parse that succeeded",
+      "The accessors below require it" + (if (config.readWrite) ", and so does Write" else "")
+    )))))
     specB += "function Valid (This : T) return Boolean;"
     specB += ""
     if (belongsOk) {
+      specB ++= render(List(P(sentences(List(
+        "True if everything that This refers to lies within Buffer",
+        "It holds for the buffer that This was parsed from",
+        "The operations below that take a buffer require it, for This or for a position taken from This; give them that same buffer"
+      )))))
       specB += s"function Belongs_To (This : T; Buffer : ${KT}Bytes) return Boolean;"
       specB += ""
     }
-    specB ++= parseNotes
+    specB ++= parseDoc(cs, isTop, o, belongsOk)
     specB += s"procedure Parse ($parseParams)"
     specB += "with"
     specB += s"  Pre  => ${KS}Is_Valid (S, Buffer)" +
@@ -1284,6 +1493,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     specB += ""
     specB ++= o.pub
     if (config.readWrite) {
+      specB ++= ind(writeDoc(belongsOk))
       specB += s"   procedure Write ($writeParams)"
       specB += "   with"
       specB += s"     Pre  => Valid (This) and then ${if (belongsOk) "Belongs_To (This, Buffer) and then " else ""}${KW}Is_Valid (W, Target),"
@@ -1329,6 +1539,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       specOut += "  with SPARK_Mode, Always_Terminates"
       specOut += "is"
       specOut += ""
+      specOut ++= ind(libraryDoc)
+      specOut += ""
       val needed = UseTypes.filter(t => opTypes.contains(t) || tr.ops.contains(t))
       needed.foreach(t => specOut += s"   use type $KT$t;")
       val orderUse = tr.ops.contains("Byte_Arrays.Order")
@@ -1338,7 +1550,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       specOut += ""
       specOut += s"end $pkgName;"
     } else {
-      docLines(cs.doc).foreach(l => specOut += l)
+      specOut ++= packageDoc(cs)
       specOut += s"package $pkgName is"
       specOut += ""
       specOut ++= ind(specB.toList)
@@ -1379,6 +1591,80 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     (specOut.toList.map(_.replaceAll("\\s+$", "")), bodyOut.toList.map(_.replaceAll("\\s+$", "")))
   }
 
+  /** The comment of a package that a nested type becomes */
+  private def packageDoc(cs: ClassSpec): List[String] = {
+    val indent = 3 * level
+    val head = render(List(P(s"The type ${q(cs.name.last)} of the description (${q(cs.nameAsStr)})")), indent)
+    val d = docItems(cs.doc) ++ refItems(cs.doc)
+    head ++ (if (d.isEmpty) Nil else "--" :: render(d, indent))
+  }
+
+  /** The comment of `Parse`: what it does, what it leaves, and the tags of its parameters */
+  private def parseDoc(cs: ClassSpec, isTop: Boolean, o: Out, belongsOk: Boolean): List[String] = {
+    val items = ListBuffer[Item]()
+    items += P(s"Parses one ${q(cs.nameAsStr)} at the position of S and leaves S behind it.")
+    items += Gap
+    items += P("It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.")
+    if (isTop) {
+      items += Gap
+      items += P("Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.")
+    }
+    if (o.rereads.nonEmpty || o.unread.nonEmpty) {
+      items += Gap
+      items += P(List(
+        if (o.rereads.isEmpty) "" else s"Not kept in This, but read again when asked for (Parse has gone over them once and checked them): ${o.rereads.mkString(", ")}",
+        if (o.unread.isEmpty) "" else s"Not looked at here at all, so that an error in them shows only when they are asked for: ${o.unread.mkString(", ")}"
+      ).filter(_.nonEmpty).map(endSentence).mkString(" "))
+    }
+    if (needsAlign(cs)) {
+      items += Gap
+      items += P("S must be at a byte boundary (Kaitai.Streams.Bits_Left (S) = 0) unless it has failed. That holds for a stream that was just opened and after a read of whole bytes, such as an integer or a byte array.")
+    }
+    items += Gap
+    val tags = ListBuffer[String]()
+    tags ++= tag("param", "Buffer", "The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))")
+    tags ++= tag("param", "S", "Where to read. Afterwards it is at the position behind the value, or it has failed")
+    if (hasOrderParam(cs)) {
+      val why = cs.meta.endian match {
+        case Some(_: CalcEndian) => "The `endian` of the type is calculated from `_parent`, so the parser of the parent computes it and passes it"
+        case _ => "The type inherits a calculated `endian` from its parent, so the parser of the parent passes its own"
+      }
+      tags ++= tag("param", "Order", s"The byte order of the integers of this value. $why")
+    }
+    cs.params.foreach { p =>
+      val d = oneLine(p.doc)
+      tags ++= tag("param", paramName(idRaw(p.id)), s"Parameter ${q(idRaw(p.id))} of the type" + (if (d.isEmpty) "" else ": " + d.mkString(" ")))
+    }
+    refsOf(cs).foreach { r =>
+      val text =
+        if (r.root) s"The value of ${q(r.source)}, passed down from the top-level value"
+        else if (r.hops == 1)
+          s"The value of ${q(r.source)}: the caller is the parser of the value that this one is part of and passes its own ${q(r.path.mkString("."))}"
+        else s"The value of ${q(r.source)}: the caller passes what it has itself as ${q((("_parent" :: List.fill(r.hops - 2)("_parent")) ++ r.path).mkString("."))}"
+      tags ++= tag("param", r.adaName, text)
+    }
+    if (isRecursive(cs))
+      tags ++= tag("param", "Depth", "How many levels of values of this type may be nested inside this one. Pass Max_Depth. A nested value is parsed with Depth - 1, and where Depth is 0 the stream fails with Limit_Exceeded instead")
+    tags ++= tag("param", "This", "The result. Valid if and only if S has not failed")
+    render(items.toList) ++ tags
+  }
+
+  /** The comment of `Write` */
+  private def writeDoc(belongsOk: Boolean): List[String] = {
+    val items = List(
+      P("Writes This to Target, at the position of W, and leaves W behind what it wrote."),
+      Gap,
+      P("It does not raise an exception. If Target has not room enough, or the value cannot be written (the expression of a size is not defined, or the buffer is no longer what was parsed), W has failed afterwards, Kaitai.Writers.Status (W) is the reason (Capacity_Exceeded for lack of room) and Target may hold some of the bytes. If W had failed before the call, nothing is written. Kaitai.Writers.Written (W) is the part of Target that holds what has been written through W."),
+      Gap,
+      P("Parsing what was written gives the same value again, with the same fields and slices of the same contents. The output is the input again, except for what a parsed value does not keep: bytes that no field uses and skipped bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as the padding byte, and instances with a position are not written.")
+    )
+    render(items :+ Gap) ++
+      (if (belongsOk) tag("param", "Buffer", "The buffer that This was parsed from, unchanged. What This refers to is written from it") else Nil) ++
+      tag("param", "This", "The value to write. It must be valid") ++
+      tag("param", "Target", "Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))") ++
+      tag("param", "W", "Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes written, or it has failed")
+  }
+
   private def paramComponent(p: ParamDefSpec): List[String] = {
     val t = guard(p.path)(paramAda(p))
     List(s"${plain(idRaw(p.id))} : $t := ${defaultOf(t)};")
@@ -1404,12 +1690,17 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val lits = entries.map { case (_, s) => enumLit(e, s.name) }
     val values = entries.map(_._1.toString)
     val out = ListBuffer[String]()
-    out ++= docLines(DocSpec(Some(s"enum ${e.name.last}"), Nil))
+    out ++= render(List(P(s"Enumeration ${q(e.name.last)}")))
+    entries.foreach { case (v, ev) =>
+      out ++= tag("enum", enumLit(e, ev.name), sentences(List(s"${q(ev.name)}, $v") ++ oneLine(ev.doc)))
+    }
     out += s"type $n is (${lits.mkString(", ")});"
     out += ""
+    out ++= render(List(P(s"True if Value is the number of a label of $n")))
     out += s"function Is_$n (Value : $intT) return Boolean"
     out += s"is (Value in ${values.mkString(" | ")});"
     out += ""
+    out ++= render(List(P(s"The label of $n that has the number Value")))
     out += s"function To_$n (Value : $intT) return $n"
     if (entries.exists(_._1 < 0)) {
       // GNAT is very slow on a case with a negative choice over a 64-bit type
@@ -1426,6 +1717,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     }
     out += s"with Pre => Is_$n (Value);"
     out += ""
+    out ++= render(List(P(s"The number of a label of $n, as it is in the data")))
     out += s"function To_Integer (Value : $n) return $intT"
     if (entries.exists(_._1 < 0)) {
       val chain = entries.dropRight(1).zipWithIndex.map { case ((v, s), i) =>
@@ -1688,13 +1980,20 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val ada = guard(p.path)(paramAda(p))
     p.dataType match {
       case et: EnumType =>
-        enumAccessors(o, nm, bs, ada, et, "Valid (This)", docLines(p.doc))
+        enumAccessors(o, nm, bs, ada, et, "Valid (This)", s"Parameter ${q(idRaw(p.id))}", "as the integer that was given to Parse",
+          "The integer", p.doc, Nil)
       case _ =>
-        accessor(o, nm, ada, "Valid (This)", None, s"This.$nm", comment = docLines(p.doc))
+        accessor(o, nm, ada, "Valid (This)", None, s"This.$nm",
+          comment = describe(List(s"Parameter ${q(idRaw(p.id))} of the type, as it was given to Parse"), p.doc))
     }
   }
 
-  private def enumAccessors(o: Out, nm: String, bs: String, ada: String, et: EnumType, pre: String, comment: List[String], compName: Option[String] = None): Unit = {
+  /**
+    * The pair of accessors of an enumeration: the integer, `X_Value`, and the label, `X`. `subject` names what it is
+    * (Field `kind`), `valueIs` what the integer is, `integer` how the integer is named in the sentence about the label.
+    */
+  private def enumAccessors(o: Out, nm: String, bs: String, ada: String, et: EnumType, pre: String, subject: String, valueIs: String,
+                            integer: String, doc: DocSpec, requires: List[String], compName: Option[String] = None): Unit = {
     val comp = compName.getOrElse(nm)
     val spec = et.enumSpec.get
     val tyName = enumTypeName(spec)
@@ -1705,16 +2004,23 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       if (!Set("U8", "U16", "U32", "U64").contains(ada.stripPrefix(KT)))
         throw new AdaUnsupported(s"enumeration ${spec.name.last} with a value beyond 63 bits on something that is not an unsigned integer")
       def asU64(x: String) = if (ada == KT + "U64") x else s"${KT}U64 ($x)"
-      accessor(o, s"${bs}_Value", ada, pre, None, s"This.$comp", comment = comment)
+      accessor(o, s"${bs}_Value", ada, pre, None, s"This.$comp", comment = describe(List(s"$subject $valueIs"), DocSpec.EMPTY, requires))
       accessor(o, nm, tyName, s"$pre and then ${q}Is_${enumTy(spec)} (${asU64(s"${bs}_Value (This)")})", None,
-        s"${q}To_${enumTy(spec)} (${asU64(s"This.$comp")})")
+        s"${q}To_${enumTy(spec)} (${asU64(s"This.$comp")})", comment = labelComment(subject, tyName, q, spec, bs, integer, doc, requires))
       return
     }
     val t = guard(Nil)(tr.fromValue(et, s"${bs}_Value (This)", Nil))
-    accessor(o, s"${bs}_Value", ada, pre, None, s"This.$comp", comment = comment)
+    accessor(o, s"${bs}_Value", ada, pre, None, s"This.$comp", comment = describe(List(s"$subject $valueIs"), DocSpec.EMPTY, requires))
     val enumPre = (List(pre) ++ t.guards ++ List(s"${q}Is_${enumTy(spec)} (${t.code})")).mkString(" and then ")
-    accessor(o, nm, tyName, enumPre, None, s"${q}To_${enumTy(spec)} (${t.code.replace(s"${bs}_Value (This)", s"This.$comp")})")
+    accessor(o, nm, tyName, enumPre, None, s"${q}To_${enumTy(spec)} (${t.code.replace(s"${bs}_Value (This)", s"This.$comp")})",
+      comment = labelComment(subject, tyName, q, spec, bs, integer, doc, requires))
   }
+
+
+  private def labelComment(subject: String, tyName: String, q: String, spec: EnumSpec, bs: String, integer: String, doc: DocSpec,
+                           requires: List[String]): List[String] =
+    describe(List(s"$subject as a label of $tyName"), doc,
+      List(s"$integer need not be the number of a label: this function requires ${q}Is_${enumTy(spec)} of ${bs}_Value") ++ requires)
 
   // ----------------------------------------------------------------- seq attrs
 
@@ -1738,7 +2044,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val bs = base(idRaw(a.id))
     if (hasCond(a)) {
       o.comps += s"${hasNm(bs)} : Boolean := False;"
-      o.pub ++= ind(List(s"function ${hasNm(bs)} (This : T) return Boolean", "with Pre => Valid (This);", ""))
+      o.pub ++= ind(describe(List(s"True if the field ${q(idRaw(a.id))} is there", "It has a condition (`if`) in the description, which Parse evaluated"),
+        DocSpec.EMPTY) ++ List(s"function ${hasNm(bs)} (This : T) return Boolean", "with Pre => Valid (This);", ""))
       o.privFuncs += s"function ${hasNm(bs)} (This : T) return Boolean"
       o.privFuncs += s"is (This.${hasNm(bs)});"
       o.privFuncs += ""
@@ -1812,9 +2119,19 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     o.comps += s"$nm : ${KT}Slice;"
     o.belongs += s"${KT}Within ($raw, Buffer)"
     opTypes += "Length"
-    val what = if (userT.isDefined) s"$nm: kept as it is in the input. $nm undoes the processing into Storage and parses the value from there, so that what the value refers to lies in Storage and not in Buffer."
-               else s"$nm: kept as it is in the input. $nm undoes the processing and writes the result to an array of the caller."
-    accessor(o, s"${bs}_Raw", KT + "Slice", pre, None, raw, comment = docLines(a.doc) ++ wrapComment(what))
+    val k = idRaw(a.id)
+    val there = if (hasName.isEmpty) Nil else List(s"Requires that it is there ($hasName)")
+    val procName = proc match {
+      case ProcessXor(_) => "xor"
+      case ProcessRotate(true, _) => "rol"
+      case ProcessRotate(false, _) => "ror"
+      case _ => "zlib"
+    }
+    o.unread += nm
+    val rawIs = userT.map(u => s"the bytes of ${whatIs(u)}").getOrElse("bytes")
+    accessor(o, s"${bs}_Raw", KT + "Slice", pre, None, raw,
+      comment = describe(List(s"Field ${q(k)}, $rawIs as they are in the input, before the processing (`process: $procName`) is undone, " +
+        s"as the slice of the buffer that holds them${coverText(bytesT)}"), DocSpec.EMPTY, List(s"$nm undoes the processing") ++ there))
     o.parse ++= wrapCond(a, if (hasName.isEmpty) None else Some(hasName), readBytes(bytesT, raw, rc, defaultTarget = false), rc)
 
     // the procedure
@@ -1857,6 +2174,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         }
       case _ => unsupported("`process`")
     }
+    val keyGuards: List[String] = if (isZlib) Nil else processCall("Target")._2
     val outcomeOfZlib = List(
       "case Inflated is",
       s"   when ${zlibKinds}Done =>",
@@ -1876,7 +2194,18 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
             s"Last >= Target'First - 1 and then Last - (Target'First - 1) <= ${KT}Length (Target'Length) and then (if Outcome /= ${KT}Success then Last = Target'First - 1)"
           else s"(if Outcome = ${KT}Success then Last = Target'First + ${KT}Size (${bs}_Raw (This)) - 1 else Last = Target'First - 1)"
         opTypes += "Status_Kind"
-        o.pub ++= ind(List(
+        val notUsable = if (isZlib) "Illegal_Sequence if the data are not valid zlib data"
+                        else if (procName == "xor") "Arithmetic_Error if the key is not defined or not usable (an integer outside 0 .. 255, or no bytes)"
+                        else "Arithmetic_Error if the expression of the amount is not defined"
+        o.pub ++= ind(describe(List(s"Field ${q(k)}, the bytes of ${bs}_Raw with the processing (`process: $procName`) undone, written to Target (Target'First .. Last)"),
+          a.doc, List(s"Parse does not do this: the procedure does it at every call, and This does not keep the result") ++ there) ++
+          tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
+          tag("param", "This", "The value that has the field") ++
+          tag("param", "Target", "Where the result goes, from Target'First, which must be at least 1. It must have room for " +
+            (if (isZlib) "the inflated bytes" else s"as many bytes as ${bs}_Raw has")) ++
+          tag("param", "Last", "The index in Target of the last byte of the result: Target'First - 1 if the result is empty or Outcome is not Success") ++
+          tag("param", "Outcome", (List("Success", "Capacity_Exceeded if Target is too small") ++
+            (if (isZlib || keyGuards.nonEmpty) List(notUsable) else Nil)).mkString(", ")) ++ List(
           s"procedure $nm ($params)", "with",
           s"  Pre  => $pre and then Belongs_To (This, Buffer) and then Target'First >= 1,",
           s"  Post => $post;", ""))
@@ -1907,7 +2236,20 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         val belongsOk = hasBelongs(ut.classSpec.get)
         val params = s"Buffer : ${KT}Bytes; This : T; Storage : in out ${KT}Bytes; Result : out ${userPkg(ut)}.T; Outcome : out ${KT}Status_Kind"
         opTypes += "Status_Kind"
-        o.pub ++= ind(List(
+        val notUsable = if (isZlib) "Illegal_Sequence if the data are not valid zlib data"
+                        else if (procName == "xor") "Arithmetic_Error if the key is not defined or not usable (an integer outside 0 .. 255, or no bytes)"
+                        else "Arithmetic_Error if the expression of the amount is not defined"
+        o.pub ++= ind(describe(List(s"Field ${q(k)}, ${whatIs(ut)}: the bytes of ${bs}_Raw with the processing (`process: $procName`) undone into Storage, and the value parsed from there"),
+          a.doc, List(s"Parse does not do this: the procedure does it at every call, and This does not keep the result") ++ there) ++
+          tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
+          tag("param", "This", "The value that has the field") ++
+          tag("param", "Storage", "Where the processed bytes go, from Storage'First, which must be at least 1. It must have room for " +
+            (if (isZlib) "the inflated bytes" else s"as many bytes as ${bs}_Raw has")) ++
+          tag("param", "Result", "The value. Valid if and only if Outcome is Success" +
+            (if (belongsOk) ". It refers to Storage, not to Buffer, so Storage must stay unchanged while Result is used" else "")) ++
+          tag("param", "Outcome", "Success, Capacity_Exceeded if Storage is too small, " +
+            (if (isZlib) "Illegal_Sequence if the data are not valid zlib data, " else if (keyGuards.nonEmpty) notUsable + ", " else "") +
+            "or else why the value was not accepted") ++ List(
           s"procedure $nm ($params)", "with",
           s"  Pre  => $pre and then Belongs_To (This, Buffer) and then Storage'First >= 1,",
           s"  Post => $pkg" + s"Valid (Result) = (Outcome = ${KT}Success)" + (if (belongsOk) s" and then ${pkg}Belongs_To (Result, Storage);" else ";"), ""))
@@ -1945,8 +2287,15 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     opTypes += "Status_Kind"
     o.comps += s"${bs}_Io : ${KS}Stream;"
     o.belongs += s"${KS}Is_Valid (This.${bs}_Io, Buffer)"
-    o.pub ++= ind(docLines(a.doc) ++ List(s"--  $nm: not kept, but parsed again when asked for", ""))
-    o.pub ++= ind(List(
+    val k = idRaw(a.id)
+    val there = if (hasName.isEmpty) Nil else List(s"Requires that it is there ($hasName)")
+    o.rereads += nm
+    o.pub ++= ind(describe(List(s"Field ${q(k)}, ${whatIs(ut)} (the type itself)"), a.doc,
+      List("It is not kept in This: Parse has gone over it once, and this procedure parses it again at every call") ++ there) ++
+      tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
+      tag("param", "This", "The value that has the field") ++
+      tag("param", "Result", "The field. Valid if and only if Outcome is Success") ++
+      tag("param", "Outcome", "Success, or why the value was not accepted") ++ List(
       s"procedure $nm (Buffer : ${KT}Bytes; This : T; Result : out T; Outcome : out ${KT}Status_Kind)",
       "with",
       s"  Pre  => $pre and then Belongs_To (This, Buffer),",
@@ -1984,26 +2333,32 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val bs = base(idRaw(a.id))
     val (stored, default) = storedType(dt, a.path)
     val (pre, hasName) = condParts(cs, a, o)
-    val comment = docLines(a.doc)
+    val k = idRaw(a.id)
+    val there = if (hasName.isEmpty) Nil else List(s"Requires that it is there ($hasName)")
     o.comps += s"$nm : $stored${default.map(d => s" := $d").getOrElse("")};"
     val target = s"This.$nm"
     dt match {
-      case et: EnumType => enumAccessors(o, nm, bs, stored, et, pre, comment)
+      case et: EnumType =>
+        enumAccessors(o, nm, bs, stored, et, pre, s"Field ${q(k)}", "as the integer that is in the data", "The integer in the data", a.doc, there)
       case FloatMultiType(w, _) =>
         val fl = if (w.width == 4) "Kaitai.Floats.F32" else "Kaitai.Floats.F64"
-        accessor(o, s"${bs}_Bits", stored, pre, None, s"This.$nm", comment = comment)
+        accessor(o, s"${bs}_Bits", stored, pre, None, s"This.$nm",
+          comment = describe(List(s"Field ${q(k)}, ${whatIs(dt)}, as the unsigned integer of its bits that is in the data"), DocSpec.EMPTY, there))
         accessor(o, nm, fl, s"$pre and then Kaitai.Floats.Is_Finite (${bs}_Bits (This))", None,
-          s"Kaitai.Floats.To_${if (w.width == 4) "F32" else "F64"} (This.$nm)")
+          s"Kaitai.Floats.To_${if (w.width == 4) "F32" else "F64"} (This.$nm)",
+          comment = describe(List(s"Field ${q(k)} as a float"), a.doc,
+            List(s"Requires that it is neither infinity nor not-a-number: Kaitai.Floats.Is_Finite (${bs}_Bits (This))") ++ there))
       case ut: UserType =>
         val pkg = userPkg(ut)
-        accessor(o, nm, stored, pre, Some(s"$pkg.Valid ($nm'Result)"), s"This.$nm", comment = comment)
+        accessor(o, nm, stored, pre, Some(s"$pkg.Valid ($nm'Result)"), s"This.$nm",
+          comment = describe(List(s"Field ${q(k)}, ${whatIs(dt)}"), a.doc, there))
         o.valid += validWrap(a, s"$pkg.Valid (This.$nm)")
         if (hasBelongs(ut.classSpec.get)) o.belongs += s"$pkg.Belongs_To (This.$nm, Buffer)"
       case _: BytesType | _: StrType =>
-        accessor(o, nm, stored, pre, None, s"This.$nm", comment = comment)
+        accessor(o, nm, stored, pre, None, s"This.$nm", comment = describe(sliceHead(s"Field ${q(k)}", dt), a.doc, there))
         o.belongs += s"${KT}Within (This.$nm, Buffer)"
       case _ =>
-        accessor(o, nm, stored, pre, None, s"This.$nm", comment = comment)
+        accessor(o, nm, stored, pre, None, s"This.$nm", comment = describe(List(s"Field ${q(k)}, ${whatIs(dt)}"), a.doc, there))
     }
     val reads = readValue(dt, target, rc) ++ a.valid.toList.flatMap(v => validate(v, dt, target, rc))
     o.parse ++= firstAlign
@@ -2011,6 +2366,70 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   }
 
   // ---------------------------------------------------------------- switches
+
+  /** What a key of a case of a switch is, if it is a plain literal or the label of an enumeration */
+  private def caseKey(e: Ast.expr): Option[String] = e match {
+    case k if k == SwitchType.ELSE_CONST => Some(q("_"))
+    case Ast.expr.IntNum(n) => Some(n.toString)
+    case Ast.expr.UnaryOp(Ast.unaryop.Minus, Ast.expr.IntNum(n)) => Some((-n).toString)
+    case Ast.expr.Bool(v) => Some(v.toString)
+    case Ast.expr.Str(t) => Some("\"" + sanitize(t) + "\"")
+    case Ast.expr.EnumByLabel(en, lb, _) => Some(q(s"${en.name}::${lb.name}"))
+    case _ => None
+  }
+
+  private def orderText(e: Option[FixedEndian]): String = e match {
+    case Some(LittleEndian) => ", little endian"
+    case Some(BigEndian) => ", big endian"
+    case _ => ", in the byte order that is decided when the data are parsed"
+  }
+
+  /** What a value of the type is, in a few words: "an unsigned integer of 2 bytes, little endian" */
+  private def whatIs(dt: DataType): String = dt match {
+    case Int1Type(sg) => s"${if (sg) "a signed" else "an unsigned"} integer of 1 byte"
+    case IntMultiType(sg, w, e) => s"${if (sg) "a signed" else "an unsigned"} integer of ${w.width} bytes${orderText(e)}"
+    case FloatMultiType(w, e) => s"a float of ${w.width} bytes${orderText(e)}"
+    case _: BitsType1 => "a single bit"
+    case BitsType(w, _) => s"a bit field of $w bits"
+    case EnumType(_, _, b) => whatIs(b)
+    case _: BooleanType => "a boolean"
+    case StrFromBytesType(_, enc, _) => s"a string in $enc"
+    case _: StrType => "a string"
+    case _: BytesType => "bytes"
+    case ut: UserType =>
+      val c = ut.classSpec.get
+      val n = if (classFile(c) == classFile(topClass)) c.name.last else c.nameAsStr
+      s"${if ("aeiouAEIOU".contains(n.head)) "an" else "a"} ${q(n)}"
+    case _ => "a value"
+  }
+
+  /** What the slice that holds a byte array covers: the bytes that `Parse` found, as the description cuts them */
+  private def coverText(bt: BytesType): String = {
+    def padPart(term: Option[Seq[Byte]], pad: Option[Int]): List[String] =
+      pad.filter(p => term.forall(t => p != unsignedByte(t.last))).toList.map(_ => "without the padding at its end")
+    def termPart(term: Option[Seq[Byte]], include: Boolean): List[String] =
+      term.toList.map(_ => if (include) "cut after the first terminator, which it includes" else "cut before the first terminator")
+    val parts: List[String] = bt match {
+      case BytesLimitType(_, term, include, pad, _) => padPart(term, pad) ++ termPart(term, include)
+      case BytesEosType(term, include, pad, _) => "taken to the end of the stream" :: (padPart(term, pad) ++ termPart(term, include))
+      case BytesTerminatedType(_, include, consume, eos, _) =>
+        List(s"up to the first terminator, which it ${if (include) "includes" else "does not include"}; the terminator is " +
+          (if (consume) "consumed" else "left in the stream") +
+          (if (eos) "; Parse fails if there is none" else "; without one it ends at the end of the stream"))
+      case _ => Nil
+    }
+    if (parts.isEmpty) "" else parts.mkString(", ", ", ", "")
+  }
+
+  /** The phrases about a field of bytes or a string, which is a slice of the buffer */
+  private def sliceHead(subject: String, dt: DataType): List[String] = dt match {
+    case StrFromBytesType(bt, enc, _) =>
+      val checked = scala.util.Try(encodingName(enc, Nil)).toOption.exists(_ != "Kaitai.Strings.Single_Byte")
+      List(s"$subject, a string in $enc, as the slice of the buffer that holds it${coverText(bt)}") ++
+        (if (checked) List("Parse has checked that it is valid in that encoding") else Nil)
+    case bt: BytesType => List(s"$subject, bytes, as the slice of the buffer that holds them${coverText(bt)}")
+    case _ => List(subject)
+  }
 
   private def isIntCase(dt: DataType): Boolean = dt match {
     case _: IntType | _: EnumType => true
@@ -2037,7 +2456,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val allInt = cases.forall(c => isIntCase(c._2))
     val onT = T(st.on, rc)
     val (pre, hasName) = condParts(cs, a, o)
-    val comment = docLines(a.doc)
+    val k = idRaw(a.id)
+    val there = if (hasName.isEmpty) Nil else List(s"Requires that it is there ($hasName)")
 
     // the way the cases are selected
     def labelCode(e: Ast.expr): String = {
@@ -2112,14 +2532,20 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       var pre2 = pre
       if (needHas) {
         o.comps += s"${hasNm(bs)} : Boolean := False;"
-        o.pub ++= ind(List(s"function ${hasNm(bs)} (This : T) return Boolean", "with Pre => Valid (This);", ""))
+        o.pub ++= ind(describe(List(s"True if one of the cases of the `switch-on` of the field ${q(k)} applies",
+          "The description has no `_` case, so it may be that none applies"), DocSpec.EMPTY) ++
+          List(s"function ${hasNm(bs)} (This : T) return Boolean", "with Pre => Valid (This);", ""))
         o.privFuncs += s"function ${hasNm(bs)} (This : T) return Boolean"
         o.privFuncs += s"is (This.${hasNm(bs)});"
         o.privFuncs += ""
         pre2 = s"Valid (This) and then ${hasNm(bs)} (This)"
       }
       o.comps += s"$nm : $adaT := 0;"
-      accessor(o, nm, adaT, pre2, None, s"This.$nm", comment = comment)
+      val kinds = cases.map(c => whatIs(c._2)).distinct
+      val intIs = if (kinds.size == 1) kinds.head else s"an integer that the cases of its `switch-on` read in different forms, held as $adaT"
+      accessor(o, nm, adaT, pre2, None, s"This.$nm",
+        comment = describe(List(s"Field ${q(k)}, $intIs"), a.doc,
+          if (needHas) List(s"Requires that a case applies (${hasNm(bs)})") else there))
       val branches: List[(Option[Ast.expr], List[String])] =
         labeled.map { case (k, dt) => (Some(k), intBranch(dt, nm, adaT, adaPlain, hasN, rc, a)) } ++
           elseCase.toList.map(dt => (None, intBranch(dt, nm, adaT, adaPlain, hasN, rc, a)))
@@ -2142,14 +2568,28 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val varT = s"${bs}_Variant"
     val none = s"${bs}_Is_None"
     val lits = variants.toList.map { case (_, n) => s"${bs}_Is_$n" } :+ none
-    o.pub ++= ind(List(s"type $kindT is (${lits.mkString(", ")});", ""))
-    accessor(o, s"${bs}_Case", kindT, pre, None, s"This.$nm.Kind", comment = comment)
+    val kindTags = variants.toList.flatMap { case (dt, n) =>
+      val keys = st.cases.toList.filter(_._2 == dt).map(c => caseKey(c._1))
+      val cased = if (keys.nonEmpty && keys.forall(_.isDefined)) s", ${if (keys.size == 1) "case" else "cases"} ${keys.flatten.mkString(", ")}" else ""
+      tag("enum", s"${bs}_Is_$n", s"${whatIs(dt)}$cased")
+    } ++ tag("enum", none,
+      if (elseCase.isEmpty) "no case applies to the value that is switched on, and nothing is read for the field"
+      else if (hasCond(a)) "only if the field is not there, since the `_` case applies where no other does"
+      else "never in a valid value, since the `_` case applies where no other does")
+    o.pub ++= ind(render(List(P(s"What the field ${q(k)} is in a value"))) ++ kindTags ++ List(s"type $kindT is (${lits.mkString(", ")});", ""))
+    accessor(o, s"${bs}_Case", kindT, pre, None, s"This.$nm.Kind", comment = describe(List(s"What the field ${q(k)} is in This"), a.doc, there))
     variants.foreach { case (dt, n) =>
       val (ty, post, extra) = dt match {
         case ut: UserType => (userPkg(ut) + ".T", Some(s"${userPkg(ut)}.Valid (${bs}_As_$n'Result)"), "")
         case _ => (KT + "Slice", None, "")
       }
-      accessor(o, s"${bs}_As_$n", ty, s"$pre and then ${bs}_Case (This) = ${bs}_Is_$n", post, s"This.$nm.$n")
+      val asWhat = dt match {
+        case _: UserType => whatIs(dt)
+        case _ => s"${whatIs(dt)}, as a slice of the buffer"
+      }
+      accessor(o, s"${bs}_As_$n", ty, s"$pre and then ${bs}_Case (This) = ${bs}_Is_$n", post, s"This.$nm.$n",
+        comment = describe(List(s"The field ${q(k)} as $asWhat"), DocSpec.EMPTY,
+          List(s"Requires that ${bs}_Case (This) = ${bs}_Is_$n" + (if (hasName.isEmpty) "" else s" and that it is there ($hasName)"))))
     }
     val rec = ListBuffer[String]()
     rec += s"type $varT (Kind : $kindT := $none) is record"
@@ -2244,7 +2684,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val bs = base(idRaw(a.id))
     val dt = a.dataType
     val (pre, hasName) = condParts(cs, a, o)
-    val comment = docLines(a.doc)
+    val comment = a.doc
     val hasOpt = if (hasName.isEmpty) None else Some(hasName)
     AdaTranslator.fixedElement(dt) match {
       case Some(size) => genRepeatSlice(cs, a, dt, size, rep, pre, hasOpt, comment, o, rc)
@@ -2257,9 +2697,11 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     }
   }
 
-  private def genRepeatSlice(cs: ClassSpec, a: AttrSpec, dt: DataType, size: Int, rep: RepeatSpec, pre: String, hasOpt: Option[String], comment: List[String], o: Out, rc: RC): Unit = {
+  private def genRepeatSlice(cs: ClassSpec, a: AttrSpec, dt: DataType, size: Int, rep: RepeatSpec, pre: String, hasOpt: Option[String], doc: DocSpec, o: Out, rc: RC): Unit = {
     val nm = plain(idRaw(a.id))
     val bs = base(idRaw(a.id))
+    val k = idRaw(a.id)
+    val there = hasOpt.toList.map(h => s"Requires that it is there ($h)")
     val base0 = dt match { case EnumType(_, _, b) => b; case x => x }
     base0 match {
       case _: BitsType | _: BitsType1 => throw new AdaUnsupported("repetition of bit fields")
@@ -2268,7 +2710,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     o.comps += s"$nm : ${KT}Slice;"
     if (!rep.isInstanceOf[RepeatUntil] && size > 1) o.valid += s"${KT}Size (This.$nm) mod $size = 0"
     o.belongs += s"${KT}Within (This.$nm, Buffer)"
-    accessor(o, s"${bs}_Count", KT + "Length", pre, None, s"${KT}Size (This.$nm) / $size", comment = comment)
+    accessor(o, s"${bs}_Count", KT + "Length", pre, None, s"${KT}Size (This.$nm) / $size",
+      comment = describe(List(s"Number of elements of the repeated field ${q(k)}"), DocSpec.EMPTY, there))
     opTypes += "Length"
     val full = s"$pre and then ${KT}Within (This.$nm, Buffer)".replace(s"$pre and then ${KT}Within (This.$nm, Buffer)", s"$pre and then Belongs_To (This, Buffer) and then Index < ${bs}_Count (This)")
     val at = s"This.$nm.First + Index * $size"
@@ -2285,19 +2728,30 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       }
     }
     val params = s"Buffer : ${KT}Bytes; This : T; Index : ${KT}Length"
+    val elemIs = dt match {
+      case et: EnumType => s"${whatIs(base0)}, the number of a label of the enumeration ${q(et.enumSpec.get.name.last)}"
+      case _ => whatIs(base0)
+    }
+    val elemAfter = List("Buffer is the buffer that This was parsed from", s"Requires Index < ${bs}_Count (This)") ++ there
+    val elemHead = s"Element Index of the repeated field ${q(k)}, counted from 0"
     base0 match {
       case Int1Type(sg) =>
-        accessor(o, nm, intAda(base0), full, None, if (sg) s"${dec}To_S8 (${raw(1, None)})" else raw(1, None), params)
+        accessor(o, nm, intAda(base0), full, None, if (sg) s"${dec}To_S8 (${raw(1, None)})" else raw(1, None), params,
+          describe(List(s"$elemHead, $elemIs, decoded from Buffer"), doc, elemAfter))
       case IntMultiType(sg, w, fe) =>
         val r = raw(w.width, fe)
-        accessor(o, nm, intAda(base0), full, None, if (sg) s"${dec}To_S${w.width * 8} ($r)" else r, params)
+        accessor(o, nm, intAda(base0), full, None, if (sg) s"${dec}To_S${w.width * 8} ($r)" else r, params,
+          describe(List(s"$elemHead, $elemIs, decoded from Buffer"), doc, elemAfter))
       case FloatMultiType(w, fe) =>
         val r = raw(w.width, fe)
         val bits = floatBits(w)
         val sfx = if (w.width == 4) "F32" else "F64"
-        accessor(o, s"${bs}_Bits", bits, full, None, r, params)
+        accessor(o, s"${bs}_Bits", bits, full, None, r, params,
+          describe(List(s"$elemHead, $elemIs, as the unsigned integer of its bits, decoded from Buffer"), DocSpec.EMPTY, elemAfter))
         accessor(o, nm, s"Kaitai.Floats.$sfx", s"$full and then Kaitai.Floats.Is_Finite (${bs}_Bits (Buffer, This, Index))", None,
-          s"Kaitai.Floats.To_$sfx (${bs}_Bits (Buffer, This, Index))", params)
+          s"Kaitai.Floats.To_$sfx (${bs}_Bits (Buffer, This, Index))", params,
+          describe(List(s"$elemHead, as a float, decoded from Buffer"), doc,
+            elemAfter ++ List(s"Requires that it is neither infinity nor not-a-number: Kaitai.Floats.Is_Finite (${bs}_Bits (Buffer, This, Index))")))
       case other => throw new AdaUnsupported(s"repetition of $other")
     }
     val target = s"This.$nm"
@@ -2383,9 +2837,11 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     case _ => 0
   }
 
-  private def genRepeatCursor(cs: ClassSpec, a: AttrSpec, dt: DataType, rep: RepeatSpec, pre: String, hasOpt: Option[String], comment: List[String], o: Out, rc: RC): Unit = {
+  private def genRepeatCursor(cs: ClassSpec, a: AttrSpec, dt: DataType, rep: RepeatSpec, pre: String, hasOpt: Option[String], doc: DocSpec, o: Out, rc: RC): Unit = {
     val nm = plain(idRaw(a.id))
     val bs = base(idRaw(a.id))
+    val k = idRaw(a.id)
+    val there = hasOpt.toList.map(h => s"Requires that it is there ($h)")
     val isSlice = !dt.isInstanceOf[UserType]
     opTypes += "Length"
     val selfElem = dt match { case ut: UserType => ut.classSpec.get eq cs; case _ => false }
@@ -2400,18 +2856,48 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     o.comps += s"${bs}_Count : ${KT}Length := 0;"
     o.belongs += s"${KS}Is_Valid (This.${bs}_Io, Buffer)"
     o.privTypes ++= List(s"type $cur is record", s"   Io   : ${KS}Stream;", s"   Left : ${KT}Length := 0;", "end record;", "")
-    o.pub ++= ind(comment ++ List(s"--  $nm: not kept, but parsed again when asked for", ""))
-    o.pub ++= ind(List(
-      s"function ${bs}_Count (This : T) return ${KT}Length", s"with Pre => $pre;", "",
-      s"type $cur is private;", "",
-      s"function Belongs_To (Position : $cur; Buffer : ${KT}Bytes) return Boolean;", "",
-      s"function ${bs}_First (This : T) return $cur", s"with Pre => $pre;", "",
-      s"function Remaining (Position : $cur) return ${KT}Length;", "",
-      s"function Has_Element (Position : $cur) return Boolean", "is (Remaining (Position) > 0);", "",
+    o.rereads += s"$bs (see ${bs}_First)"
+    val elemValid = if (selfElem) "Valid" else s"${elPkg}Valid"
+    val elemTag =
+      if (isSlice) "The element, a slice of Buffer. If it could not be read, Has_Element (Position) is False afterwards"
+      else "The element. If it could not be parsed it is not valid, and Has_Element (Position) is False afterwards"
+    val nextDoc = render(List(P("Parses the element at Position and moves Position to the next one:"), Gap)) ++
+      List(s"Position := ${bs}_First (V);", "while Has_Element (Position) loop", "   Next (Buffer, V, Position, Element);") .map("--     " + _) ++
+      (if (isSlice) Nil else List(s"   exit when not $elemValid (Element);").map("--     " + _)) ++
+      List("   ...", "end loop;").map("--     " + _) ++
+      render(List(Gap, P(
+        if (isSlice) "Parse has accepted every element, and an element is read again as long as the buffer has not changed"
+        else "Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That is not proven, so check that Element is valid."))) ++
+      tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
+      tag("param", "This", "The value that has the repetition") ++
+      tag("param", "Position", "Where to parse; moved to the next element") ++
+      tag("param", "Element", elemTag)
+    val getDoc = render(List(P(s"Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going through all elements with this procedure takes time that grows with the square of their number; use Next for that."))) ++
+      tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
+      tag("param", "This", "The value that has the repetition") ++
+      tag("param", "Index", s"The number of the element, less than ${bs}_Count (This)") ++
+      tag("param", "Element", if (isSlice) "The element, a slice of Buffer" else "The element. If it could not be parsed it is not valid")
+    def one(text: String*): List[String] = render(List(P(sentences(text.toList))))
+    o.pub ++= ind(
+      describe(List(s"Number of elements of the repeated field ${q(k)}"), doc,
+        List(s"The elements are not kept in This: Parse has gone over them once, and ${bs}_First with Next, or Get_$bs, parse them again from the buffer") ++ there) ++
+      List(s"function ${bs}_Count (This : T) return ${KT}Length", s"with Pre => $pre;", "") ++
+      one(s"A position in the repeated field ${q(k)}, for going through its elements in order") ++ List(
+      s"type $cur is private;", "") ++
+      one("True if Position lies within Buffer", "It holds for the buffer of the value that Position was taken from") ++ List(
+      s"function Belongs_To (Position : $cur; Buffer : ${KT}Bytes) return Boolean;", "") ++
+      describe(List(s"The position of the first element of the repeated field ${q(k)}"), DocSpec.EMPTY, there) ++ List(
+      s"function ${bs}_First (This : T) return $cur", s"with Pre => $pre;", "") ++
+      one("Number of elements from Position to the end") ++ List(
+      s"function Remaining (Position : $cur) return ${KT}Length;", "") ++
+      one("True if there is an element at Position") ++ List(
+      s"function Has_Element (Position : $cur) return Boolean", "is (Remaining (Position) > 0);", "") ++
+      nextDoc ++ List(
       s"procedure Next (Buffer : ${KT}Bytes; This : T; Position : in out $cur; Element : out $elT)",
       "with", "  Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),",
       "  Post =>", "    Belongs_To (Position, Buffer) and then Remaining (Position) < Remaining (Position'Old)" +
         (if (elBelongs) s"\n    and then ${if (isSlice) KT + "Within" else elPkg + "Belongs_To"} (Element, Buffer);" else ";"), "",
+      ) ++ getDoc ++ List(
       s"procedure Get_$bs (Buffer : ${KT}Bytes; This : T; Index : ${KT}Length; Element : out $elT)",
       s"with Pre => $pre and then Belongs_To (This, Buffer) and then Index < ${bs}_Count (This)" +
         (if (elBelongs) s", Post => ${if (isSlice) KT + "Within" else elPkg + "Belongs_To"} (Element, Buffer);" else ";"), ""
@@ -2547,12 +3033,12 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val path = v.path
     val saveBuf = tr.buffer
     tr.buffer = Some("Buffer"); tr.io = None; tr.thisName = "This"; tr.iterator = None; tr.knownValid = Set()
+    val k = idRaw(v.id)
+    val kq = q(k)
     bigLiteral(v).foreach { n =>
       // not an S64, so the value is a U64 that expressions cannot use
-      o.pub += s"   --  instance ${v.id.humanReadable}"
-      o.pub ++= ind(docLines(v.doc))
-      o.pub += ""
-      accessor(o, nm, KT + "U64", "Valid (This)", None, n.toString, "This : T")
+      accessor(o, nm, KT + "U64", "Valid (This)", None, n.toString, "This : T",
+        describe(List(s"Instance $kq, the constant $n, which is above the largest Kaitai.Types.S64 and so is a Kaitai.Types.U64 that no expression can use"), v.doc))
       tr.buffer = saveBuf
       return
     }
@@ -2564,13 +3050,15 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val args = if (usesBuf) "Buffer, This" else "This"
     val pre0 = if (usesBuf) "Valid (This) and then Belongs_To (This, Buffer)" else "Valid (This)"
     if (usesBuf && !hasBelongs(cs)) throw new AdaUnsupported("value instance that needs the buffer in a type without slices")
-    o.pub += s"   --  instance ${v.id.humanReadable}"
-    o.pub ++= ind(docLines(v.doc))
-    o.pub += ""
     var pre = pre0
+    val bufferText = if (usesBuf) List("Buffer is the buffer that This was parsed from") else Nil
+    val computed = List("Computed from the fields at every call") ++ bufferText ++ (if (hasGuard) List(s"Requires ${hasNm(bs)}") else Nil)
     if (hasGuard) {
       val gs = ct.toList.flatMap(c => c.guards ++ List(if (c.prec >= 3) s"(${c.code})" else c.code)) ++ t.guards
-      o.pub ++= ind(List(s"function ${hasNm(bs)} ($params) return Boolean", s"with Pre => $pre0;", ""))
+      val hasText =
+        if (v.ifExpr.isDefined) List(s"True if the instance $kq has a value", "Its condition (`if`) must be defined and hold, and its expression must be defined")
+        else List(s"True if the instance $kq has a value", "Its expression is not defined if a field that it uses is not there, an operation in it overflows or divides by zero, or an index is out of range")
+      o.pub ++= ind(describe(hasText, DocSpec.EMPTY, bufferText) ++ List(s"function ${hasNm(bs)} ($params) return Boolean", s"with Pre => $pre0;", ""))
       o.privFuncs += s"function ${hasNm(bs)} ($params) return Boolean"
       o.privFuncs += s"is (${if (gs.isEmpty) "True" else gs.distinct.mkString("\n and then ")});"
       o.privFuncs += ""
@@ -2580,20 +3068,25 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       case et: EnumType =>
         if (isWide(et.enumSpec.get)) throw new AdaUnsupported("value instance of an enumeration that has a value beyond 63 bits")
         val ada = KT + "S64"
-        accessor(o, s"${bs}_Value", ada, pre, None, t.code, params)
         val spec = et.enumSpec.get
         val tyName = enumTypeName(spec)
         val q = tyName.split('.').dropRight(1).mkString(".") match { case "" => ""; case x => x + "." }
+        val enumAfter = bufferText ++ (if (hasGuard) List(s"Requires ${hasNm(bs)}") else Nil)
+        accessor(o, s"${bs}_Value", ada, pre, None, t.code, params,
+          describe(List(s"Instance $kq as the integer that its expression delivers, a Kaitai.Types.S64"), DocSpec.EMPTY, List("Computed from the fields at every call") ++ enumAfter))
         accessor(o, nm, tyName, s"$pre and then ${q}Is_${enumTy(spec)} (${bs}_Value ($args))", None,
-          s"${q}To_${enumTy(spec)} (${bs}_Value ($args))", params)
+          s"${q}To_${enumTy(spec)} (${bs}_Value ($args))", params,
+          labelComment(s"Instance $kq", tyName, q, spec, bs, "The integer", v.doc, enumAfter))
       case _: IntType =>
-        accessor(o, nm, KT + "S64", pre, None, t.code, params)
+        accessor(o, nm, KT + "S64", pre, None, t.code, params,
+          describe(List(s"Instance $kq, an integer (a Kaitai.Types.S64)"), v.doc, computed))
       case _: BooleanType =>
-        accessor(o, nm, "Boolean", pre, None, t.code, params)
+        accessor(o, nm, "Boolean", pre, None, t.code, params, describe(List(s"Instance $kq, a boolean"), v.doc, computed))
       case _: BytesType | _: StrType =>
         t.vt match {
           case VBytes | VStr(_) =>
-            accessor(o, nm, KT + "Slice", pre, Some(s"${KT}Within ($nm'Result, Buffer)"), t.code, params)
+            accessor(o, nm, KT + "Slice", pre, Some(s"${KT}Within ($nm'Result, Buffer)"), t.code, params,
+              describe(List(s"Instance $kq, ${whatIs(v.dataType)}, as a slice of the buffer"), v.doc, computed))
           case _ => throw new AdaUnsupported("value instance of bytes or string that is not a field")
         }
       case other => throw new AdaUnsupported(s"value instance of type $other")
@@ -2629,7 +3122,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       val t = T(c, rc.copy(s = "L"))
       // Has_X as a value instance function
       val gs = t.guards ++ List(if (t.prec >= 3) s"(${t.code})" else t.code)
-      o.pub ++= ind(List(s"function ${hasNm(bs)} (This : T) return Boolean", "with Pre => Valid (This);", ""))
+      o.pub ++= ind(describe(List(s"True if the instance ${q(idRaw(p.id))} is there", "It has a condition (`if`) in the description, which is evaluated at every call"),
+        DocSpec.EMPTY) ++ List(s"function ${hasNm(bs)} (This : T) return Boolean", "with Pre => Valid (This);", ""))
       o.privFuncs += s"function ${hasNm(bs)} (This : T) return Boolean"
       o.privFuncs += s"is (${gs.distinct.mkString("\n and then ")});"
       o.privFuncs += ""
@@ -2644,8 +3138,25 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       case _ => None
     }
     val spec = s"procedure $nm (Buffer : ${KT}Bytes; This : T; Result : out $resT; Outcome : out ${KT}Status_Kind)"
-    o.pub ++= ind(docLines(p.doc))
-    o.pub += s"   --  instance ${p.id.humanReadable}: parsed when asked for"
+    o.unread += nm
+    val k = idRaw(p.id)
+    val instIs = dt match {
+      case et: EnumType => s"${whatIs(dt)}, the number of a label of the enumeration ${q(et.enumSpec.get.name.last)}"
+      case _: BytesType | _: StrType => s"${whatIs(dt)}, as a slice of the buffer"
+      case _ => whatIs(dt)
+    }
+    val resultTag = dt match {
+      case _: UserType => "The instance. Valid if and only if Outcome is Success"
+      case _ => "The instance. It is meaningful only if Outcome is Success"
+    }
+    val instAfter = List("It has a position of its own in the data (`pos`), which Parse does not read: this procedure parses it at every call, and This does not keep it") ++
+      (if (rootIo) List("It is read from the whole of Buffer (`io: _root._io`)") else Nil) ++
+      (if (p.cond.ifExpr.isDefined) List(s"Requires ${hasNm(bs)}") else Nil)
+    o.pub ++= ind(describe(List(s"Instance ${q(k)}, $instIs"), p.doc, instAfter) ++
+      tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
+      tag("param", "This", "The value that has the instance") ++
+      tag("param", "Result", resultTag) ++
+      tag("param", "Outcome", "Success, or why the instance could not be parsed"))
     o.pub += s"   $spec"
     o.pub += s"   with Pre => $pre${post.map(x => s", Post => $x").getOrElse("")};"
     o.pub += ""

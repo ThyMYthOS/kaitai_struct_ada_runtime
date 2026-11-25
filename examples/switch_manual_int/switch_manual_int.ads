@@ -7,20 +7,50 @@ package Switch_Manual_Int
   with SPARK_Mode, Always_Terminates
 is
 
+   --  Parser for `switch_manual_int`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : Switch_Manual_Int.T;
+   --     ...
+   --     Switch_Manual_Int.Parse (Buffer, S, V);
+   --     if Switch_Manual_Int.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  V does not hold byte arrays, strings and repetitions but says where they are in Buffer. Buffer must stay
+   --  unchanged while V is used, and the functions and procedures that take a buffer must be given the same one.
+   --
+   --  Nothing here allocates memory or raises an exception.
+
    use type Kaitai.Types.Length;
 
-   --  type switch_manual_int::opcode
-
+   --  The type `opcode` of the description (`switch_manual_int::opcode`)
    package Opcode_Type is
 
-      --  type switch_manual_int::opcode::intval
-
+      --  The type `intval` of the description (`switch_manual_int::opcode::intval`)
       package Intval_Type is
 
+         --  A parsed `switch_manual_int::opcode::intval`. A variable that Parse has not filled is not valid (see
+         --  Valid). It has no pointers and can be copied and kept freely.
          type T is private;
 
+         --  True if This is the result of a Parse that succeeded. The accessors below require it.
          function Valid (This : T) return Boolean;
 
+         --  Parses one `switch_manual_int::opcode::intval` at the position of S and leaves S behind it.
+         --
+         --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+         --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S)
+         --  is the reason and This is not valid. If S had failed before the call, nothing is read and This is not
+         --  valid.
+         --
+         --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+         --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+         --  @param This The result. Valid if and only if S has not failed
          procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
          with
            Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -29,6 +59,7 @@ is
              and then Kaitai.Streams.Advanced (S'Old, S)
              and then Valid (This) = Kaitai.Streams.OK (S);
 
+         --  Field `value`, an unsigned integer of 1 byte
          function Value (This : T) return Kaitai.Types.U8
          with Pre => Valid (This);
 
@@ -47,16 +78,32 @@ is
 
       end Intval_Type;
 
-      --  type switch_manual_int::opcode::strval
-
+      --  The type `strval` of the description (`switch_manual_int::opcode::strval`)
       package Strval_Type is
 
+         --  A parsed `switch_manual_int::opcode::strval`. A variable that Parse has not filled is not valid (see
+         --  Valid). It has no pointers and can be copied and kept freely; it refers to the buffer it was parsed from,
+         --  which must not change while it is used.
          type T is private;
 
+         --  True if This is the result of a Parse that succeeded. The accessors below require it.
          function Valid (This : T) return Boolean;
 
+         --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed
+         --  from. The operations below that take a buffer require it, for This or for a position taken from This; give
+         --  them that same buffer.
          function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+         --  Parses one `switch_manual_int::opcode::strval` at the position of S and leaves S behind it.
+         --
+         --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+         --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S)
+         --  is the reason and This is not valid. If S had failed before the call, nothing is read and This is not
+         --  valid.
+         --
+         --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+         --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+         --  @param This The result. Valid if and only if S has not failed
          procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
          with
            Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -66,6 +113,9 @@ is
              and then Valid (This) = Kaitai.Streams.OK (S)
              and then Belongs_To (This, Buffer);
 
+         --  Field `value`, a string in ASCII, as the slice of the buffer that holds it, up to the first terminator,
+         --  which it does not include; the terminator is consumed; Parse fails if there is none. Parse has checked that
+         --  it is valid in that encoding.
          function Value (This : T) return Kaitai.Types.Slice
          with Pre => Valid (This);
 
@@ -87,12 +137,28 @@ is
 
       end Strval_Type;
 
+      --  A parsed `switch_manual_int::opcode`. A variable that Parse has not filled is not valid (see Valid). It has no
+      --  pointers and can be copied and kept freely; it refers to the buffer it was parsed from, which must not change
+      --  while it is used.
       type T is private;
 
+      --  True if This is the result of a Parse that succeeded. The accessors below require it.
       function Valid (This : T) return Boolean;
 
+      --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from.
+      --  The operations below that take a buffer require it, for This or for a position taken from This; give them that
+      --  same buffer.
       function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+      --  Parses one `switch_manual_int::opcode` at the position of S and leaves S behind it.
+      --
+      --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+      --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
+      --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+      --
+      --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+      --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+      --  @param This The result. Valid if and only if S has not failed
       procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -102,19 +168,27 @@ is
           and then Valid (This) = Kaitai.Streams.OK (S)
           and then Belongs_To (This, Buffer);
 
+      --  Field `code`, an unsigned integer of 1 byte
       function Code (This : T) return Kaitai.Types.U8
       with Pre => Valid (This);
 
+      --  What the field `body` is in a value
+      --  @enum Body_Is_Intval an `intval`, case 73
+      --  @enum Body_Is_Strval a `strval`, case 83
+      --  @enum Body_Is_None no case applies to the value that is switched on, and nothing is read for the field
       type Body_Kind is (Body_Is_Intval, Body_Is_Strval, Body_Is_None);
 
+      --  What the field `body` is in This
       function Body_Case (This : T) return Body_Kind
       with Pre => Valid (This);
 
+      --  The field `body` as an `intval`. Requires that Body_Case (This) = Body_Is_Intval.
       function Body_As_Intval (This : T) return Opcode_Type.Intval_Type.T
       with
         Pre  => Valid (This) and then Body_Case (This) = Body_Is_Intval,
         Post => Opcode_Type.Intval_Type.Valid (Body_As_Intval'Result);
 
+      --  The field `body` as a `strval`. Requires that Body_Case (This) = Body_Is_Strval.
       function Body_As_Strval (This : T) return Opcode_Type.Strval_Type.T
       with
         Pre  => Valid (This) and then Body_Case (This) = Body_Is_Strval,
@@ -167,12 +241,33 @@ is
 
    end Opcode_Type;
 
+   --  A parsed `switch_manual_int`. A variable that Parse has not filled is not valid (see Valid). It has no pointers
+   --  and can be copied and kept freely; it refers to the buffer it was parsed from, which must not change while it is
+   --  used.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it.
    function Valid (This : T) return Boolean;
 
+   --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from. The
+   --  operations below that take a buffer require it, for This or for a position taken from This; give them that same
+   --  buffer.
    function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+   --  Parses one `switch_manual_int` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  Not kept in This, but read again when asked for (Parse has gone over them once and checked them): Opcodes (see
+   --  Opcodes_First).
+   --
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   --  @param This The result. Valid if and only if S has not failed
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -182,23 +277,44 @@ is
        and then Valid (This) = Kaitai.Streams.OK (S)
        and then Belongs_To (This, Buffer);
 
-   --  Opcodes: not kept, but parsed again when asked for
-
+   --  Number of elements of the repeated field `opcodes`. The elements are not kept in This: Parse has gone over them
+   --  once, and Opcodes_First with Next, or Get_Opcodes, parse them again from the buffer.
    function Opcodes_Count (This : T) return Kaitai.Types.Length
    with Pre => Valid (This);
 
+   --  A position in the repeated field `opcodes`, for going through its elements in order
    type Opcodes_Cursor is private;
 
+   --  True if Position lies within Buffer. It holds for the buffer of the value that Position was taken from.
    function Belongs_To (Position : Opcodes_Cursor; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+   --  The position of the first element of the repeated field `opcodes`
    function Opcodes_First (This : T) return Opcodes_Cursor
    with Pre => Valid (This);
 
+   --  Number of elements from Position to the end
    function Remaining (Position : Opcodes_Cursor) return Kaitai.Types.Length;
 
+   --  True if there is an element at Position
    function Has_Element (Position : Opcodes_Cursor) return Boolean
    is (Remaining (Position) > 0);
 
+   --  Parses the element at Position and moves Position to the next one:
+   --
+   --     Position := Opcodes_First (V);
+   --     while Has_Element (Position) loop
+   --        Next (Buffer, V, Position, Element);
+   --        exit when not Opcode_Type.Valid (Element);
+   --        ...
+   --     end loop;
+   --
+   --  Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That is
+   --  not proven, so check that Element is valid.
+   --  @param Buffer The buffer that This was parsed from, unchanged
+   --  @param This The value that has the repetition
+   --  @param Position Where to parse; moved to the next element
+   --  @param Element The element. If it could not be parsed it is not valid, and Has_Element (Position) is False
+   --  afterwards
    procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Opcodes_Cursor; Element : out Opcode_Type.T)
    with
      Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
@@ -207,6 +323,13 @@ is
        and then Remaining (Position) < Remaining (Position'Old)
        and then Opcode_Type.Belongs_To (Element, Buffer);
 
+   --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going
+   --  through all elements with this procedure takes time that grows with the square of their number; use Next for
+   --  that.
+   --  @param Buffer The buffer that This was parsed from, unchanged
+   --  @param This The value that has the repetition
+   --  @param Index The number of the element, less than Opcodes_Count (This)
+   --  @param Element The element. If it could not be parsed it is not valid
    procedure Get_Opcodes
      (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Opcode_Type.T)
    with

@@ -14,8 +14,9 @@
 #   target   the tests pass on a simulated STM32F4, with a light and an
 #            embedded run-time library
 #   bench    the benchmarks build and their checksums agree
-#   doc      every declaration in a visible part of the library has a
-#            documentation comment
+#   doc      every declaration in a visible part of the library and of the
+#            parsers under examples/ has a documentation comment, and so has
+#            every parameter of a procedure of the parsers
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -103,6 +104,11 @@ step_doc() {
    run_gnatdoc kaitai_struct.gpr
    run_gnatdoc kaitai_struct_files.gpr
    scripts/doc-warnings.py "$tmp/log" src/*.ads files/*.ads
+   # The generated parsers: their procedures also have a tag for every
+   # parameter
+   : >"$tmp/log"
+   (cd tests && run_gnatdoc kaitai_struct_tests.gpr)
+   scripts/doc-warnings.py --procedures "$tmp/log" examples/*/*.ads
    rm -rf "$tmp"
 }
 

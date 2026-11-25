@@ -9,12 +9,44 @@ package Bits_Enum
   with SPARK_Mode, Always_Terminates
 is
 
-   --  enum animal
+   --  Parser for `bits_enum`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : Bits_Enum.T;
+   --     ...
+   --     Bits_Enum.Parse (Buffer, S, V);
+   --     if Bits_Enum.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  Nothing here allocates memory or raises an exception.
+   --
+   --  Write, which the compiler generates because of --read-write, puts a valid value back into bytes:
+   --
+   --     W : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   --     Bits_Enum.Write (V, Target, W);
+   --     if Kaitai.Writers.OK (W) then
+   --        --  Kaitai.Writers.Written (W) is the part of Target that holds the bytes
+   --     else
+   --        --  Kaitai.Writers.Status (W) tells why they could not be written
+   --     end if;
+
+   --  Enumeration `animal`
+   --  @enum Animal_Cat `cat`, 0
+   --  @enum Animal_Dog `dog`, 1
+   --  @enum Animal_Horse `horse`, 4
+   --  @enum Animal_Platypus `platypus`, 5
    type Animal_Enum is (Animal_Cat, Animal_Dog, Animal_Horse, Animal_Platypus);
 
+   --  True if Value is the number of a label of Animal_Enum
    function Is_Animal_Enum (Value : Kaitai.Types.S64) return Boolean
    is (Value in 0 | 1 | 4 | 5);
 
+   --  The label of Animal_Enum that has the number Value
    function To_Animal_Enum (Value : Kaitai.Types.S64) return Animal_Enum
    is (case Value is
          when 0      => Animal_Cat,
@@ -23,6 +55,7 @@ is
          when others => Animal_Platypus)
    with Pre => Is_Animal_Enum (Value);
 
+   --  The number of a label of Animal_Enum, as it is in the data
    function To_Integer (Value : Animal_Enum) return Kaitai.Types.S64
    is (case Value is
          when Animal_Cat      => 0,
@@ -30,10 +63,27 @@ is
          when Animal_Horse    => 4,
          when Animal_Platypus => 5);
 
+   --  A parsed `bits_enum`. A variable that Parse has not filled is not valid (see Valid). It has no pointers and can
+   --  be copied and kept freely.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it, and so does Write.
    function Valid (This : T) return Boolean;
 
+   --  Parses one `bits_enum` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  S must be at a byte boundary (Kaitai.Streams.Bits_Left (S) = 0) unless it has failed. That holds for a stream
+   --  that was just opened and after a read of whole bytes, such as an integer or a byte array.
+   --
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   --  @param This The result. Valid if and only if S has not failed
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
    with
      Pre  =>
@@ -43,9 +93,12 @@ is
        and then Kaitai.Streams.Advanced (S'Old, S)
        and then Valid (This) = Kaitai.Streams.OK (S);
 
+   --  Field `one` as the integer that is in the data
    function One_Value (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `one` as a label of Animal_Enum. The integer in the data need not be the number of a label: this function
+   --  requires Is_Animal_Enum of One_Value.
    function One (This : T) return Animal_Enum
    with
      Pre =>
@@ -53,9 +106,12 @@ is
        and then Kaitai.Arithmetic.Fits (One_Value (This))
        and then Is_Animal_Enum (Kaitai.Types.S64 (One_Value (This)));
 
+   --  Field `two` as the integer that is in the data
    function Two_Value (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `two` as a label of Animal_Enum. The integer in the data need not be the number of a label: this function
+   --  requires Is_Animal_Enum of Two_Value.
    function Two (This : T) return Animal_Enum
    with
      Pre =>
@@ -63,9 +119,12 @@ is
        and then Kaitai.Arithmetic.Fits (Two_Value (This))
        and then Is_Animal_Enum (Kaitai.Types.S64 (Two_Value (This)));
 
+   --  Field `three` as the integer that is in the data
    function Three_Value (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `three` as a label of Animal_Enum. The integer in the data need not be the number of a label: this function
+   --  requires Is_Animal_Enum of Three_Value.
    function Three (This : T) return Animal_Enum
    with
      Pre =>
@@ -73,6 +132,23 @@ is
        and then Kaitai.Arithmetic.Fits (Three_Value (This))
        and then Is_Animal_Enum (Kaitai.Types.S64 (Three_Value (This)));
 
+   --  Writes This to Target, at the position of W, and leaves W behind what it wrote.
+   --
+   --  It does not raise an exception. If Target has not room enough, or the value cannot be written (the expression of
+   --  a size is not defined, or the buffer is no longer what was parsed), W has failed afterwards,
+   --  Kaitai.Writers.Status (W) is the reason (Capacity_Exceeded for lack of room) and Target may hold some of the
+   --  bytes. If W had failed before the call, nothing is written. Kaitai.Writers.Written (W) is the part of Target that
+   --  holds what has been written through W.
+   --
+   --  Parsing what was written gives the same value again, with the same fields and slices of the same contents. The
+   --  output is the input again, except for what a parsed value does not keep: bytes that no field uses and skipped
+   --  bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as the
+   --  padding byte, and instances with a position are not written.
+   --
+   --  @param This The value to write. It must be valid
+   --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
+   --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes
+   --  written, or it has failed
    procedure Write (This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
    with
      Pre  => Valid (This) and then Kaitai.Writers.Is_Valid (W, Target),

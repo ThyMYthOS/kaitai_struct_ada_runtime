@@ -7,12 +7,34 @@ package Enum_Long_Range_U
   with SPARK_Mode, Always_Terminates
 is
 
-   --  enum constants
+   --  Parser for `enum_long_range_u`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : Enum_Long_Range_U.T;
+   --     ...
+   --     Enum_Long_Range_U.Parse (Buffer, S, V);
+   --     if Enum_Long_Range_U.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  Nothing here allocates memory or raises an exception.
+
+   --  Enumeration `constants`
+   --  @enum Constants_Zero `zero`, 0
+   --  @enum Constants_Int_Max `int_max`, 4294967295
+   --  @enum Constants_Int_Over_Max `int_over_max`, 4294967296
+   --  @enum Constants_Long_Max `long_max`, 18446744073709551615
    type Constants_Enum is (Constants_Zero, Constants_Int_Max, Constants_Int_Over_Max, Constants_Long_Max);
 
+   --  True if Value is the number of a label of Constants_Enum
    function Is_Constants_Enum (Value : Kaitai.Types.U64) return Boolean
    is (Value in 0 | 4294967295 | 4294967296 | 18446744073709551615);
 
+   --  The label of Constants_Enum that has the number Value
    function To_Constants_Enum (Value : Kaitai.Types.U64) return Constants_Enum
    is (case Value is
          when 0          => Constants_Zero,
@@ -21,6 +43,7 @@ is
          when others     => Constants_Long_Max)
    with Pre => Is_Constants_Enum (Value);
 
+   --  The number of a label of Constants_Enum, as it is in the data
    function To_Integer (Value : Constants_Enum) return Kaitai.Types.U64
    is (case Value is
          when Constants_Zero         => 0,
@@ -28,10 +51,24 @@ is
          when Constants_Int_Over_Max => 4294967296,
          when Constants_Long_Max     => 18446744073709551615);
 
+   --  A parsed `enum_long_range_u`. A variable that Parse has not filled is not valid (see Valid). It has no pointers
+   --  and can be copied and kept freely.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it.
    function Valid (This : T) return Boolean;
 
+   --  Parses one `enum_long_range_u` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   --  @param This The result. Valid if and only if S has not failed
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -40,27 +77,39 @@ is
        and then Kaitai.Streams.Advanced (S'Old, S)
        and then Valid (This) = Kaitai.Streams.OK (S);
 
+   --  Field `f1` as the integer that is in the data
    function F1_Value (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `f1` as a label of Constants_Enum. The integer in the data need not be the number of a label: this function
+   --  requires Is_Constants_Enum of F1_Value.
    function F1 (This : T) return Constants_Enum
    with Pre => Valid (This) and then Is_Constants_Enum (F1_Value (This));
 
+   --  Field `f2` as the integer that is in the data
    function F2_Value (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `f2` as a label of Constants_Enum. The integer in the data need not be the number of a label: this function
+   --  requires Is_Constants_Enum of F2_Value.
    function F2 (This : T) return Constants_Enum
    with Pre => Valid (This) and then Is_Constants_Enum (F2_Value (This));
 
+   --  Field `f3` as the integer that is in the data
    function F3_Value (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `f3` as a label of Constants_Enum. The integer in the data need not be the number of a label: this function
+   --  requires Is_Constants_Enum of F3_Value.
    function F3 (This : T) return Constants_Enum
    with Pre => Valid (This) and then Is_Constants_Enum (F3_Value (This));
 
+   --  Field `f4` as the integer that is in the data
    function F4_Value (This : T) return Kaitai.Types.U64
    with Pre => Valid (This);
 
+   --  Field `f4` as a label of Constants_Enum. The integer in the data need not be the number of a label: this function
+   --  requires Is_Constants_Enum of F4_Value.
    function F4 (This : T) return Constants_Enum
    with Pre => Valid (This) and then Is_Constants_Enum (F4_Value (This));
 

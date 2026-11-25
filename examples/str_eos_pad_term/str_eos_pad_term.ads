@@ -8,18 +8,62 @@ package Str_Eos_Pad_Term
   with SPARK_Mode, Always_Terminates
 is
 
+   --  Parser for `str_eos_pad_term`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : Str_Eos_Pad_Term.T;
+   --     ...
+   --     Str_Eos_Pad_Term.Parse (Buffer, S, V);
+   --     if Str_Eos_Pad_Term.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  V does not hold byte arrays, strings and repetitions but says where they are in Buffer. Buffer must stay
+   --  unchanged while V is used, and the functions and procedures that take a buffer must be given the same one.
+   --
+   --  Nothing here allocates memory or raises an exception.
+   --
+   --  Write, which the compiler generates because of --read-write, puts a valid value back into bytes:
+   --
+   --     W : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   --     Str_Eos_Pad_Term.Write (Buffer, V, Target, W);
+   --     if Kaitai.Writers.OK (W) then
+   --        --  Kaitai.Writers.Written (W) is the part of Target that holds the bytes
+   --     else
+   --        --  Kaitai.Writers.Status (W) tells why they could not be written
+   --     end if;
+
    use type Kaitai.Types.Length;
 
-   --  type str_eos_pad_term::str_pad_type
-
+   --  The type `str_pad_type` of the description (`str_eos_pad_term::str_pad_type`)
    package Str_Pad_Type_Type is
 
+      --  A parsed `str_eos_pad_term::str_pad_type`. A variable that Parse has not filled is not valid (see Valid). It
+      --  has no pointers and can be copied and kept freely; it refers to the buffer it was parsed from, which must not
+      --  change while it is used.
       type T is private;
 
+      --  True if This is the result of a Parse that succeeded. The accessors below require it, and so does Write.
       function Valid (This : T) return Boolean;
 
+      --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from.
+      --  The operations below that take a buffer require it, for This or for a position taken from This; give them that
+      --  same buffer.
       function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+      --  Parses one `str_eos_pad_term::str_pad_type` at the position of S and leaves S behind it.
+      --
+      --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+      --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
+      --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+      --
+      --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+      --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+      --  @param This The result. Valid if and only if S has not failed
       procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -29,9 +73,29 @@ is
           and then Valid (This) = Kaitai.Streams.OK (S)
           and then Belongs_To (This, Buffer);
 
+      --  Field `value`, a string in UTF-8, as the slice of the buffer that holds it, taken to the end of the stream,
+      --  without the padding at its end. Parse has checked that it is valid in that encoding.
       function Value (This : T) return Kaitai.Types.Slice
       with Pre => Valid (This);
 
+      --  Writes This to Target, at the position of W, and leaves W behind what it wrote.
+      --
+      --  It does not raise an exception. If Target has not room enough, or the value cannot be written (the expression
+      --  of a size is not defined, or the buffer is no longer what was parsed), W has failed afterwards,
+      --  Kaitai.Writers.Status (W) is the reason (Capacity_Exceeded for lack of room) and Target may hold some of the
+      --  bytes. If W had failed before the call, nothing is written. Kaitai.Writers.Written (W) is the part of Target
+      --  that holds what has been written through W.
+      --
+      --  Parsing what was written gives the same value again, with the same fields and slices of the same contents. The
+      --  output is the input again, except for what a parsed value does not keep: bytes that no field uses and skipped
+      --  bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as
+      --  the padding byte, and instances with a position are not written.
+      --
+      --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
+      --  @param This The value to write. It must be valid
+      --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
+      --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes
+      --  written, or it has failed
       procedure Write
         (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
       with
@@ -56,16 +120,31 @@ is
 
    end Str_Pad_Type_Type;
 
-   --  type str_eos_pad_term::str_term_and_pad_type
-
+   --  The type `str_term_and_pad_type` of the description (`str_eos_pad_term::str_term_and_pad_type`)
    package Str_Term_And_Pad_Type_Type is
 
+      --  A parsed `str_eos_pad_term::str_term_and_pad_type`. A variable that Parse has not filled is not valid (see
+      --  Valid). It has no pointers and can be copied and kept freely; it refers to the buffer it was parsed from,
+      --  which must not change while it is used.
       type T is private;
 
+      --  True if This is the result of a Parse that succeeded. The accessors below require it, and so does Write.
       function Valid (This : T) return Boolean;
 
+      --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from.
+      --  The operations below that take a buffer require it, for This or for a position taken from This; give them that
+      --  same buffer.
       function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+      --  Parses one `str_eos_pad_term::str_term_and_pad_type` at the position of S and leaves S behind it.
+      --
+      --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+      --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
+      --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+      --
+      --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+      --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+      --  @param This The result. Valid if and only if S has not failed
       procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -75,9 +154,30 @@ is
           and then Valid (This) = Kaitai.Streams.OK (S)
           and then Belongs_To (This, Buffer);
 
+      --  Field `value`, a string in UTF-8, as the slice of the buffer that holds it, taken to the end of the stream,
+      --  without the padding at its end, cut before the first terminator. Parse has checked that it is valid in that
+      --  encoding.
       function Value (This : T) return Kaitai.Types.Slice
       with Pre => Valid (This);
 
+      --  Writes This to Target, at the position of W, and leaves W behind what it wrote.
+      --
+      --  It does not raise an exception. If Target has not room enough, or the value cannot be written (the expression
+      --  of a size is not defined, or the buffer is no longer what was parsed), W has failed afterwards,
+      --  Kaitai.Writers.Status (W) is the reason (Capacity_Exceeded for lack of room) and Target may hold some of the
+      --  bytes. If W had failed before the call, nothing is written. Kaitai.Writers.Written (W) is the part of Target
+      --  that holds what has been written through W.
+      --
+      --  Parsing what was written gives the same value again, with the same fields and slices of the same contents. The
+      --  output is the input again, except for what a parsed value does not keep: bytes that no field uses and skipped
+      --  bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as
+      --  the padding byte, and instances with a position are not written.
+      --
+      --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
+      --  @param This The value to write. It must be valid
+      --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
+      --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes
+      --  written, or it has failed
       procedure Write
         (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
       with
@@ -102,16 +202,31 @@ is
 
    end Str_Term_And_Pad_Type_Type;
 
-   --  type str_eos_pad_term::str_term_include_type
-
+   --  The type `str_term_include_type` of the description (`str_eos_pad_term::str_term_include_type`)
    package Str_Term_Include_Type_Type is
 
+      --  A parsed `str_eos_pad_term::str_term_include_type`. A variable that Parse has not filled is not valid (see
+      --  Valid). It has no pointers and can be copied and kept freely; it refers to the buffer it was parsed from,
+      --  which must not change while it is used.
       type T is private;
 
+      --  True if This is the result of a Parse that succeeded. The accessors below require it, and so does Write.
       function Valid (This : T) return Boolean;
 
+      --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from.
+      --  The operations below that take a buffer require it, for This or for a position taken from This; give them that
+      --  same buffer.
       function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+      --  Parses one `str_eos_pad_term::str_term_include_type` at the position of S and leaves S behind it.
+      --
+      --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+      --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
+      --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+      --
+      --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+      --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+      --  @param This The result. Valid if and only if S has not failed
       procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -121,9 +236,29 @@ is
           and then Valid (This) = Kaitai.Streams.OK (S)
           and then Belongs_To (This, Buffer);
 
+      --  Field `value`, a string in UTF-8, as the slice of the buffer that holds it, taken to the end of the stream,
+      --  cut after the first terminator, which it includes. Parse has checked that it is valid in that encoding.
       function Value (This : T) return Kaitai.Types.Slice
       with Pre => Valid (This);
 
+      --  Writes This to Target, at the position of W, and leaves W behind what it wrote.
+      --
+      --  It does not raise an exception. If Target has not room enough, or the value cannot be written (the expression
+      --  of a size is not defined, or the buffer is no longer what was parsed), W has failed afterwards,
+      --  Kaitai.Writers.Status (W) is the reason (Capacity_Exceeded for lack of room) and Target may hold some of the
+      --  bytes. If W had failed before the call, nothing is written. Kaitai.Writers.Written (W) is the part of Target
+      --  that holds what has been written through W.
+      --
+      --  Parsing what was written gives the same value again, with the same fields and slices of the same contents. The
+      --  output is the input again, except for what a parsed value does not keep: bytes that no field uses and skipped
+      --  bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as
+      --  the padding byte, and instances with a position are not written.
+      --
+      --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
+      --  @param This The value to write. It must be valid
+      --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
+      --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes
+      --  written, or it has failed
       procedure Write
         (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
       with
@@ -148,16 +283,31 @@ is
 
    end Str_Term_Include_Type_Type;
 
-   --  type str_eos_pad_term::str_term_type
-
+   --  The type `str_term_type` of the description (`str_eos_pad_term::str_term_type`)
    package Str_Term_Type_Type is
 
+      --  A parsed `str_eos_pad_term::str_term_type`. A variable that Parse has not filled is not valid (see Valid). It
+      --  has no pointers and can be copied and kept freely; it refers to the buffer it was parsed from, which must not
+      --  change while it is used.
       type T is private;
 
+      --  True if This is the result of a Parse that succeeded. The accessors below require it, and so does Write.
       function Valid (This : T) return Boolean;
 
+      --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from.
+      --  The operations below that take a buffer require it, for This or for a position taken from This; give them that
+      --  same buffer.
       function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+      --  Parses one `str_eos_pad_term::str_term_type` at the position of S and leaves S behind it.
+      --
+      --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+      --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
+      --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+      --
+      --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+      --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+      --  @param This The result. Valid if and only if S has not failed
       procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -167,9 +317,29 @@ is
           and then Valid (This) = Kaitai.Streams.OK (S)
           and then Belongs_To (This, Buffer);
 
+      --  Field `value`, a string in UTF-8, as the slice of the buffer that holds it, taken to the end of the stream,
+      --  cut before the first terminator. Parse has checked that it is valid in that encoding.
       function Value (This : T) return Kaitai.Types.Slice
       with Pre => Valid (This);
 
+      --  Writes This to Target, at the position of W, and leaves W behind what it wrote.
+      --
+      --  It does not raise an exception. If Target has not room enough, or the value cannot be written (the expression
+      --  of a size is not defined, or the buffer is no longer what was parsed), W has failed afterwards,
+      --  Kaitai.Writers.Status (W) is the reason (Capacity_Exceeded for lack of room) and Target may hold some of the
+      --  bytes. If W had failed before the call, nothing is written. Kaitai.Writers.Written (W) is the part of Target
+      --  that holds what has been written through W.
+      --
+      --  Parsing what was written gives the same value again, with the same fields and slices of the same contents. The
+      --  output is the input again, except for what a parsed value does not keep: bytes that no field uses and skipped
+      --  bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as
+      --  the padding byte, and instances with a position are not written.
+      --
+      --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
+      --  @param This The value to write. It must be valid
+      --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
+      --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes
+      --  written, or it has failed
       procedure Write
         (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
       with
@@ -194,12 +364,30 @@ is
 
    end Str_Term_Type_Type;
 
+   --  A parsed `str_eos_pad_term`. A variable that Parse has not filled is not valid (see Valid). It has no pointers
+   --  and can be copied and kept freely; it refers to the buffer it was parsed from, which must not change while it is
+   --  used.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it, and so does Write.
    function Valid (This : T) return Boolean;
 
+   --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from. The
+   --  operations below that take a buffer require it, for This or for a position taken from This; give them that same
+   --  buffer.
    function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+   --  Parses one `str_eos_pad_term` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   --  @param This The result. Valid if and only if S has not failed
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -209,18 +397,40 @@ is
        and then Valid (This) = Kaitai.Streams.OK (S)
        and then Belongs_To (This, Buffer);
 
+   --  Field `str_pad`, a `str_pad_type`
    function Str_Pad (This : T) return Str_Pad_Type_Type.T
    with Pre => Valid (This), Post => Str_Pad_Type_Type.Valid (Str_Pad'Result);
 
+   --  Field `str_term`, a `str_term_type`
    function Str_Term (This : T) return Str_Term_Type_Type.T
    with Pre => Valid (This), Post => Str_Term_Type_Type.Valid (Str_Term'Result);
 
+   --  Field `str_term_and_pad`, a `str_term_and_pad_type`
    function Str_Term_And_Pad (This : T) return Str_Term_And_Pad_Type_Type.T
    with Pre => Valid (This), Post => Str_Term_And_Pad_Type_Type.Valid (Str_Term_And_Pad'Result);
 
+   --  Field `str_term_include`, a `str_term_include_type`
    function Str_Term_Include (This : T) return Str_Term_Include_Type_Type.T
    with Pre => Valid (This), Post => Str_Term_Include_Type_Type.Valid (Str_Term_Include'Result);
 
+   --  Writes This to Target, at the position of W, and leaves W behind what it wrote.
+   --
+   --  It does not raise an exception. If Target has not room enough, or the value cannot be written (the expression of
+   --  a size is not defined, or the buffer is no longer what was parsed), W has failed afterwards,
+   --  Kaitai.Writers.Status (W) is the reason (Capacity_Exceeded for lack of room) and Target may hold some of the
+   --  bytes. If W had failed before the call, nothing is written. Kaitai.Writers.Written (W) is the part of Target that
+   --  holds what has been written through W.
+   --
+   --  Parsing what was written gives the same value again, with the same fields and slices of the same contents. The
+   --  output is the input again, except for what a parsed value does not keep: bytes that no field uses and skipped
+   --  bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as the
+   --  padding byte, and instances with a position are not written.
+   --
+   --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
+   --  @param This The value to write. It must be valid
+   --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
+   --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes
+   --  written, or it has failed
    procedure Write
      (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
    with

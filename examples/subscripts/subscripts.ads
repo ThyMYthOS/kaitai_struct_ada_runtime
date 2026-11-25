@@ -8,15 +8,54 @@ package Subscripts
   with SPARK_Mode, Always_Terminates
 is
 
+   --  Parser for `subscripts`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : Subscripts.T;
+   --     ...
+   --     Subscripts.Parse (Buffer, S, V);
+   --     if Subscripts.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  V does not hold byte arrays, strings and repetitions but says where they are in Buffer. Buffer must stay
+   --  unchanged while V is used, and the functions and procedures that take a buffer must be given the same one.
+   --
+   --  Nothing here allocates memory or raises an exception.
+
    use type Kaitai.Types.S64;
    use type Kaitai.Types.Length;
 
+   --  A parsed `subscripts`. A variable that Parse has not filled is not valid (see Valid). It has no pointers and can
+   --  be copied and kept freely; it refers to the buffer it was parsed from, which must not change while it is used.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it.
    function Valid (This : T) return Boolean;
 
+   --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from. The
+   --  operations below that take a buffer require it, for This or for a position taken from This; give them that same
+   --  buffer.
    function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+   --  Parses one `subscripts` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  Not kept in This, but read again when asked for (Parse has gone over them once and checked them): Records (see
+   --  Records_First).
+   --
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   --  @param This The result. Valid if and only if S has not failed
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -26,38 +65,63 @@ is
        and then Valid (This) = Kaitai.Streams.OK (S)
        and then Belongs_To (This, Buffer);
 
+   --  Field `qty`, an unsigned integer of 1 byte
    function Qty (This : T) return Kaitai.Types.U8
    with Pre => Valid (This);
 
+   --  Field `pick`, an unsigned integer of 1 byte
    function Pick (This : T) return Kaitai.Types.U8
    with Pre => Valid (This);
 
+   --  Number of elements of the repeated field `items`
    function Items_Count (This : T) return Kaitai.Types.Length
    with Pre => Valid (This);
 
+   --  Element Index of the repeated field `items`, counted from 0, an unsigned integer of 2 bytes, little endian,
+   --  decoded from Buffer. Buffer is the buffer that This was parsed from. Requires Index < Items_Count (This).
    function Items (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U16
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Items_Count (This);
 
+   --  Field `raw`, bytes, as the slice of the buffer that holds them
    function Raw (This : T) return Kaitai.Types.Slice
    with Pre => Valid (This);
 
-   --  Records: not kept, but parsed again when asked for
-
+   --  Number of elements of the repeated field `records`. The elements are not kept in This: Parse has gone over them
+   --  once, and Records_First with Next, or Get_Records, parse them again from the buffer.
    function Records_Count (This : T) return Kaitai.Types.Length
    with Pre => Valid (This);
 
+   --  A position in the repeated field `records`, for going through its elements in order
    type Records_Cursor is private;
 
+   --  True if Position lies within Buffer. It holds for the buffer of the value that Position was taken from.
    function Belongs_To (Position : Records_Cursor; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+   --  The position of the first element of the repeated field `records`
    function Records_First (This : T) return Records_Cursor
    with Pre => Valid (This);
 
+   --  Number of elements from Position to the end
    function Remaining (Position : Records_Cursor) return Kaitai.Types.Length;
 
+   --  True if there is an element at Position
    function Has_Element (Position : Records_Cursor) return Boolean
    is (Remaining (Position) > 0);
 
+   --  Parses the element at Position and moves Position to the next one:
+   --
+   --     Position := Records_First (V);
+   --     while Has_Element (Position) loop
+   --        Next (Buffer, V, Position, Element);
+   --        ...
+   --     end loop;
+   --
+   --  Parse has accepted every element, and an element is read again as long as the buffer has not changed
+   --  @param Buffer The buffer that This was parsed from, unchanged
+   --  @param This The value that has the repetition
+   --  @param Position Where to parse; moved to the next element
+   --  @param Element The element, a slice of Buffer. If it could not be read, Has_Element (Position) is False
+   --  afterwards
    procedure Next
      (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Records_Cursor; Element : out Kaitai.Types.Slice)
    with
@@ -67,41 +131,60 @@ is
        and then Remaining (Position) < Remaining (Position'Old)
        and then Kaitai.Types.Within (Element, Buffer);
 
+   --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going
+   --  through all elements with this procedure takes time that grows with the square of their number; use Next for
+   --  that.
+   --  @param Buffer The buffer that This was parsed from, unchanged
+   --  @param This The value that has the repetition
+   --  @param Index The number of the element, less than Records_Count (This)
+   --  @param Element The element, a slice of Buffer
    procedure Get_Records
      (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Kaitai.Types.Slice)
    with
      Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Index < Records_Count (This),
      Post => Kaitai.Types.Within (Element, Buffer);
 
-   --  instance chosen_item
-
+   --  True if the instance `chosen_item` has a value. Its expression is not defined if a field that it uses is not
+   --  there, an operation in it overflows or divides by zero, or an index is out of range. Buffer is the buffer that
+   --  This was parsed from.
    function Has_Chosen_Item (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
+   --  Instance `chosen_item`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Buffer is the
+   --  buffer that This was parsed from. Requires Has_Chosen_Item.
    function Chosen_Item (Buffer : Kaitai.Types.Bytes; This : T) return Kaitai.Types.S64
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Has_Chosen_Item (Buffer, This);
 
-   --  instance chosen_raw
-
+   --  True if the instance `chosen_raw` has a value. Its expression is not defined if a field that it uses is not
+   --  there, an operation in it overflows or divides by zero, or an index is out of range. Buffer is the buffer that
+   --  This was parsed from.
    function Has_Chosen_Raw (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
+   --  Instance `chosen_raw`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Buffer is the
+   --  buffer that This was parsed from. Requires Has_Chosen_Raw.
    function Chosen_Raw (Buffer : Kaitai.Types.Bytes; This : T) return Kaitai.Types.S64
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Has_Chosen_Raw (Buffer, This);
 
-   --  instance first_item
-
+   --  True if the instance `first_item` has a value. Its expression is not defined if a field that it uses is not
+   --  there, an operation in it overflows or divides by zero, or an index is out of range. Buffer is the buffer that
+   --  This was parsed from.
    function Has_First_Item (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
+   --  Instance `first_item`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Buffer is the
+   --  buffer that This was parsed from. Requires Has_First_Item.
    function First_Item (Buffer : Kaitai.Types.Bytes; This : T) return Kaitai.Types.S64
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Has_First_Item (Buffer, This);
 
-   --  instance raw_mid
-
+   --  True if the instance `raw_mid` has a value. Its expression is not defined if a field that it uses is not there,
+   --  an operation in it overflows or divides by zero, or an index is out of range. Buffer is the buffer that This was
+   --  parsed from.
    function Has_Raw_Mid (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
+   --  Instance `raw_mid`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Buffer is the buffer
+   --  that This was parsed from. Requires Has_Raw_Mid.
    function Raw_Mid (Buffer : Kaitai.Types.Bytes; This : T) return Kaitai.Types.S64
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Has_Raw_Mid (Buffer, This);
 

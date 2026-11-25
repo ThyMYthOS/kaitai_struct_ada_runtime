@@ -7,10 +7,40 @@ package Expr_To_I_Trailing
   with SPARK_Mode, Always_Terminates
 is
 
+   --  Parser for `expr_to_i_trailing`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : Expr_To_I_Trailing.T;
+   --     ...
+   --     Expr_To_I_Trailing.Parse (Buffer, S, V);
+   --     if Expr_To_I_Trailing.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  Nothing here allocates memory or raises an exception.
+
+   --  A parsed `expr_to_i_trailing`. A variable that Parse has not filled is not valid (see Valid). It has no pointers
+   --  and can be copied and kept freely.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it.
    function Valid (This : T) return Boolean;
 
+   --  Parses one `expr_to_i_trailing` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   --  @param This The result. Valid if and only if S has not failed
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -19,24 +49,27 @@ is
        and then Kaitai.Streams.Advanced (S'Old, S)
        and then Valid (This) = Kaitai.Streams.OK (S);
 
-   --  instance to_i_garbage
-
+   --  True if the instance `to_i_garbage` has a value. Its expression is not defined if a field that it uses is not
+   --  there, an operation in it overflows or divides by zero, or an index is out of range.
    function Has_To_I_Garbage (This : T) return Boolean
    with Pre => Valid (This);
 
+   --  Instance `to_i_garbage`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Requires
+   --  Has_To_I_Garbage.
    function To_I_Garbage (This : T) return Kaitai.Types.S64
    with Pre => Valid (This) and then Has_To_I_Garbage (This);
 
-   --  instance to_i_r10
-
+   --  True if the instance `to_i_r10` has a value. Its expression is not defined if a field that it uses is not there,
+   --  an operation in it overflows or divides by zero, or an index is out of range.
    function Has_To_I_R10 (This : T) return Boolean
    with Pre => Valid (This);
 
+   --  Instance `to_i_r10`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Requires
+   --  Has_To_I_R10.
    function To_I_R10 (This : T) return Kaitai.Types.S64
    with Pre => Valid (This) and then Has_To_I_R10 (This);
 
-   --  instance to_i_r16
-
+   --  Instance `to_i_r16`, an integer (a Kaitai.Types.S64). Computed from the fields at every call.
    function To_I_R16 (This : T) return Kaitai.Types.S64
    with Pre => Valid (This);
 

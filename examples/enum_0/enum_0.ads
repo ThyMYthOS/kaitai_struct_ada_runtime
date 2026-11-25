@@ -7,12 +7,33 @@ package Enum_0
   with SPARK_Mode, Always_Terminates
 is
 
-   --  enum animal
+   --  Parser for `enum_0`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : Enum_0.T;
+   --     ...
+   --     Enum_0.Parse (Buffer, S, V);
+   --     if Enum_0.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  Nothing here allocates memory or raises an exception.
+
+   --  Enumeration `animal`
+   --  @enum Animal_Dog `dog`, 4
+   --  @enum Animal_Cat `cat`, 7
+   --  @enum Animal_Chicken `chicken`, 12
    type Animal_Enum is (Animal_Dog, Animal_Cat, Animal_Chicken);
 
+   --  True if Value is the number of a label of Animal_Enum
    function Is_Animal_Enum (Value : Kaitai.Types.S64) return Boolean
    is (Value in 4 | 7 | 12);
 
+   --  The label of Animal_Enum that has the number Value
    function To_Animal_Enum (Value : Kaitai.Types.S64) return Animal_Enum
    is (case Value is
          when 4      => Animal_Dog,
@@ -20,16 +41,31 @@ is
          when others => Animal_Chicken)
    with Pre => Is_Animal_Enum (Value);
 
+   --  The number of a label of Animal_Enum, as it is in the data
    function To_Integer (Value : Animal_Enum) return Kaitai.Types.S64
    is (case Value is
          when Animal_Dog     => 4,
          when Animal_Cat     => 7,
          when Animal_Chicken => 12);
 
+   --  A parsed `enum_0`. A variable that Parse has not filled is not valid (see Valid). It has no pointers and can be
+   --  copied and kept freely.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it.
    function Valid (This : T) return Boolean;
 
+   --  Parses one `enum_0` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   --  @param This The result. Valid if and only if S has not failed
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -38,15 +74,21 @@ is
        and then Kaitai.Streams.Advanced (S'Old, S)
        and then Valid (This) = Kaitai.Streams.OK (S);
 
+   --  Field `pet_1` as the integer that is in the data
    function Pet_1_Value (This : T) return Kaitai.Types.U32
    with Pre => Valid (This);
 
+   --  Field `pet_1` as a label of Animal_Enum. The integer in the data need not be the number of a label: this function
+   --  requires Is_Animal_Enum of Pet_1_Value.
    function Pet_1 (This : T) return Animal_Enum
    with Pre => Valid (This) and then Is_Animal_Enum (Kaitai.Types.S64 (Pet_1_Value (This)));
 
+   --  Field `pet_2` as the integer that is in the data
    function Pet_2_Value (This : T) return Kaitai.Types.U32
    with Pre => Valid (This);
 
+   --  Field `pet_2` as a label of Animal_Enum. The integer in the data need not be the number of a label: this function
+   --  requires Is_Animal_Enum of Pet_2_Value.
    function Pet_2 (This : T) return Animal_Enum
    with Pre => Valid (This) and then Is_Animal_Enum (Kaitai.Types.S64 (Pet_2_Value (This)));
 

@@ -10,39 +10,84 @@ package Write_Model
   with SPARK_Mode, Always_Terminates
 is
 
+   --  Parser for `write_model`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : Write_Model.T;
+   --     ...
+   --     Write_Model.Parse (Buffer, S, Scale, V);
+   --     if Write_Model.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  V does not hold byte arrays, strings and repetitions but says where they are in Buffer. Buffer must stay
+   --  unchanged while V is used, and the functions and procedures that take a buffer must be given the same one.
+   --
+   --  Nothing here allocates memory or raises an exception.
+   --
+   --  Write, which the compiler generates because of --read-write, puts a valid value back into bytes:
+   --
+   --     W : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   --     Write_Model.Write (Buffer, V, Target, W);
+   --     if Kaitai.Writers.OK (W) then
+   --        --  Kaitai.Writers.Written (W) is the part of Target that holds the bytes
+   --     else
+   --        --  Kaitai.Writers.Status (W) tells why they could not be written
+   --     end if;
+
    use type Kaitai.Types.S64;
    use type Kaitai.Types.Length;
    use type Kaitai.Types.Status_Kind;
 
-   --  enum kind
+   --  Enumeration `kind`
+   --  @enum Kind_Small `small`, 1
+   --  @enum Kind_Big `big`, 2
    type Kind_Enum is (Kind_Small, Kind_Big);
 
+   --  True if Value is the number of a label of Kind_Enum
    function Is_Kind_Enum (Value : Kaitai.Types.S64) return Boolean
    is (Value in 1 | 2);
 
+   --  The label of Kind_Enum that has the number Value
    function To_Kind_Enum (Value : Kaitai.Types.S64) return Kind_Enum
    is (case Value is
          when 1      => Kind_Small,
          when others => Kind_Big)
    with Pre => Is_Kind_Enum (Value);
 
+   --  The number of a label of Kind_Enum, as it is in the data
    function To_Integer (Value : Kind_Enum) return Kaitai.Types.S64
    is (case Value is
          when Kind_Small => 1,
          when Kind_Big   => 2);
 
-   --  type write_model::entry
-
+   --  The type `entry` of the description (`write_model::entry`)
    package Entry_Type is
 
-      --  type write_model::entry::point
-
+      --  The type `point` of the description (`write_model::entry::point`)
       package Point_Type is
 
+         --  A parsed `write_model::entry::point`. A variable that Parse has not filled is not valid (see Valid). It has
+         --  no pointers and can be copied and kept freely.
          type T is private;
 
+         --  True if This is the result of a Parse that succeeded. The accessors below require it, and so does Write.
          function Valid (This : T) return Boolean;
 
+         --  Parses one `write_model::entry::point` at the position of S and leaves S behind it.
+         --
+         --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+         --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S)
+         --  is the reason and This is not valid. If S had failed before the call, nothing is read and This is not
+         --  valid.
+         --
+         --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+         --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+         --  @param This The result. Valid if and only if S has not failed
          procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
          with
            Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -51,12 +96,31 @@ is
              and then Kaitai.Streams.Advanced (S'Old, S)
              and then Valid (This) = Kaitai.Streams.OK (S);
 
+         --  Field `x`, a signed integer of 2 bytes, little endian
          function X (This : T) return Kaitai.Types.S16
          with Pre => Valid (This);
 
+         --  Field `y`, a signed integer of 2 bytes, little endian
          function Y (This : T) return Kaitai.Types.S16
          with Pre => Valid (This);
 
+         --  Writes This to Target, at the position of W, and leaves W behind what it wrote.
+         --
+         --  It does not raise an exception. If Target has not room enough, or the value cannot be written (the
+         --  expression of a size is not defined, or the buffer is no longer what was parsed), W has failed afterwards,
+         --  Kaitai.Writers.Status (W) is the reason (Capacity_Exceeded for lack of room) and Target may hold some of
+         --  the bytes. If W had failed before the call, nothing is written. Kaitai.Writers.Written (W) is the part of
+         --  Target that holds what has been written through W.
+         --
+         --  Parsing what was written gives the same value again, with the same fields and slices of the same contents.
+         --  The output is the input again, except for what a parsed value does not keep: bytes that no field uses and
+         --  skipped bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte,
+         --  padding as the padding byte, and instances with a position are not written.
+         --
+         --  @param This The value to write. It must be valid
+         --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
+         --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the
+         --  bytes written, or it has failed
          procedure Write (This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
          with
            Pre  => Valid (This) and then Kaitai.Writers.Is_Valid (W, Target),
@@ -81,16 +145,32 @@ is
 
       end Point_Type;
 
-      --  type write_model::entry::text
-
+      --  The type `text` of the description (`write_model::entry::text`)
       package Text_Type is
 
+         --  A parsed `write_model::entry::text`. A variable that Parse has not filled is not valid (see Valid). It has
+         --  no pointers and can be copied and kept freely; it refers to the buffer it was parsed from, which must not
+         --  change while it is used.
          type T is private;
 
+         --  True if This is the result of a Parse that succeeded. The accessors below require it, and so does Write.
          function Valid (This : T) return Boolean;
 
+         --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed
+         --  from. The operations below that take a buffer require it, for This or for a position taken from This; give
+         --  them that same buffer.
          function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+         --  Parses one `write_model::entry::text` at the position of S and leaves S behind it.
+         --
+         --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+         --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S)
+         --  is the reason and This is not valid. If S had failed before the call, nothing is read and This is not
+         --  valid.
+         --
+         --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+         --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+         --  @param This The result. Valid if and only if S has not failed
          procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
          with
            Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -100,9 +180,30 @@ is
              and then Valid (This) = Kaitai.Streams.OK (S)
              and then Belongs_To (This, Buffer);
 
+         --  Field `value`, a string in ASCII, as the slice of the buffer that holds it, up to the first terminator,
+         --  which it does not include; the terminator is consumed; Parse fails if there is none. Parse has checked that
+         --  it is valid in that encoding.
          function Value (This : T) return Kaitai.Types.Slice
          with Pre => Valid (This);
 
+         --  Writes This to Target, at the position of W, and leaves W behind what it wrote.
+         --
+         --  It does not raise an exception. If Target has not room enough, or the value cannot be written (the
+         --  expression of a size is not defined, or the buffer is no longer what was parsed), W has failed afterwards,
+         --  Kaitai.Writers.Status (W) is the reason (Capacity_Exceeded for lack of room) and Target may hold some of
+         --  the bytes. If W had failed before the call, nothing is written. Kaitai.Writers.Written (W) is the part of
+         --  Target that holds what has been written through W.
+         --
+         --  Parsing what was written gives the same value again, with the same fields and slices of the same contents.
+         --  The output is the input again, except for what a parsed value does not keep: bytes that no field uses and
+         --  skipped bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte,
+         --  padding as the padding byte, and instances with a position are not written.
+         --
+         --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
+         --  @param This The value to write. It must be valid
+         --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
+         --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the
+         --  bytes written, or it has failed
          procedure Write
            (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
          with
@@ -127,12 +228,29 @@ is
 
       end Text_Type;
 
+      --  A parsed `write_model::entry`. A variable that Parse has not filled is not valid (see Valid). It has no
+      --  pointers and can be copied and kept freely; it refers to the buffer it was parsed from, which must not change
+      --  while it is used.
       type T is private;
 
+      --  True if This is the result of a Parse that succeeded. The accessors below require it, and so does Write.
       function Valid (This : T) return Boolean;
 
+      --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from.
+      --  The operations below that take a buffer require it, for This or for a position taken from This; give them that
+      --  same buffer.
       function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+      --  Parses one `write_model::entry` at the position of S and leaves S behind it.
+      --
+      --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+      --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
+      --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+      --
+      --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+      --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+      --  @param Flags Parameter `flags` of the type
+      --  @param This The result. Valid if and only if S has not failed
       procedure Parse
         (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Flags : Kaitai.Types.U8; This : out T)
       with
@@ -143,33 +261,62 @@ is
           and then Valid (This) = Kaitai.Streams.OK (S)
           and then Belongs_To (This, Buffer);
 
+      --  Parameter `flags` of the type, as it was given to Parse
       function Flags (This : T) return Kaitai.Types.U8
       with Pre => Valid (This);
 
+      --  Field `code`, an unsigned integer of 1 byte
       function Code (This : T) return Kaitai.Types.U8
       with Pre => Valid (This);
 
+      --  What the field `body` is in a value
+      --  @enum Body_Is_Point a `point`, case 1
+      --  @enum Body_Is_Text a `text`, case 2
+      --  @enum Body_Is_None no case applies to the value that is switched on, and nothing is read for the field
       type Body_Kind is (Body_Is_Point, Body_Is_Text, Body_Is_None);
 
+      --  What the field `body` is in This
       function Body_Case (This : T) return Body_Kind
       with Pre => Valid (This);
 
+      --  The field `body` as a `point`. Requires that Body_Case (This) = Body_Is_Point.
       function Body_As_Point (This : T) return Entry_Type.Point_Type.T
       with
         Pre  => Valid (This) and then Body_Case (This) = Body_Is_Point,
         Post => Entry_Type.Point_Type.Valid (Body_As_Point'Result);
 
+      --  The field `body` as a `text`. Requires that Body_Case (This) = Body_Is_Text.
       function Body_As_Text (This : T) return Entry_Type.Text_Type.T
       with
         Pre  => Valid (This) and then Body_Case (This) = Body_Is_Text,
         Post => Entry_Type.Text_Type.Valid (Body_As_Text'Result);
 
+      --  True if the field `extra` is there. It has a condition (`if`) in the description, which Parse evaluated.
       function Has_Extra (This : T) return Boolean
       with Pre => Valid (This);
 
+      --  Field `extra`, an unsigned integer of 1 byte. Requires that it is there (Has_Extra).
       function Extra (This : T) return Kaitai.Types.U8
       with Pre => Valid (This) and then Has_Extra (This);
 
+      --  Writes This to Target, at the position of W, and leaves W behind what it wrote.
+      --
+      --  It does not raise an exception. If Target has not room enough, or the value cannot be written (the expression
+      --  of a size is not defined, or the buffer is no longer what was parsed), W has failed afterwards,
+      --  Kaitai.Writers.Status (W) is the reason (Capacity_Exceeded for lack of room) and Target may hold some of the
+      --  bytes. If W had failed before the call, nothing is written. Kaitai.Writers.Written (W) is the part of Target
+      --  that holds what has been written through W.
+      --
+      --  Parsing what was written gives the same value again, with the same fields and slices of the same contents. The
+      --  output is the input again, except for what a parsed value does not keep: bytes that no field uses and skipped
+      --  bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as
+      --  the padding byte, and instances with a position are not written.
+      --
+      --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
+      --  @param This The value to write. It must be valid
+      --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
+      --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes
+      --  written, or it has failed
       procedure Write
         (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
       with
@@ -235,16 +382,31 @@ is
 
    end Entry_Type;
 
-   --  type write_model::header
-
+   --  The type `header` of the description (`write_model::header`)
    package Header_Type is
 
+      --  A parsed `write_model::header`. A variable that Parse has not filled is not valid (see Valid). It has no
+      --  pointers and can be copied and kept freely; it refers to the buffer it was parsed from, which must not change
+      --  while it is used.
       type T is private;
 
+      --  True if This is the result of a Parse that succeeded. The accessors below require it, and so does Write.
       function Valid (This : T) return Boolean;
 
+      --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from.
+      --  The operations below that take a buffer require it, for This or for a position taken from This; give them that
+      --  same buffer.
       function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+      --  Parses one `write_model::header` at the position of S and leaves S behind it.
+      --
+      --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+      --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
+      --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+      --
+      --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+      --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+      --  @param This The result. Valid if and only if S has not failed
       procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -254,18 +416,41 @@ is
           and then Valid (This) = Kaitai.Streams.OK (S)
           and then Belongs_To (This, Buffer);
 
+      --  Field `version`, an unsigned integer of 1 byte
       function Version (This : T) return Kaitai.Types.U8
       with Pre => Valid (This);
 
+      --  Field `flags`, an unsigned integer of 1 byte
       function Flags (This : T) return Kaitai.Types.U8
       with Pre => Valid (This);
 
+      --  Field `len_name`, an unsigned integer of 1 byte
       function Len_Name (This : T) return Kaitai.Types.U8
       with Pre => Valid (This);
 
+      --  Field `name`, a string in ASCII, as the slice of the buffer that holds it. Parse has checked that it is valid
+      --  in that encoding.
       function Name (This : T) return Kaitai.Types.Slice
       with Pre => Valid (This);
 
+      --  Writes This to Target, at the position of W, and leaves W behind what it wrote.
+      --
+      --  It does not raise an exception. If Target has not room enough, or the value cannot be written (the expression
+      --  of a size is not defined, or the buffer is no longer what was parsed), W has failed afterwards,
+      --  Kaitai.Writers.Status (W) is the reason (Capacity_Exceeded for lack of room) and Target may hold some of the
+      --  bytes. If W had failed before the call, nothing is written. Kaitai.Writers.Written (W) is the part of Target
+      --  that holds what has been written through W.
+      --
+      --  Parsing what was written gives the same value again, with the same fields and slices of the same contents. The
+      --  output is the input again, except for what a parsed value does not keep: bytes that no field uses and skipped
+      --  bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as
+      --  the padding byte, and instances with a position are not written.
+      --
+      --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
+      --  @param This The value to write. It must be valid
+      --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
+      --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes
+      --  written, or it has failed
       procedure Write
         (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
       with
@@ -302,16 +487,34 @@ is
 
    end Header_Type;
 
-   --  type write_model::log
-
+   --  The type `log` of the description (`write_model::log`)
    package Log_Type is
 
+      --  A parsed `write_model::log`. A variable that Parse has not filled is not valid (see Valid). It has no pointers
+      --  and can be copied and kept freely; it refers to the buffer it was parsed from, which must not change while it
+      --  is used.
       type T is private;
 
+      --  True if This is the result of a Parse that succeeded. The accessors below require it, and so does Write.
       function Valid (This : T) return Boolean;
 
+      --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from.
+      --  The operations below that take a buffer require it, for This or for a position taken from This; give them that
+      --  same buffer.
       function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+      --  Parses one `write_model::log` at the position of S and leaves S behind it.
+      --
+      --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+      --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
+      --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+      --
+      --  Not kept in This, but read again when asked for (Parse has gone over them once and checked them): Records (see
+      --  Records_First).
+      --
+      --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+      --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+      --  @param This The result. Valid if and only if S has not failed
       procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -321,33 +524,79 @@ is
           and then Valid (This) = Kaitai.Streams.OK (S)
           and then Belongs_To (This, Buffer);
 
-      --  Records: not kept, but parsed again when asked for
-
+      --  Number of elements of the repeated field `records`. The elements are not kept in This: Parse has gone over
+      --  them once, and Records_First with Next, or Get_Records, parse them again from the buffer.
       function Records_Count (This : T) return Kaitai.Types.Length
       with Pre => Valid (This);
 
+      --  A position in the repeated field `records`, for going through its elements in order
       type Records_Cursor is private;
 
+      --  True if Position lies within Buffer. It holds for the buffer of the value that Position was taken from.
       function Belongs_To (Position : Records_Cursor; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+      --  The position of the first element of the repeated field `records`
       function Records_First (This : T) return Records_Cursor
       with Pre => Valid (This);
 
+      --  Number of elements from Position to the end
       function Remaining (Position : Records_Cursor) return Kaitai.Types.Length;
 
+      --  True if there is an element at Position
       function Has_Element (Position : Records_Cursor) return Boolean
       is (Remaining (Position) > 0);
 
+      --  Parses the element at Position and moves Position to the next one:
+      --
+      --     Position := Records_First (V);
+      --     while Has_Element (Position) loop
+      --        Next (Buffer, V, Position, Element);
+      --        exit when not Entry_Type.Point_Type.Valid (Element);
+      --        ...
+      --     end loop;
+      --
+      --  Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That
+      --  is not proven, so check that Element is valid.
+      --  @param Buffer The buffer that This was parsed from, unchanged
+      --  @param This The value that has the repetition
+      --  @param Position Where to parse; moved to the next element
+      --  @param Element The element. If it could not be parsed it is not valid, and Has_Element (Position) is False
+      --  afterwards
       procedure Next
         (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Records_Cursor; Element : out Entry_Type.Point_Type.T)
       with
         Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
         Post => Belongs_To (Position, Buffer) and then Remaining (Position) < Remaining (Position'Old);
 
+      --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so
+      --  going through all elements with this procedure takes time that grows with the square of their number; use Next
+      --  for that.
+      --  @param Buffer The buffer that This was parsed from, unchanged
+      --  @param This The value that has the repetition
+      --  @param Index The number of the element, less than Records_Count (This)
+      --  @param Element The element. If it could not be parsed it is not valid
       procedure Get_Records
         (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Entry_Type.Point_Type.T)
       with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Records_Count (This);
 
+      --  Writes This to Target, at the position of W, and leaves W behind what it wrote.
+      --
+      --  It does not raise an exception. If Target has not room enough, or the value cannot be written (the expression
+      --  of a size is not defined, or the buffer is no longer what was parsed), W has failed afterwards,
+      --  Kaitai.Writers.Status (W) is the reason (Capacity_Exceeded for lack of room) and Target may hold some of the
+      --  bytes. If W had failed before the call, nothing is written. Kaitai.Writers.Written (W) is the part of Target
+      --  that holds what has been written through W.
+      --
+      --  Parsing what was written gives the same value again, with the same fields and slices of the same contents. The
+      --  output is the input again, except for what a parsed value does not keep: bytes that no field uses and skipped
+      --  bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as
+      --  the padding byte, and instances with a position are not written.
+      --
+      --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
+      --  @param This The value to write. It must be valid
+      --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
+      --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes
+      --  written, or it has failed
       procedure Write
         (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
       with
@@ -387,12 +636,34 @@ is
 
    end Log_Type;
 
+   --  A parsed `write_model`. A variable that Parse has not filled is not valid (see Valid). It has no pointers and can
+   --  be copied and kept freely; it refers to the buffer it was parsed from, which must not change while it is used.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it, and so does Write.
    function Valid (This : T) return Boolean;
 
+   --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from. The
+   --  operations below that take a buffer require it, for This or for a position taken from This; give them that same
+   --  buffer.
    function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+   --  Parses one `write_model` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  Not kept in This, but read again when asked for (Parse has gone over them once and checked them): Entries (see
+   --  Entries_First), Points (see Points_First). Not looked at here at all, so that an error in them shows only when
+   --  they are asked for: First_Entry.
+   --
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   --  @param Scale Parameter `scale` of the type
+   --  @param This The result. Valid if and only if S has not failed
    procedure Parse
      (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Scale : Kaitai.Types.U16; This : out T)
    with
@@ -403,38 +674,65 @@ is
        and then Valid (This) = Kaitai.Streams.OK (S)
        and then Belongs_To (This, Buffer);
 
+   --  Parameter `scale` of the type, as it was given to Parse
    function Scale (This : T) return Kaitai.Types.U16
    with Pre => Valid (This);
 
+   --  Field `kind` as the integer that is in the data
    function Kind_Value (This : T) return Kaitai.Types.U8
    with Pre => Valid (This);
 
+   --  Field `kind` as a label of Kind_Enum. The integer in the data need not be the number of a label: this function
+   --  requires Is_Kind_Enum of Kind_Value.
    function Kind (This : T) return Kind_Enum
    with Pre => Valid (This) and then Is_Kind_Enum (Kaitai.Types.S64 (Kind_Value (This)));
 
+   --  Field `num_entries`, an unsigned integer of 2 bytes, little endian
    function Num_Entries (This : T) return Kaitai.Types.U16
    with Pre => Valid (This);
 
+   --  Field `header`, a `header`
    function Header (This : T) return Header_Type.T
    with Pre => Valid (This), Post => Header_Type.Valid (Header'Result);
 
-   --  Entries: not kept, but parsed again when asked for
-
+   --  Number of elements of the repeated field `entries`. The elements are not kept in This: Parse has gone over them
+   --  once, and Entries_First with Next, or Get_Entries, parse them again from the buffer.
    function Entries_Count (This : T) return Kaitai.Types.Length
    with Pre => Valid (This);
 
+   --  A position in the repeated field `entries`, for going through its elements in order
    type Entries_Cursor is private;
 
+   --  True if Position lies within Buffer. It holds for the buffer of the value that Position was taken from.
    function Belongs_To (Position : Entries_Cursor; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+   --  The position of the first element of the repeated field `entries`
    function Entries_First (This : T) return Entries_Cursor
    with Pre => Valid (This);
 
+   --  Number of elements from Position to the end
    function Remaining (Position : Entries_Cursor) return Kaitai.Types.Length;
 
+   --  True if there is an element at Position
    function Has_Element (Position : Entries_Cursor) return Boolean
    is (Remaining (Position) > 0);
 
+   --  Parses the element at Position and moves Position to the next one:
+   --
+   --     Position := Entries_First (V);
+   --     while Has_Element (Position) loop
+   --        Next (Buffer, V, Position, Element);
+   --        exit when not Entry_Type.Valid (Element);
+   --        ...
+   --     end loop;
+   --
+   --  Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That is
+   --  not proven, so check that Element is valid.
+   --  @param Buffer The buffer that This was parsed from, unchanged
+   --  @param This The value that has the repetition
+   --  @param Position Where to parse; moved to the next element
+   --  @param Element The element. If it could not be parsed it is not valid, and Has_Element (Position) is False
+   --  afterwards
    procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Entries_Cursor; Element : out Entry_Type.T)
    with
      Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
@@ -443,58 +741,105 @@ is
        and then Remaining (Position) < Remaining (Position'Old)
        and then Entry_Type.Belongs_To (Element, Buffer);
 
+   --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going
+   --  through all elements with this procedure takes time that grows with the square of their number; use Next for
+   --  that.
+   --  @param Buffer The buffer that This was parsed from, unchanged
+   --  @param This The value that has the repetition
+   --  @param Index The number of the element, less than Entries_Count (This)
+   --  @param Element The element. If it could not be parsed it is not valid
    procedure Get_Entries
      (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Entry_Type.T)
    with
      Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Index < Entries_Count (This),
      Post => Entry_Type.Belongs_To (Element, Buffer);
 
+   --  True if the field `tail_len` is there. It has a condition (`if`) in the description, which Parse evaluated.
    function Has_Tail_Len (This : T) return Boolean
    with Pre => Valid (This);
 
+   --  Field `tail_len`, an unsigned integer of 4 bytes, little endian. Requires that it is there (Has_Tail_Len).
    function Tail_Len (This : T) return Kaitai.Types.U32
    with Pre => Valid (This) and then Has_Tail_Len (This);
 
-   --  Points: not kept, but parsed again when asked for
-
+   --  Number of elements of the repeated field `points`. The elements are not kept in This: Parse has gone over them
+   --  once, and Points_First with Next, or Get_Points, parse them again from the buffer.
    function Points_Count (This : T) return Kaitai.Types.Length
    with Pre => Valid (This);
 
+   --  A position in the repeated field `points`, for going through its elements in order
    type Points_Cursor is private;
 
+   --  True if Position lies within Buffer. It holds for the buffer of the value that Position was taken from.
    function Belongs_To (Position : Points_Cursor; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+   --  The position of the first element of the repeated field `points`
    function Points_First (This : T) return Points_Cursor
    with Pre => Valid (This);
 
+   --  Number of elements from Position to the end
    function Remaining (Position : Points_Cursor) return Kaitai.Types.Length;
 
+   --  True if there is an element at Position
    function Has_Element (Position : Points_Cursor) return Boolean
    is (Remaining (Position) > 0);
 
+   --  Parses the element at Position and moves Position to the next one:
+   --
+   --     Position := Points_First (V);
+   --     while Has_Element (Position) loop
+   --        Next (Buffer, V, Position, Element);
+   --        exit when not Entry_Type.Point_Type.Valid (Element);
+   --        ...
+   --     end loop;
+   --
+   --  Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That is
+   --  not proven, so check that Element is valid.
+   --  @param Buffer The buffer that This was parsed from, unchanged
+   --  @param This The value that has the repetition
+   --  @param Position Where to parse; moved to the next element
+   --  @param Element The element. If it could not be parsed it is not valid, and Has_Element (Position) is False
+   --  afterwards
    procedure Next
      (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Points_Cursor; Element : out Entry_Type.Point_Type.T)
    with
      Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
      Post => Belongs_To (Position, Buffer) and then Remaining (Position) < Remaining (Position'Old);
 
+   --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going
+   --  through all elements with this procedure takes time that grows with the square of their number; use Next for
+   --  that.
+   --  @param Buffer The buffer that This was parsed from, unchanged
+   --  @param This The value that has the repetition
+   --  @param Index The number of the element, less than Points_Count (This)
+   --  @param Element The element. If it could not be parsed it is not valid
    procedure Get_Points
      (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Entry_Type.Point_Type.T)
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Points_Count (This);
 
+   --  Field `len_log`, an unsigned integer of 1 byte
    function Len_Log (This : T) return Kaitai.Types.U8
    with Pre => Valid (This);
 
+   --  Field `log`, a `log`
    function Log (This : T) return Log_Type.T
    with Pre => Valid (This), Post => Log_Type.Valid (Log'Result);
 
+   --  Number of elements of the repeated field `samples`
    function Samples_Count (This : T) return Kaitai.Types.Length
    with Pre => Valid (This);
 
+   --  Element Index of the repeated field `samples`, counted from 0, an unsigned integer of 2 bytes, little endian,
+   --  decoded from Buffer. Buffer is the buffer that This was parsed from. Requires Index < Samples_Count (This).
    function Samples (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U16
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Samples_Count (This);
 
-   --  instance first_entry: parsed when asked for
+   --  Instance `first_entry`, an `entry`. It has a position of its own in the data (`pos`), which Parse does not read:
+   --  this procedure parses it at every call, and This does not keep it.
+   --  @param Buffer The buffer that This was parsed from, unchanged
+   --  @param This The value that has the instance
+   --  @param Result The instance. Valid if and only if Outcome is Success
+   --  @param Outcome Success, or why the instance could not be parsed
    procedure First_Entry
      (Buffer : Kaitai.Types.Bytes; This : T; Result : out Entry_Type.T; Outcome : out Kaitai.Types.Status_Kind)
    with
@@ -502,14 +847,33 @@ is
      Post =>
        Entry_Type.Valid (Result) = (Outcome = Kaitai.Types.Success) and then Entry_Type.Belongs_To (Result, Buffer);
 
-   --  instance total
-
+   --  True if the instance `total` has a value. Its expression is not defined if a field that it uses is not there, an
+   --  operation in it overflows or divides by zero, or an index is out of range.
    function Has_Total (This : T) return Boolean
    with Pre => Valid (This);
 
+   --  Instance `total`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Requires Has_Total.
    function Total (This : T) return Kaitai.Types.S64
    with Pre => Valid (This) and then Has_Total (This);
 
+   --  Writes This to Target, at the position of W, and leaves W behind what it wrote.
+   --
+   --  It does not raise an exception. If Target has not room enough, or the value cannot be written (the expression of
+   --  a size is not defined, or the buffer is no longer what was parsed), W has failed afterwards,
+   --  Kaitai.Writers.Status (W) is the reason (Capacity_Exceeded for lack of room) and Target may hold some of the
+   --  bytes. If W had failed before the call, nothing is written. Kaitai.Writers.Written (W) is the part of Target that
+   --  holds what has been written through W.
+   --
+   --  Parsing what was written gives the same value again, with the same fields and slices of the same contents. The
+   --  output is the input again, except for what a parsed value does not keep: bytes that no field uses and skipped
+   --  bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as the
+   --  padding byte, and instances with a position are not written.
+   --
+   --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
+   --  @param This The value to write. It must be valid
+   --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
+   --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes
+   --  written, or it has failed
    procedure Write
      (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
    with

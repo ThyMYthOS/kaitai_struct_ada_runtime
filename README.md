@@ -74,9 +74,12 @@ begin
 end Example;
 ```
 
-[docs/codegen.md](docs/codegen.md) describes what generated code looks like
-and why. `examples/` holds generated parsers with their descriptions;
-`examples/showcase` uses most constructs in one description.
+A generated specification documents itself: the package begins with the
+call of `Parse` to use, and every declaration has a comment that says what it
+delivers and what it requires, with the `doc` texts of the description where
+there are any. [docs/codegen.md](docs/codegen.md) describes what generated
+code looks like and why. `examples/` holds generated parsers with their
+descriptions; `examples/showcase` uses most constructs in one description.
 
 ## The library
 
@@ -150,7 +153,7 @@ scripts/check.sh prove    # a single step
 | `prove` | GNATprove proves all checks of the library and of the parsers under `examples/` |
 | `target` | the tests pass on a simulated STM32F4 with a light and an embedded run-time library |
 | `bench` | the benchmarks build and agree on their results |
-| `doc` | GNATdoc finds a documentation comment for every declaration that a user of the library sees |
+| `doc` | GNATdoc finds a documentation comment for every declaration that a user of the library or of a generated parser sees |
 
 A second CI job builds the compiler and checks that `examples/` is what it
 generates.

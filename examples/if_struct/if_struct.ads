@@ -7,18 +7,52 @@ package If_Struct
   with SPARK_Mode, Always_Terminates
 is
 
+   --  Parser for `if_struct`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : If_Struct.T;
+   --     ...
+   --     If_Struct.Parse (Buffer, S, V);
+   --     if If_Struct.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  V does not hold byte arrays, strings and repetitions but says where they are in Buffer. Buffer must stay
+   --  unchanged while V is used, and the functions and procedures that take a buffer must be given the same one.
+   --
+   --  Nothing here allocates memory or raises an exception.
+
    use type Kaitai.Types.S64;
 
-   --  type if_struct::arg_str
-
+   --  The type `arg_str` of the description (`if_struct::arg_str`)
    package Arg_Str_Type is
 
+      --  A parsed `if_struct::arg_str`. A variable that Parse has not filled is not valid (see Valid). It has no
+      --  pointers and can be copied and kept freely; it refers to the buffer it was parsed from, which must not change
+      --  while it is used.
       type T is private;
 
+      --  True if This is the result of a Parse that succeeded. The accessors below require it.
       function Valid (This : T) return Boolean;
 
+      --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from.
+      --  The operations below that take a buffer require it, for This or for a position taken from This; give them that
+      --  same buffer.
       function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+      --  Parses one `if_struct::arg_str` at the position of S and leaves S behind it.
+      --
+      --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+      --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
+      --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+      --
+      --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+      --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+      --  @param This The result. Valid if and only if S has not failed
       procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -28,9 +62,12 @@ is
           and then Valid (This) = Kaitai.Streams.OK (S)
           and then Belongs_To (This, Buffer);
 
+      --  Field `len`, an unsigned integer of 1 byte
       function Len (This : T) return Kaitai.Types.U8
       with Pre => Valid (This);
 
+      --  Field `str`, a string in UTF-8, as the slice of the buffer that holds it. Parse has checked that it is valid
+      --  in that encoding.
       function Str (This : T) return Kaitai.Types.Slice
       with Pre => Valid (This);
 
@@ -56,14 +93,25 @@ is
 
    end Arg_Str_Type;
 
-   --  type if_struct::arg_tuple
-
+   --  The type `arg_tuple` of the description (`if_struct::arg_tuple`)
    package Arg_Tuple_Type is
 
+      --  A parsed `if_struct::arg_tuple`. A variable that Parse has not filled is not valid (see Valid). It has no
+      --  pointers and can be copied and kept freely.
       type T is private;
 
+      --  True if This is the result of a Parse that succeeded. The accessors below require it.
       function Valid (This : T) return Boolean;
 
+      --  Parses one `if_struct::arg_tuple` at the position of S and leaves S behind it.
+      --
+      --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+      --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
+      --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+      --
+      --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+      --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+      --  @param This The result. Valid if and only if S has not failed
       procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -72,9 +120,11 @@ is
           and then Kaitai.Streams.Advanced (S'Old, S)
           and then Valid (This) = Kaitai.Streams.OK (S);
 
+      --  Field `num1`, an unsigned integer of 1 byte
       function Num1 (This : T) return Kaitai.Types.U8
       with Pre => Valid (This);
 
+      --  Field `num2`, an unsigned integer of 1 byte
       function Num2 (This : T) return Kaitai.Types.U8
       with Pre => Valid (This);
 
@@ -97,16 +147,31 @@ is
 
    end Arg_Tuple_Type;
 
-   --  type if_struct::operation
-
+   --  The type `operation` of the description (`if_struct::operation`)
    package Operation_Type is
 
+      --  A parsed `if_struct::operation`. A variable that Parse has not filled is not valid (see Valid). It has no
+      --  pointers and can be copied and kept freely; it refers to the buffer it was parsed from, which must not change
+      --  while it is used.
       type T is private;
 
+      --  True if This is the result of a Parse that succeeded. The accessors below require it.
       function Valid (This : T) return Boolean;
 
+      --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from.
+      --  The operations below that take a buffer require it, for This or for a position taken from This; give them that
+      --  same buffer.
       function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+      --  Parses one `if_struct::operation` at the position of S and leaves S behind it.
+      --
+      --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+      --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
+      --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+      --
+      --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+      --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+      --  @param This The result. Valid if and only if S has not failed
       procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -116,18 +181,23 @@ is
           and then Valid (This) = Kaitai.Streams.OK (S)
           and then Belongs_To (This, Buffer);
 
+      --  Field `opcode`, an unsigned integer of 1 byte
       function Opcode (This : T) return Kaitai.Types.U8
       with Pre => Valid (This);
 
+      --  True if the field `arg_tuple` is there. It has a condition (`if`) in the description, which Parse evaluated.
       function Has_Arg_Tuple (This : T) return Boolean
       with Pre => Valid (This);
 
+      --  Field `arg_tuple`, an `arg_tuple`. Requires that it is there (Has_Arg_Tuple).
       function Arg_Tuple (This : T) return Arg_Tuple_Type.T
       with Pre => Valid (This) and then Has_Arg_Tuple (This), Post => Arg_Tuple_Type.Valid (Arg_Tuple'Result);
 
+      --  True if the field `arg_str` is there. It has a condition (`if`) in the description, which Parse evaluated.
       function Has_Arg_Str (This : T) return Boolean
       with Pre => Valid (This);
 
+      --  Field `arg_str`, an `arg_str`. Requires that it is there (Has_Arg_Str).
       function Arg_Str (This : T) return Arg_Str_Type.T
       with Pre => Valid (This) and then Has_Arg_Str (This), Post => Arg_Str_Type.Valid (Arg_Str'Result);
 
@@ -167,12 +237,29 @@ is
 
    end Operation_Type;
 
+   --  A parsed `if_struct`. A variable that Parse has not filled is not valid (see Valid). It has no pointers and can
+   --  be copied and kept freely; it refers to the buffer it was parsed from, which must not change while it is used.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it.
    function Valid (This : T) return Boolean;
 
+   --  True if everything that This refers to lies within Buffer. It holds for the buffer that This was parsed from. The
+   --  operations below that take a buffer require it, for This or for a position taken from This; give them that same
+   --  buffer.
    function Belongs_To (This : T; Buffer : Kaitai.Types.Bytes) return Boolean;
 
+   --  Parses one `if_struct` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   --  @param This The result. Valid if and only if S has not failed
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -182,12 +269,15 @@ is
        and then Valid (This) = Kaitai.Streams.OK (S)
        and then Belongs_To (This, Buffer);
 
+   --  Field `op1`, an `operation`
    function Op1 (This : T) return Operation_Type.T
    with Pre => Valid (This), Post => Operation_Type.Valid (Op1'Result);
 
+   --  Field `op2`, an `operation`
    function Op2 (This : T) return Operation_Type.T
    with Pre => Valid (This), Post => Operation_Type.Valid (Op2'Result);
 
+   --  Field `op3`, an `operation`
    function Op3 (This : T) return Operation_Type.T
    with Pre => Valid (This), Post => Operation_Type.Valid (Op3'Result);
 

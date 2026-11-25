@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- Library: every declaration of a visible part has a documentation comment of its
+  own, directly before it, also the integer types, the record components and the
+  enumeration literals. Comments that stood before a group of declarations
+  documented none of them for a tool.
+- Compiler: a generated specification has a comment before every declaration of its
+  visible part: what `T`, `Valid`, `Belongs_To`, `Parse` and the accessors are and
+  require, what `Parse` does when the data are not accepted, which fields it does not
+  keep or not read, how to go through a repetition, what `Target`, `Storage`,
+  `Outcome` and `Last` mean, and what `Write` guarantees. The package begins with
+  the call of `Parse` to use. Every parameter of a procedure has an `@param` line
+  and every enumeration literal an `@enum` line. `meta/title`, `doc` and `doc-ref`
+  of the description are carried over, also `doc` of the values of an enumeration.
+  Only comments change; the generated code is the same. `docs/codegen.md` has a
+  section "Documentation", and the description of `examples/showcase` has `doc`
+  texts that show where each ends up.
+- `scripts/check.sh doc`, which the CI runs, fails if GNATdoc finds a declaration
+  without documentation in a visible part of the library or of the parsers under
+  `examples/`, or a parameter of a procedure of the parsers without one.
+- `compiler/README.md` says in two tables what the backend generates and what it
+  rejects.
+
 ## 0.2.0 (2026-11-25)
 
 The compiler backend covers more of the language and is compared with the

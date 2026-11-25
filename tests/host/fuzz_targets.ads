@@ -30,7 +30,16 @@ package Fuzz_Targets is
       Str_Encodings_Parser,
       Default_Endian_Expr_Is_Le_Parser,
       Valid_Fail_Eq_Int_Parser,
-      Params_Def_Parser);
+      Params_Def_Parser,
+      Imports0_Parser,
+      Term_Struct_Parser,
+      Bytes_Pad_Term_Equal_Parser,
+      Expr_Sizeof_Type_0_Parser,
+      Term_Strz4_Parser,
+      Bytes_Pad_Term_Parser,
+      Str_Eos_Pad_Term_Parser,
+      Subscripts_Parser,
+      Valid_Fail_Repeat_Eq_Int_Parser);
 
    --  An input the parser accepts.  Round selects one where there are
    --  several.

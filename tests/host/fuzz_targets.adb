@@ -1,13 +1,17 @@
 with Bits_Byte_Aligned;
 with Bits_Enum;
 with Bits_Simple;
+with Bytes_Pad_Term;
+with Bytes_Pad_Term_Equal;
 with Default_Endian_Expr_Is_Le;
 with Enum_0;
 with Expr_1;
+with Expr_Sizeof_Type_0;
 with Extras;
 with Fixed_Struct;
 with Hello_World;
 with If_Struct;
+with Imports0;
 with Instance_Std;
 with Kaitai.Streams; use Kaitai.Streams;
 with Kaitai.Writers;
@@ -19,9 +23,14 @@ with Repeat_Until_Complex;
 with Sample_Data;
 with Showcase;
 with Str_Encodings;
+with Str_Eos_Pad_Term;
+with Subscripts;
 with Switch_Manual_Int;
+with Term_Struct;
 with Term_Strz;
+with Term_Strz4;
 with Valid_Fail_Eq_Int;
+with Valid_Fail_Repeat_Eq_Int;
 with Write_Model;
 
 package body Fuzz_Targets is
@@ -109,6 +118,13 @@ package body Fuzz_Targets is
    --  No key, nothing to process, and a tree of nodes with one child each
    Extras_Chain : constant Bytes := (0, 0, 0, 1, 1, 2, 1, 3, 1, 4, 1, 5, 1, 6, 0);
 
+   Subscripts_Data : constant Bytes := (2, 1, 16#34#, 16#12#, 16#78#, 16#56#, 10, 20, 30, 40, 5, 6, 7, 0, 8, 9);
+
+   --  Two values that are 0x12345678, and none: the parser accepts no others
+   Repeat_Eq_Int_Data : constant Bytes := (16#12#, 16#34#, 16#56#, 16#78#, 16#12#, 16#34#, 16#56#, 16#78#);
+
+   Repeat_Eq_Int_Empty : constant Bytes (1 .. 0) := (others => 0);
+
    function Seed (T : Target; Round : Positive) return Bytes is
    begin
       case T is
@@ -177,6 +193,33 @@ package body Fuzz_Targets is
 
          when Valid_Fail_Eq_Int_Parser         =>
             return Sample_Data.Fixed_Struct;
+
+         when Imports0_Parser                  =>
+            return Sample_Data.Fixed_Struct;
+
+         when Term_Struct_Parser               =>
+            return Sample_Data.Term_Strz;
+
+         when Bytes_Pad_Term_Equal_Parser      =>
+            return Sample_Data.Str_Pad_Term;
+
+         when Expr_Sizeof_Type_0_Parser        =>
+            return Sample_Data.Fixed_Struct;
+
+         when Term_Strz4_Parser                =>
+            return Sample_Data.Term_Strz;
+
+         when Bytes_Pad_Term_Parser            =>
+            return Sample_Data.Str_Pad_Term;
+
+         when Str_Eos_Pad_Term_Parser          =>
+            return Sample_Data.Str_Pad_Term;
+
+         when Subscripts_Parser                =>
+            return Subscripts_Data;
+
+         when Valid_Fail_Repeat_Eq_Int_Parser  =>
+            return (if Round mod 2 = 0 then Repeat_Eq_Int_Empty else Repeat_Eq_Int_Data);
       end case;
    end Seed;
 
@@ -409,6 +452,237 @@ package body Fuzz_Targets is
       pragma Assert (Output (1 .. Pos (S)) = Input (Input'First .. Input'First + Pos (S) - 1));
    end Run_Write_Model;
 
+   procedure Run_Imports0 (Input : Bytes; Fields : out Natural) is
+      S : Stream := Open (Input);
+      R : Imports0.T;
+   begin
+      Fields := 0;
+      Imports0.Parse (Input, S, R);
+      pragma Assert (Imports0.Valid (R) = OK (S));
+      if not Imports0.Valid (R) then
+         return;
+      end if;
+      Fields := 1;
+      Count (Fields, Imports0.Two (R) = 0);
+      Count (Fields, Hello_World.One (Imports0.Hw (R)) = 0);
+      if Imports0.Has_Hw_One (R) then
+         Count (Fields, Imports0.Hw_One (R) = 0);
+      end if;
+   end Run_Imports0;
+
+   procedure Run_Expr_Sizeof_Type_0 (Input : Bytes; Fields : out Natural) is
+      package Blocks renames Expr_Sizeof_Type_0.Block_Type;
+
+      S : Stream := Open (Input);
+      R : Expr_Sizeof_Type_0.T;
+      B : Blocks.T;
+   begin
+      Fields := 0;
+      Expr_Sizeof_Type_0.Parse (Input, S, R);
+      pragma Assert (Expr_Sizeof_Type_0.Valid (R) = OK (S));
+      if Expr_Sizeof_Type_0.Valid (R) then
+         Fields := 1;
+         Count (Fields, Expr_Sizeof_Type_0.Sizeof_Block (R) = 7);
+      end if;
+
+      --  The type that the instance measures is not part of the parsed one, so it is parsed on its own
+      S := Open (Input);
+      Blocks.Parse (Input, S, B);
+      pragma Assert (Blocks.Valid (B) = OK (S));
+      if Blocks.Valid (B) then
+         Count (Fields);
+         Count (Fields, Blocks.A (B) = 0 or else Blocks.B (B) = 0);
+         Count (Fields, Within (Blocks.C (B), Input));
+      end if;
+   end Run_Expr_Sizeof_Type_0;
+
+   procedure Run_Subscripts (Input : Bytes; Fields : out Natural) is
+      S        : Stream := Open (Input);
+      R        : Subscripts.T;
+      Element  : Slice;
+      Position : Subscripts.Records_Cursor;
+   begin
+      Fields := 0;
+      Subscripts.Parse (Input, S, R);
+      pragma Assert (Subscripts.Valid (R) = OK (S));
+      if not Subscripts.Valid (R) then
+         return;
+      end if;
+      Fields := 1;
+      Count (Fields, Subscripts.Qty (R) = Subscripts.Pick (R));
+      Count (Fields, Within (Subscripts.Raw (R), Input));
+
+      for I in 0 .. Subscripts.Items_Count (R) - 1 loop
+         Count (Fields, Subscripts.Items (Input, R, I) = 0);
+      end loop;
+
+      Position := Subscripts.Records_First (R);
+      while Subscripts.Has_Element (Position) loop
+         Subscripts.Next (Input, R, Position, Element);
+         Count (Fields, Within (Element, Input));
+      end loop;
+      for I in 0 .. Subscripts.Records_Count (R) - 1 loop
+         Subscripts.Get_Records (Input, R, I, Element);
+         Count (Fields, Within (Element, Input));
+      end loop;
+
+      --  The instances that index are defined only where the index is in range
+      if Subscripts.Has_First_Item (Input, R) then
+         Count (Fields, Subscripts.First_Item (Input, R) = 0);
+      end if;
+      if Subscripts.Has_Chosen_Item (Input, R) then
+         Count (Fields, Subscripts.Chosen_Item (Input, R) = 0);
+      end if;
+      if Subscripts.Has_Raw_Mid (Input, R) then
+         Count (Fields, Subscripts.Raw_Mid (Input, R) = 0);
+      end if;
+      if Subscripts.Has_Chosen_Raw (Input, R) then
+         Count (Fields, Subscripts.Chosen_Raw (Input, R) = 0);
+      end if;
+   end Run_Subscripts;
+
+   procedure Run_Valid_Fail_Repeat_Eq_Int (Input : Bytes; Fields : out Natural) is
+      S : Stream := Open (Input);
+      R : Valid_Fail_Repeat_Eq_Int.T;
+   begin
+      Fields := 0;
+      Valid_Fail_Repeat_Eq_Int.Parse (Input, S, R);
+      pragma Assert (Valid_Fail_Repeat_Eq_Int.Valid (R) = OK (S));
+      if not Valid_Fail_Repeat_Eq_Int.Valid (R) then
+         return;
+      end if;
+      Fields := 1;
+      for I in 0 .. Valid_Fail_Repeat_Eq_Int.Foo_Count (R) - 1 loop
+         Count (Fields, Valid_Fail_Repeat_Eq_Int.Foo (Input, R, I) = 16#1234_5678#);
+      end loop;
+   end Run_Valid_Fail_Repeat_Eq_Int;
+
+   --  The fields of the parsers that have a Write, read from the buffer that the value was parsed from
+
+   procedure Read_Term_Struct (Buffer : Bytes; R : Term_Struct.T; Fields : in out Natural) is
+   begin
+      Count (Fields, Within (Term_Struct.Bytes_Wrapper_Type.Value (Term_Struct.S1 (R)), Buffer));
+      Count (Fields, Within (Term_Struct.Bytes_Wrapper_Type.Value (Term_Struct.S2 (R)), Buffer));
+      Count (Fields, Within (Term_Struct.Bytes_Wrapper_Type.Value (Term_Struct.S3 (R)), Buffer));
+   end Read_Term_Struct;
+
+   procedure Read_Bytes_Pad_Term_Equal (Buffer : Bytes; R : Bytes_Pad_Term_Equal.T; Fields : in out Natural) is
+   begin
+      Count (Fields, Within (Bytes_Pad_Term_Equal.S1 (R), Buffer));
+      Count (Fields, Within (Bytes_Pad_Term_Equal.S2 (R), Buffer));
+      Count (Fields, Within (Bytes_Pad_Term_Equal.S3 (R), Buffer));
+      Count (Fields, Within (Bytes_Pad_Term_Equal.S4 (R), Buffer));
+   end Read_Bytes_Pad_Term_Equal;
+
+   procedure Read_Term_Strz4 (Buffer : Bytes; R : Term_Strz4.T; Fields : in out Natural) is
+   begin
+      Count (Fields, Within (Term_Strz4.S1_Type_Type.Value (Term_Strz4.S1 (R)), Buffer));
+      Count (Fields, Term_Strz4.Skip_Term1 (R) = 16#7C#);
+      Count (Fields, Within (Term_Strz4.S2_Type_Type.Value (Term_Strz4.S2 (R)), Buffer));
+      Count (Fields, Term_Strz4.Skip_Term2 (R) = 16#7C#);
+      Count (Fields, Within (Term_Strz4.S3_Type_Type.Value (Term_Strz4.S3 (R)), Buffer));
+   end Read_Term_Strz4;
+
+   procedure Read_Bytes_Pad_Term (Buffer : Bytes; R : Bytes_Pad_Term.T; Fields : in out Natural) is
+   begin
+      Count (Fields, Within (Bytes_Pad_Term.Str_Pad (R), Buffer));
+      Count (Fields, Within (Bytes_Pad_Term.Str_Term (R), Buffer));
+      Count (Fields, Within (Bytes_Pad_Term.Str_Term_And_Pad (R), Buffer));
+      Count (Fields, Within (Bytes_Pad_Term.Str_Term_Include (R), Buffer));
+   end Read_Bytes_Pad_Term;
+
+   procedure Read_Str_Eos_Pad_Term (Buffer : Bytes; R : Str_Eos_Pad_Term.T; Fields : in out Natural) is
+   begin
+      Count (Fields, Within (Str_Eos_Pad_Term.Str_Pad_Type_Type.Value (Str_Eos_Pad_Term.Str_Pad (R)), Buffer));
+      Count (Fields, Within (Str_Eos_Pad_Term.Str_Term_Type_Type.Value (Str_Eos_Pad_Term.Str_Term (R)), Buffer));
+      Count
+        (Fields,
+         Within (Str_Eos_Pad_Term.Str_Term_And_Pad_Type_Type.Value (Str_Eos_Pad_Term.Str_Term_And_Pad (R)), Buffer));
+      Count
+        (Fields,
+         Within (Str_Eos_Pad_Term.Str_Term_Include_Type_Type.Value (Str_Eos_Pad_Term.Str_Term_Include (R)), Buffer));
+   end Read_Str_Eos_Pad_Term;
+
+   --  Parse Input and read the result; if the parse is valid, write the value into a target of twice the size
+   --  plus 16 bytes and, if the writer succeeds, parse what was written, which has to be valid as well, and
+   --  read that too.  Fixed_Size is True where every field of the description has a size of its own and the
+   --  parse takes exactly that many bytes: then the writer has to succeed and to write as many bytes as were
+   --  read.  Where a field is cut at a terminator or runs to the end of its window, the output can have another
+   --  length (a terminator is added, a field is padded) and the writer may run out of room, which is not
+   --  asserted against.
+   generic
+      type T is private;
+      with procedure Parse (Buffer : Bytes; S : in out Stream; This : out T);
+      with function Valid (This : T) return Boolean;
+      with procedure Write (Buffer : Bytes; This : T; Target : in out Bytes; W : in out Kaitai.Writers.Writer);
+      with procedure Read_All (Buffer : Bytes; This : T; Fields : in out Natural);
+      Fixed_Size : Boolean;
+   procedure Run_Write_Target (Input : Bytes; Fields : out Natural);
+
+   procedure Run_Write_Target (Input : Bytes; Fields : out Natural) is
+      S      : Stream := Open (Input);
+      R      : T;
+      Output : Bytes (1 .. 2 * Input'Length + 16) := (others => 0);
+      W      : Kaitai.Writers.Writer;
+   begin
+      Fields := 0;
+      Parse (Input, S, R);
+      pragma Assert (Valid (R) = OK (S));
+      if not Valid (R) then
+         return;
+      end if;
+      Fields := 1;
+      Read_All (Input, R, Fields);
+      W := Kaitai.Writers.Open (Output);
+      Write (Input, R, Output, W);
+      if Fixed_Size then
+         pragma Assert (Kaitai.Writers.OK (W));
+         pragma Assert (Kaitai.Writers.Pos (W) = Pos (S));
+      end if;
+      if not Kaitai.Writers.OK (W) then
+         return;
+      end if;
+      declare
+         Written : Bytes renames Output (1 .. Kaitai.Writers.Pos (W));
+         Again   : Stream := Open (Written);
+         Second  : T;
+      begin
+         Parse (Written, Again, Second);
+         pragma Assert (Valid (Second) = OK (Again));
+         pragma Assert (Valid (Second));
+         Read_All (Written, Second, Fields);
+      end;
+   end Run_Write_Target;
+
+   procedure Run_Term_Struct is new
+     Run_Write_Target (Term_Struct.T, Term_Struct.Parse, Term_Struct.Valid, Term_Struct.Write, Read_Term_Struct, False);
+   procedure Run_Bytes_Pad_Term_Equal is new
+     Run_Write_Target
+       (Bytes_Pad_Term_Equal.T,
+        Bytes_Pad_Term_Equal.Parse,
+        Bytes_Pad_Term_Equal.Valid,
+        Bytes_Pad_Term_Equal.Write,
+        Read_Bytes_Pad_Term_Equal,
+        True);
+   procedure Run_Term_Strz4 is new
+     Run_Write_Target (Term_Strz4.T, Term_Strz4.Parse, Term_Strz4.Valid, Term_Strz4.Write, Read_Term_Strz4, False);
+   procedure Run_Bytes_Pad_Term is new
+     Run_Write_Target
+       (Bytes_Pad_Term.T,
+        Bytes_Pad_Term.Parse,
+        Bytes_Pad_Term.Valid,
+        Bytes_Pad_Term.Write,
+        Read_Bytes_Pad_Term,
+        True);
+   procedure Run_Str_Eos_Pad_Term is new
+     Run_Write_Target
+       (Str_Eos_Pad_Term.T,
+        Str_Eos_Pad_Term.Parse,
+        Str_Eos_Pad_Term.Valid,
+        Str_Eos_Pad_Term.Write,
+        Read_Str_Eos_Pad_Term,
+        True);
+
    procedure Run (T : Target; Input : Bytes; Argument : U16; Fields : out Natural) is
    begin
       case T is
@@ -477,6 +751,33 @@ package body Fuzz_Targets is
 
          when Valid_Fail_Eq_Int_Parser         =>
             Run_Valid_Fail_Eq_Int (Input, Fields);
+
+         when Imports0_Parser                  =>
+            Run_Imports0 (Input, Fields);
+
+         when Term_Struct_Parser               =>
+            Run_Term_Struct (Input, Fields);
+
+         when Bytes_Pad_Term_Equal_Parser      =>
+            Run_Bytes_Pad_Term_Equal (Input, Fields);
+
+         when Expr_Sizeof_Type_0_Parser        =>
+            Run_Expr_Sizeof_Type_0 (Input, Fields);
+
+         when Term_Strz4_Parser                =>
+            Run_Term_Strz4 (Input, Fields);
+
+         when Bytes_Pad_Term_Parser            =>
+            Run_Bytes_Pad_Term (Input, Fields);
+
+         when Str_Eos_Pad_Term_Parser          =>
+            Run_Str_Eos_Pad_Term (Input, Fields);
+
+         when Subscripts_Parser                =>
+            Run_Subscripts (Input, Fields);
+
+         when Valid_Fail_Repeat_Eq_Int_Parser  =>
+            Run_Valid_Fail_Repeat_Eq_Int (Input, Fields);
       end case;
    end Run;
 

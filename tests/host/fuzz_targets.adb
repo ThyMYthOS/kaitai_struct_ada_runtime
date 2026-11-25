@@ -25,6 +25,8 @@ with Sample_Data;
 with Showcase;
 with Str_Encodings;
 with Str_Eos_Pad_Term;
+with Str_Literal_Encodings;
+with Str_Literals_Latin1;
 with Subscripts;
 with Switch_Bytearray;
 with Switch_Else_Only;
@@ -123,6 +125,14 @@ package body Fuzz_Targets is
    Extras_Chain : constant Bytes := (0, 0, 0, 1, 1, 2, 1, 3, 1, 4, 1, 5, 1, 6, 0);
 
    Subscripts_Data : constant Bytes := (2, 1, 16#34#, 16#12#, 16#78#, 16#56#, 10, 20, 30, 40, 5, 6, 7, 0, 8, 9);
+
+   --  A string of two bytes in UTF-8 that is the pound sign
+   Str_Literals_Latin1_Data : constant Bytes := (2, 0, 16#C2#, 16#A3#);
+
+   --  Strings in ISO-8859-1, UTF-8, UTF-16LE, UTF-16BE and ASCII that the instances compare with literals, and one that
+   --  is valid
+   Str_Literal_Encodings_Data : constant Bytes :=
+     (16#A3#, 16#C2#, 16#A3#, 16#A3#, 0, 16#AC#, 16#20#, 16#D8#, 16#3D#, 16#DE#, 0, 16#61#, 16#0A#, 16#61#, 0);
 
    --  Two values that are 0x12345678, and none: the parser accepts no others
    Repeat_Eq_Int_Data : constant Bytes := (16#12#, 16#34#, 16#56#, 16#78#, 16#12#, 16#34#, 16#56#, 16#78#);
@@ -236,6 +246,12 @@ package body Fuzz_Targets is
 
          when Valid_Switch_Parser              =>
             return Sample_Data.Fixed_Struct;
+
+         when Str_Literals_Latin1_Parser       =>
+            return Str_Literals_Latin1_Data;
+
+         when Str_Literal_Encodings_Parser     =>
+            return Str_Literal_Encodings_Data;
       end case;
    end Seed;
 
@@ -726,6 +742,28 @@ package body Fuzz_Targets is
 
    procedure Run_Valid_Switch is new Run_Parse_Only (Valid_Switch.T, Valid_Switch.Parse, Valid_Switch.Valid);
 
+   procedure Run_Str_Literals_Latin1 is new
+     Run_Parse_Only (Str_Literals_Latin1.T, Str_Literals_Latin1.Parse, Str_Literals_Latin1.Valid);
+
+   procedure Run_Str_Literal_Encodings (Input : Bytes; Fields : out Natural) is
+      S : Stream := Open (Input);
+      R : Str_Literal_Encodings.T;
+   begin
+      Fields := 0;
+      Str_Literal_Encodings.Parse (Input, S, R);
+      pragma Assert (Str_Literal_Encodings.Valid (R) = OK (S));
+      if Str_Literal_Encodings.Valid (R) then
+         Fields := 1;
+         Count (Fields, Str_Literal_Encodings.Latin1_Is_Pound (Input, R));
+         Count (Fields, Str_Literal_Encodings.Utf8_Is_Pound (Input, R));
+         Count (Fields, Str_Literal_Encodings.Utf16le_Is_Pound_Euro (Input, R));
+         Count (Fields, Str_Literal_Encodings.Utf16be_Is_Grin (Input, R));
+         Count (Fields, Str_Literal_Encodings.Utf16be_Is_Not_Grin (Input, R));
+         Count (Fields, Str_Literal_Encodings.Ascii_Has_Newline (Input, R));
+         Count (Fields, Str_Literal_Encodings.Grin_Length (R) = 1);
+      end if;
+   end Run_Str_Literal_Encodings;
+
    procedure Run (T : Target; Input : Bytes; Argument : U16; Fields : out Natural) is
    begin
       case T is
@@ -833,6 +871,12 @@ package body Fuzz_Targets is
 
          when Valid_Switch_Parser              =>
             Run_Valid_Switch (Input, Fields);
+
+         when Str_Literals_Latin1_Parser       =>
+            Run_Str_Literals_Latin1 (Input, Fields);
+
+         when Str_Literal_Encodings_Parser     =>
+            Run_Str_Literal_Encodings (Input, Fields);
       end case;
    end Run;
 

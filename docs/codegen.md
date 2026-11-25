@@ -558,13 +558,18 @@ Where the rules above are silent, the compiler does the following.
 - A string in `ASCII`, `UTF-8`, `UTF-16LE` or `UTF-16BE` is checked; every
   other encoding is `Single_Byte`, which accepts everything. The encodings
   `UTF-16` without byte order, `UTF-32` and the like are rejected.
-- Strings are compared with a literal or with each other byte by byte, and
-  `to_i` reads the digits byte by byte. For a string in UTF-16 that is not
-  the comparison of the characters, so comparisons, `to_i` and a `switch-on`
-  of such a string are rejected. So is the comparison of two strings in
-  different encodings, unless both are ASCII or UTF-8, and `.length` of a
-  string in Shift_JIS, Big5 or EUC-KR, whose characters the library cannot
-  count.
+- Strings are compared (`==`, `!=`, also a `switch-on` and `valid`) with a literal or with each other byte by byte.
+  That is the comparison of the characters because the parser has checked that the string is valid in its encoding and
+  a string has one encoding. A literal of printable ASCII is compared with `Strings.Equal_Literal`. Any other literal
+  is encoded by the compiler into the bytes of the encoding of the string it is compared with, and compared with
+  `Byte_Arrays.Equal (Buffer, X, (16#C2#, 16#A3#))`. The compiler encodes ASCII, UTF-8, ISO-8859-1, UTF-16LE and
+  UTF-16BE (a character beyond U+FFFF as a surrogate pair); in any other encoding it encodes the ASCII characters and
+  rejects a literal with any other character. A character that the encoding cannot hold (an accented letter in an
+  ASCII string) is rejected as well, and so is a literal that is not valid text. Two strings are compared if they are
+  in the same encoding, or both in ASCII or UTF-8; the ordering `<`, `>` is not translated. `to_i` of a string in
+  UTF-16 and the comparison of strings in different encodings are rejected, as is `.length` of a string in Shift_JIS,
+  Big5 or EUC-KR, whose characters the library cannot count. The `.length` of a literal counts characters, not UTF-16
+  units.
 - `valid` on a field whose type is chosen by `switch-on` is checked after the cases, on the value that was read, like
   `valid` on a field of the integer type of the cases: `if S64 (This.B) /= 17217 then Fail (S, Validation_Not_Equal);`. It
   is supported where all cases are integers (the value is held in the component of the widest type) and there is a `_`

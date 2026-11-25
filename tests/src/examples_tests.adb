@@ -25,6 +25,8 @@ with Repeat_Until_Complex;
 with Sample_Data;    use Sample_Data;
 with Str_Eos_Pad_Term;
 with Str_Encodings;
+with Str_Literal_Encodings;
+with Str_Literals_Latin1;
 with Subscripts;
 with Switch_Bytearray;
 with Switch_Else_Only;
@@ -1080,6 +1082,62 @@ package body Examples_Tests is
         (not Valid (This) and then Status (S) = Validation_Not_Equal, "another value of the switch is not accepted");
    end Test_Valid_Switch;
 
+   procedure Test_Str_Literals_Latin1 is
+      use Str_Literals_Latin1;
+      Data : constant Bytes := (2, 0, 16#C2#, 16#A3#);
+      S    : Stream := Open (Data);
+      This : Str_Literals_Latin1.T;
+   begin
+      Group ("examples str_literals_latin1");
+      Parse (Data, S, This);
+      Check (Valid (This), "parses");
+      if Valid (This) then
+         Check
+           (Parsed_Eq_Literal (Data, This), "a literal that is not ASCII is compared in the encoding of the string");
+      end if;
+      declare
+         Other : constant Bytes := (2, 0, 16#C2#, 16#A4#);
+      begin
+         S := Open (Other);
+         Parse (Other, S, This);
+         Check (Valid (This) and then not Parsed_Eq_Literal (Other, This), "another character is not equal");
+      end;
+   end Test_Str_Literals_Latin1;
+
+   procedure Test_Str_Literal_Encodings is
+      use Str_Literal_Encodings;
+      Data : Bytes :=
+        (16#A3#, 16#C2#, 16#A3#, 16#A3#, 0, 16#AC#, 16#20#, 16#D8#, 16#3D#, 16#DE#, 0, 16#61#, 16#0A#, 16#61#, 0);
+      S    : Stream := Open (Data);
+      This : Str_Literal_Encodings.T;
+   begin
+      Group ("examples str_literal_encodings");
+      Parse (Data, S, This);
+      Check (Valid (This) and then Is_EOF (S), "parses");
+      if Valid (This) then
+         Check (Latin1_Is_Pound (Data, This), "ISO-8859-1: one byte");
+         Check (Utf8_Is_Pound (Data, This), "UTF-8: two bytes");
+         Check (Utf16le_Is_Pound_Euro (Data, This), "UTF-16LE: two units, low byte first");
+         Check (Utf16be_Is_Grin (Data, This), "UTF-16BE: a surrogate pair");
+         Check (not Utf16be_Is_Not_Grin (Data, This), "!= is the opposite");
+         Check (Ascii_Has_Newline (Data, This), "a control character in ASCII");
+         Check (Grin_Length (This) = 1, "the length of a literal counts characters");
+      end if;
+
+      --  other strings are not equal to the literals
+      Data (1) := 16#A4#;
+      Data (9) := 16#3E#;
+      S := Open (Data);
+      Parse (Data, S, This);
+      Check (Valid (This) and then not Latin1_Is_Pound (Data, This), "another character");
+      Check (not Utf16be_Is_Grin (Data, This) and then Utf16be_Is_Not_Grin (Data, This), "another surrogate pair");
+      Check (Utf8_Is_Pound (Data, This), "the others are unchanged");
+      Data (14) := 16#62#;
+      S := Open (Data);
+      Parse (Data, S, This);
+      Check (not Valid (This) and then Status (S) = Validation_Not_Equal, "valid with a literal in UTF-16LE");
+   end Test_Str_Literal_Encodings;
+
    procedure Run is
    begin
       Test_Hello_World;
@@ -1120,6 +1178,8 @@ package body Examples_Tests is
       Test_Switch_Bytearray;
       Test_Switch_Else_Only;
       Test_Valid_Switch;
+      Test_Str_Literals_Latin1;
+      Test_Str_Literal_Encodings;
    end Run;
 
 end Examples_Tests;

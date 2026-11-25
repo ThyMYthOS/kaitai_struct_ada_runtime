@@ -12,6 +12,12 @@
   as well.
 - - Compiler: `valid` on a field whose type is chosen by `switch-on` is checked when
   all cases are integers and there is a `_` case (valid_switch); it was rejected.
+- Compiler: a string is compared with a literal that has characters outside printable
+  ASCII by encoding the literal into the bytes of the encoding of the string (ASCII,
+  UTF-8, ISO-8859-1, UTF-16LE, UTF-16BE; other encodings: ASCII characters only).
+  Comparison of UTF-16 strings with a literal or with each other is no longer rejected
+  (str_literals_latin1). expr_str_encodings and valid_eq_str_encodings use SJIS and
+  IBM437 and stay rejected.
 
 ## 0.1.0 (2026-11-25)
 

@@ -512,7 +512,9 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         }
       case VStrLit(s) =>
         attr match {
-          case "length" => ATr(s.length.toString, 0, Nil, VInt, s.length, s.length, isLiteral = true)
+          case "length" =>
+            val n = codePoints(s).size
+            ATr(n.toString, 0, Nil, VInt, n, n, isLiteral = true)
           case _ => unsupported(s"`.$attr` of a string literal")
         }
       case VInt | VEnum(_) =>
@@ -767,14 +769,11 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
       case (VBool, VBool) =>
         ATr(s"${wrapOp(l, 1)} $opStr ${wrapOp(r, 1)}", 2, dedupe(g), VBool, usesBuffer = ub)
       case (VStr(enc), VStrLit(s)) if isEq =>
-        byteWise(enc, "comparison")
-        ATr(negate(strLiteral(l, s)), 2, dedupe(g), VBool, usesBuffer = true)
+        ATr(negate(strLiteral(l, s, enc)), 2, dedupe(g), VBool, usesBuffer = true)
       case (VStrLit(s), VStr(enc)) if isEq =>
-        byteWise(enc, "comparison")
-        ATr(negate(strLiteral(r, s)), 2, dedupe(g), VBool, usesBuffer = true)
+        ATr(negate(strLiteral(r, s, enc)), 2, dedupe(g), VBool, usesBuffer = true)
       case (VStr(e1), VStr(e2)) if isEq =>
-        byteWise(e1, "comparison")
-        byteWise(e2, "comparison")
+        // equal strings in the same encoding are equal bytes, since the parser has checked that they are valid
         if (e1.toUpperCase != e2.toUpperCase && !(AdaTranslator.AsciiOrUtf8.contains(e1.toUpperCase) && AdaTranslator.AsciiOrUtf8.contains(e2.toUpperCase)))
           unsupported(s"comparison of a string in $e1 with a string in $e2")
         val b = useBuffer()
@@ -812,11 +811,71 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
   private def byteWise(enc: String, what: String): Unit =
     if (enc.toUpperCase.startsWith("UTF-16")) unsupported(s"$what of a string in $enc")
 
-  private def strLiteral(s: ATr, lit: String): String = {
+  /**
+    * The comparison of the string `s` in encoding `enc` with the literal `lit`. A literal of printable ASCII in an
+    * encoding of one byte per character is compared with `Equal_Literal`. Any other is encoded here into the bytes
+    * of the encoding of the string and compared as bytes, which is the comparison of the characters because the
+    * parser has checked that the string is valid, and each string has only one encoding.
+    */
+  private def strLiteral(s: ATr, lit: String, enc: String): String = {
     val b = useBuffer()
-    if (lit.exists(c => c < 32 || c > 126))
-      unsupported("string literal with characters outside printable ASCII")
-    s"Kaitai.Strings.Equal_Literal ($b, ${s.code}, \"${lit.replace("\"", "\"\"")}\")"
+    val e = enc.toUpperCase
+    val utf16 = e == "UTF-16LE" || e == "UTF-16BE"
+    if (!utf16 && lit.forall(c => c >= 32 && c <= 126))
+      s"Kaitai.Strings.Equal_Literal ($b, ${s.code}, \"${lit.replace("\"", "\"\"")}\")"
+    else
+      s"Kaitai.Byte_Arrays.Equal ($b, ${s.code}, ${aggregate(encodeLiteral(lit, enc))})"
+  }
+
+  /** The characters of a string as Unicode code points; a surrogate that is not half of a pair is no text. */
+  private def codePoints(lit: String): List[Int] = {
+    val out = scala.collection.mutable.ListBuffer[Int]()
+    var i = 0
+    while (i < lit.length) {
+      val c = lit.charAt(i)
+      if (Character.isHighSurrogate(c) && i + 1 < lit.length && Character.isLowSurrogate(lit.charAt(i + 1))) {
+        out += 0x10000 + ((c - 0xD800) << 10) + (lit.charAt(i + 1) - 0xDC00)
+        i += 2
+      } else if (Character.isSurrogate(c)) {
+        unsupported("string literal that is not valid Unicode text (a lone surrogate)")
+      } else {
+        out += c.toInt
+        i += 1
+      }
+    }
+    out.toList
+  }
+
+  /**
+    * The bytes of `lit` in the encoding `enc`, for the encodings that can be encoded here without a table: ASCII,
+    * UTF-8, ISO-8859-1, UTF-16LE and UTF-16BE. A character that the encoding cannot represent is an error: the
+    * string would be different from any string in that encoding. In any other encoding only ASCII characters are
+    * encoded, as the one byte they are in every encoding that is based on ASCII.
+    */
+  def encodeLiteral(lit: String, enc: String): List[Int] = {
+    val cps = codePoints(lit)
+    def cannot(): Nothing = unsupported(s"string literal with a character that a string in $enc cannot hold or that the Ada backend cannot encode in it (it encodes ASCII, UTF-8, ISO-8859-1, UTF-16LE and UTF-16BE, and for other encodings only ASCII characters)")
+    enc.toUpperCase match {
+      case "ASCII" | "US-ASCII" =>
+        cps.map(c => if (c < 128) c else cannot())
+      case "ISO-8859-1" | "ISO8859-1" | "LATIN1" | "ISO_8859-1" =>
+        cps.map(c => if (c < 256) c else cannot())
+      case "UTF-8" =>
+        cps.flatMap { c =>
+          if (c < 0x80) List(c)
+          else if (c < 0x800) List(0xC0 | (c >> 6), 0x80 | (c & 0x3F))
+          else if (c < 0x10000) List(0xE0 | (c >> 12), 0x80 | ((c >> 6) & 0x3F), 0x80 | (c & 0x3F))
+          else List(0xF0 | (c >> 18), 0x80 | ((c >> 12) & 0x3F), 0x80 | ((c >> 6) & 0x3F), 0x80 | (c & 0x3F))
+        }
+      case u @ ("UTF-16LE" | "UTF-16BE") =>
+        val units = cps.flatMap { c =>
+          if (c < 0x10000) List(c)
+          else { val v = c - 0x10000; List(0xD800 + (v >> 10), 0xDC00 + (v & 0x3FF)) }
+        }
+        units.flatMap(w => if (u == "UTF-16LE") List(w & 0xFF, w >> 8) else List(w >> 8, w & 0xFF))
+      case _ =>
+        cps.map(c => if (c < 128) c else cannot())
+    }
   }
 
   private def translateBoolOp(op: Ast.boolop, values: Seq[ATr]): ATr = {

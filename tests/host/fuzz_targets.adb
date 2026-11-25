@@ -1,5 +1,9 @@
 with Bits_Byte_Aligned;
+with Bits_After_Bytes;
 with Bits_Enum;
+with Bits_First_Type;
+with Bits_In_Repeat;
+with Bits_In_Types;
 with Bits_Simple;
 with Bytes_Pad_Term;
 with Bytes_Pad_Term_Equal;
@@ -130,6 +134,11 @@ package body Fuzz_Targets is
    --  No key, nothing to process, and a tree of nodes with one child each
    Extras_Chain : constant Bytes := (0, 0, 0, 1, 1, 2, 1, 3, 1, 4, 1, 5, 1, 6, 0);
 
+   Bits_In_Types_Data    : constant Bytes := (16#AB#, 16#CD#);
+   Bits_In_Repeat_Data   : constant Bytes := (16#AB#, 16#CD#, 16#EF#, 16#12#);
+   Bits_After_Bytes_Data : constant Bytes := (16#11#, 16#B6#, 16#2A#, 16#07#);
+   Bits_First_Type_Data  : constant Bytes := (16#B6#, 16#2A#, 16#07#);
+
    Subscripts_Data : constant Bytes := (2, 1, 16#34#, 16#12#, 16#78#, 16#56#, 10, 20, 30, 40, 5, 6, 7, 0, 8, 9);
 
    --  A string of two bytes in UTF-8 that is the pound sign
@@ -212,6 +221,18 @@ package body Fuzz_Targets is
 
          when Bits_Enum_Parser                 =>
             return Sample_Data.Fixed_Struct;
+
+         when Bits_In_Types_Parser             =>
+            return Bits_In_Types_Data;
+
+         when Bits_In_Repeat_Parser            =>
+            return Bits_In_Repeat_Data;
+
+         when Bits_After_Bytes_Parser          =>
+            return Bits_After_Bytes_Data;
+
+         when Bits_First_Type_Parser           =>
+            return Bits_First_Type_Data;
 
          when Bits_Byte_Aligned_Parser         =>
             return Sample_Data.Fixed_Struct;
@@ -497,6 +518,12 @@ package body Fuzz_Targets is
    procedure Run_Fixed_Struct is new Run_Parse_Only (Fixed_Struct.T, Fixed_Struct.Parse, Fixed_Struct.Valid);
    procedure Run_Bits_Simple is new Run_Parse_Only (Bits_Simple.T, Bits_Simple.Parse, Bits_Simple.Valid);
    procedure Run_Bits_Enum is new Run_Parse_Only (Bits_Enum.T, Bits_Enum.Parse, Bits_Enum.Valid);
+   procedure Run_Bits_In_Types is new Run_Parse_Only (Bits_In_Types.T, Bits_In_Types.Parse, Bits_In_Types.Valid);
+   procedure Run_Bits_In_Repeat is new Run_Parse_Only (Bits_In_Repeat.T, Bits_In_Repeat.Parse, Bits_In_Repeat.Valid);
+   procedure Run_Bits_After_Bytes is new
+     Run_Parse_Only (Bits_After_Bytes.T, Bits_After_Bytes.Parse, Bits_After_Bytes.Valid);
+   procedure Run_Bits_First_Type is new
+     Run_Parse_Only (Bits_First_Type.T, Bits_First_Type.Parse, Bits_First_Type.Valid);
    procedure Run_Bits_Byte_Aligned is new
      Run_Parse_Only (Bits_Byte_Aligned.T, Bits_Byte_Aligned.Parse, Bits_Byte_Aligned.Valid);
    procedure Run_Term_Strz is new Run_Parse_Only (Term_Strz.T, Term_Strz.Parse, Term_Strz.Valid);
@@ -897,6 +924,18 @@ package body Fuzz_Targets is
 
          when Bits_Enum_Parser                 =>
             Run_Bits_Enum (Input, Fields);
+
+         when Bits_In_Types_Parser             =>
+            Run_Bits_In_Types (Input, Fields);
+
+         when Bits_In_Repeat_Parser            =>
+            Run_Bits_In_Repeat (Input, Fields);
+
+         when Bits_After_Bytes_Parser          =>
+            Run_Bits_After_Bytes (Input, Fields);
+
+         when Bits_First_Type_Parser           =>
+            Run_Bits_First_Type (Input, Fields);
 
          when Bits_Byte_Aligned_Parser         =>
             Run_Bits_Byte_Aligned (Input, Fields);

@@ -271,7 +271,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     }
   }
 
-  /** `Parse` of the type begins with `Align_To_Byte`: the condition of `firstAlign` in `genSeqAttr`. */
+  /** The first field of the type is a bit field. */
   private def startsWithBits(c: ClassSpec): Boolean = c.seq.headOption.exists { a =>
     a.cond.repeat == NoRepeat && (a.dataType match {
       case _: BitsType | _: BitsType1 => true
@@ -280,33 +280,93 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     })
   }
 
+  /** The types that a field reads from the stream it is in; not those read through a substream. */
+  private def inStreamTypes(dt: DataType): List[ClassSpec] = dt match {
+    case ut: UserTypeInstream => ut.classSpec.toList
+    case st: SwitchType => st.cases.values.toList.flatMap(inStreamTypes)
+    case _ => Nil
+  }
+
+  /** The field is read as whole bytes, so that the stream is at a byte boundary after it. */
+  private def readsWholeBytes(a: AttrSpec): Boolean =
+    a.cond.repeat == NoRepeat && a.cond.ifExpr.isEmpty && (a.dataType match {
+      case _: BitsType | _: BitsType1 | EnumType(_, _, _: BitsType) => false
+      case _: UserTypeInstream | _: SwitchType => false
+      case _ => true
+    })
+
+  /** The classes of the descriptions that are compiled, with all that is nested in them. */
+  private lazy val bitWorld: List[ClassSpec] = {
+    val seen = ListBuffer[ClassSpec]()
+    def visit(c: ClassSpec): Unit =
+      if (!seen.exists(_ eq c)) {
+        seen += c
+        c.types.values.foreach(visit)
+        userTypesOf(c).foreach(visit)
+        c.upClass.foreach(visit)
+      }
+    allClasses.foreach(visit)
+    seen.toList
+  }
+
   /**
-    * A type whose first field is a bit field starts at a byte boundary here. In the other targets it goes on in the
-    * byte that bit fields before it left open. Both are the same where the stream is at a byte boundary when the type
-    * is parsed, which is certain after a field that is read as whole bytes without a condition or a repetition. Any
-    * other use of such a type in a sequence is rejected. An instance with a position is not such a use.
+    * The types that are certainly entered at a byte boundary: the greatest set in which every use of a type in the
+    * stream of another type of its own description is a field that is not repeated and either directly follows a field
+    * that is read as whole bytes, or is the first field of a type of the set. The top-level type of a description counts
+    * as entered at a byte boundary through its public `Parse`. A use through a substream or at a position does not
+    * count, since it opens or seeks to a byte boundary.
     */
-  private def checkBitStart(): Unit = {
-    def inStream(dt: DataType): List[ClassSpec] = dt match {
-      case ut: UserTypeInstream => ut.classSpec.toList
-      case st: SwitchType => st.cases.values.toList.flatMap(inStream)
-      case _ => Nil
+  private lazy val alignedTypes: java.util.Set[ClassSpec] = {
+    val set = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap[ClassSpec, java.lang.Boolean])
+    bitWorld.foreach(set.add)
+    val uses = for {
+      c <- bitWorld
+      (a, i) <- c.seq.zipWithIndex
+      u <- inStreamTypes(a.dataType)
+      if classFile(u) == classFile(c)
+    } yield (c, a, i, u)
+    var changed = true
+    while (changed) {
+      changed = false
+      uses.foreach { case (c, a, i, u) =>
+        if (set.contains(u) && !useAligned(c, a, i, u, set.contains(c))) { set.remove(u); changed = true }
+      }
     }
-    def aligns(a: AttrSpec): Boolean =
-      a.cond.repeat == NoRepeat && a.cond.ifExpr.isEmpty && (a.dataType match {
-        case _: BitsType | _: BitsType1 | EnumType(_, _, _: BitsType) => false
-        case _: UserTypeInstream | _: SwitchType => false
-        case _ => true
-      })
-    allClasses.foreach { c =>
+    set
+  }
+
+  /**
+    * The use of the type `u` in field `a`, the `i`th of `c`, is at a byte boundary where `c` is, or is not, entered at
+    * one. A field of the own type is parsed again from the stream that was kept for it, of which nothing is known, so it
+    * is not such a use.
+    */
+  private def useAligned(c: ClassSpec, a: AttrSpec, i: Int, u: ClassSpec, entered: Boolean): Boolean =
+    !(u eq c) && a.cond.repeat == NoRepeat && (if (i == 0) entered else readsWholeBytes(c.seq(i - 1)))
+
+  /**
+    * `Parse` of the type begins with `Align_To_Byte` and has the precondition that no bits are left: the type is
+    * entered at a byte boundary, and starts with a bit field or with a field of a type that has the precondition.
+    * Where it is not entered at one, the bit fields go on in the byte that the bit fields before it left open, as in
+    * the other targets, and `Parse` has neither.
+    */
+  private def needsAlign(c: ClassSpec, seen: List[ClassSpec] = Nil): Boolean =
+    alignedTypes.contains(c) && !seen.exists(_ eq c) && (startsWithBits(c) || c.seq.headOption.exists { a =>
+      a.cond.repeat == NoRepeat && inStreamTypes(a.dataType).exists(u => needsAlign(u, c :: seen))
+    })
+
+  /**
+    * A use of a type of another description that has the precondition must be where the stream is certainly at a byte
+    * boundary, since such a type is generated the same wherever it is used.
+    */
+  private def checkBitStart(): Unit =
+    allClasses.filter(c => classFile(c) == classFile(topClass)).foreach { c =>
       c.seq.zipWithIndex.foreach { case (a, i) =>
-        inStream(a.dataType).filter(startsWithBits).foreach { u =>
-          if (a.cond.repeat != NoRepeat || i == 0 || !aligns(c.seq(i - 1)))
-            fail(c.path, s"type ${u.nameAsStr} starts with a bit field and is used where the stream may be inside a byte")
+        inStreamTypes(a.dataType).filter(u => classFile(u) != classFile(c) && needsAlign(u)).foreach { u =>
+          if (!useAligned(c, a, i, u, alignedTypes.contains(c)))
+            fail(c.path, s"type ${u.nameAsStr} of another description starts with a bit field and is used where the stream may be inside a byte")
         }
       }
     }
-  }
 
   /** Only a type that contains itself is supported, no group of types that contain each other. */
   private def checkRecursion(): Unit =
@@ -1213,7 +1273,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     specB ++= parseNotes
     specB += s"procedure Parse ($parseParams)"
     specB += "with"
-    specB += s"  Pre  => ${KS}Is_Valid (S, Buffer),"
+    specB += s"  Pre  => ${KS}Is_Valid (S, Buffer)" +
+      (if (needsAlign(cs)) s"\n and then (if ${KS}OK (S) then ${KS}Bits_Left (S) = 0)," else ",")
     specB += s"  Post => ${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Old, S) and then Valid (This) = ${KS}OK (S)" +
       (if (belongsOk) " and then Belongs_To (This, Buffer)" else "") + (if (isRecursive(cs)) "," else ";")
     if (isRecursive(cs)) specB += "  Subprogram_Variant => (Decreases => Depth, Decreases => 1);"
@@ -1493,7 +1554,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     def wrapIf(stmts: List[String]): List[String] =
       if (!hasCond(a)) stmts else List(s"if This.${hasNm(bs)} then") ++ ind(stmts) ++ List("end if;")
     val align =
-      if (first && a.cond.repeat == NoRepeat && (a.dataType match {
+      if (first && alignedTypes.contains(cs) && a.cond.repeat == NoRepeat && (a.dataType match {
             case _: BitsType | _: BitsType1 => true
             case EnumType(_, _, _: BitsType) => true
             case _ => false
@@ -1679,7 +1740,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val nm = plain(idRaw(a.id))
     val bs = base(idRaw(a.id))
     val firstAlign =
-      if (first && a.cond.repeat == NoRepeat && (a.dataType match {
+      if (first && alignedTypes.contains(cs) && a.cond.repeat == NoRepeat && (a.dataType match {
             case _: BitsType | _: BitsType1 => true
             case EnumType(_, _, _: BitsType) => true
             case _ => false

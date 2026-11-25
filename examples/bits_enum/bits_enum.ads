@@ -36,7 +36,8 @@ is
 
    procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
    with
-     Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
+     Pre  =>
+       Kaitai.Streams.Is_Valid (S, Buffer) and then (if Kaitai.Streams.OK (S) then Kaitai.Streams.Bits_Left (S) = 0),
      Post =>
        Kaitai.Streams.Is_Valid (S, Buffer)
        and then Kaitai.Streams.Advanced (S'Old, S)

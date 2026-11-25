@@ -84,12 +84,13 @@ order, `UTF-32` and the like, `valid` on a field whose type is chosen by
 strings in different encodings other than ASCII and UTF-8, string literals with a character that the compiler cannot encode (it encodes ASCII, UTF-8, ISO-8859-1, UTF-16LE and UTF-16BE, and only ASCII characters in other encodings such as SJIS or IBM437), the ordering of strings in other encodings than ASCII, UTF-8 and ISO-8859-1, and `.length` of
 strings in Shift_JIS, Big5 or EUC-KR.
 
-A type whose first field is a bit field starts at a byte boundary here,
-while in the other targets it goes on in the byte that bit fields before it
-left open. Such a type is accepted as a field only where the stream is
-certainly at a byte boundary (directly after a field of whole bytes without
-condition or repetition); other uses are rejected (see "What differs" in
-`docs/codegen.md`).
+A type that starts with bit fields goes on in the byte that the bit fields
+before it left open, as in the other targets. Where it is certainly entered
+at a byte boundary, its `Parse` keeps a leading `Align_To_Byte` and has the
+precondition that no bits are left; see "Fields" and "What differs" in
+`docs/codegen.md`. The one use that is rejected is that of the top-level type
+of another description, which has the precondition, where the stream may be
+inside a byte.
 
 ## Writing
 

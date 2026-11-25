@@ -10,7 +10,7 @@
   import path `formats/ks_path` (`imports_abs_abs` and `imports_abs_rel` generate
   with it) and, if `KSF_DIR` names a checkout of `kaitai_struct_formats`, that
   as well.
-- - Compiler: `valid` on a field whose type is chosen by `switch-on` is checked when
+- Compiler: `valid` on a field whose type is chosen by `switch-on` is checked when
   all cases are integers and there is a `_` case (valid_switch); it was rejected.
 - Compiler: a string is compared with a literal that has characters outside printable
   ASCII by encoding the literal into the bytes of the encoding of the string (ASCII,
@@ -26,6 +26,12 @@
   field in `U64`, also in `valid`; an instance that is such a literal returns `U64`; an
   enumeration with such values has its functions on `U64` (valid_long, valid_short,
   yaml_ints, enum_long_range_u).
+- Compiler: a type that starts with bit fields goes on in the byte that the bit fields
+  before it left open, as in the other targets, where the stream may be inside a byte.
+  Where it is certainly entered at a byte boundary, its `Parse` keeps the leading
+  `Align_To_Byte` and has the precondition that no bits are left, which callers prove.
+  Descriptions that were rejected for this, such as `default_bit_endian_mod`, are
+  generated.
 
 ## 0.1.0 (2026-11-25)
 

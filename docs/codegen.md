@@ -141,6 +141,10 @@ before `Parse` is done, `Parse` starts with `This := (others => <>);`. It
 does not do so otherwise, as GNATprove would report an assignment without
 effect.
 
+The precondition of `Parse` is `Is_Valid (S, Buffer)`. It has a second part,
+that no bits are left, where the type starts with bit fields and is entered at
+a byte boundary; see Fields.
+
 Nothing in `Parse` returns early. After a failure the remaining reads do
 nothing, since a failed stream stays failed, and the values they deliver are
 zero or empty.
@@ -168,10 +172,33 @@ A size is the value of an expression and goes through `To_Size`. A value
 that is negative or that no buffer can have then makes the read fail with
 `End_Of_Stream`, without a check in the parser.
 
-A run of bit fields starts at a byte boundary. Reads that are not bit fields
-align by themselves. Where a run of bit fields is the first thing a `Parse`
-reads, it starts with `Align_To_Byte (S)`, which lets the compiler resolve
-the constant widths.
+A run of bit fields goes on in the byte that the bit fields before it left
+open. Reads that are not bit fields align by themselves. Where a type that
+starts with bit fields is certainly entered at a byte boundary, its `Parse`
+starts with `Align_To_Byte (S)`, which does nothing there but lets the
+compiler resolve the constant widths, and has the precondition
+`(if Kaitai.Streams.OK (S) then Kaitai.Streams.Bits_Left (S) = 0)`, which
+every caller proves.
+
+A type is entered at a byte boundary if each of its uses in the stream of
+a type of the same description (a field of the type, or of a case of a
+`switch-on`) is not repeated, is not a field of the own type, and either
+directly follows a field without condition and repetition that is read as
+whole bytes, or is the first field of a type that is entered at a byte
+boundary. A field of the own type is parsed again from a stream that was
+kept for it, of which nothing is known. A field with `size` or `terminator`
+is not a use in the stream: it opens one of its own at a byte boundary, as
+does an instance with a position. The top-level type of a description counts
+as entered at a byte boundary through its public `Parse`.
+
+A type that starts with bit fields and is not entered at a byte boundary has
+neither the precondition nor the `Align_To_Byte`: its bit fields go on where
+the stream is, also from one element of a repetition to the next. The
+precondition is given to the types that start with bit fields and to those
+whose first field is a type that has it, and to no other. A top-level type is
+generated the same wherever it is used, so a description that uses the
+top-level type of another description, one that has the precondition, where
+the stream may be inside a byte is rejected.
 
 A string is a slice like a byte array; only its encoding is checked.
 
@@ -639,16 +666,11 @@ Where the rules above are silent, the compiler does the following.
 - An expression that overflows 64 bits makes the stream fail with
   `Arithmetic_Error`. Integer division rounds down, as the tests of Kaitai
   Struct ask for.
-- A type whose first field is a bit field starts at a byte boundary, since
-  its `Parse` begins with `Align_To_Byte`. In the other targets such a type
-  goes on in the byte that bit fields before it left open. Both are the same
-  where the stream is at a byte boundary when the type is parsed. The
-  compiler therefore accepts such a type as a field only directly after a
-  field that is read as whole bytes and has no condition and no repetition,
-  and not repeated itself; every other use in a sequence is rejected, also
-  where the bit fields before it happen to fill their bytes. Instances with
-  a position are not affected. The `Parse` of the top-level type is meant
-  for a stream at a byte boundary.
+- A type that starts with bit fields goes on in the byte that the bit fields
+  before it left open, as in the other targets, but only where the stream is
+  not certainly at a byte boundary. Where it is (see Fields), `Parse` starts
+  with `Align_To_Byte` and has a precondition that no bits are left, which
+  changes nothing for the values and lets the compiler fold the widths.
 
 ## Writing
 
@@ -706,7 +728,9 @@ Where the section was silent, the compiler does the following.
 
 - A bit field after a field that is not a bit field starts a new byte, like
   the reader. `Align_To_Byte (W)` is the first statement of `Write` exactly
-  where `Parse` starts with `Align_To_Byte (S)`.
+  where `Parse` starts with `Align_To_Byte (S)`, that is where the type that
+  starts with bit fields is entered at a byte boundary; elsewhere its bit
+  fields go on in the byte that is open, as they do when parsed.
 - Bytes or a string with a size and a terminator or padding: `Write_Padded
   (…, Size, Pad)`, the padding byte being `pad-right` or else the
   terminator. Where `pad-right` is another byte than the terminator, the

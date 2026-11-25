@@ -1,5 +1,9 @@
+with Bits_After_Bytes;
 with Bits_Byte_Aligned;
 with Bits_Enum;
+with Bits_First_Type;
+with Bits_In_Repeat;
+with Bits_In_Types;
 with Bits_Simple;
 with Bytes_Pad_Term;
 with Bytes_Pad_Term_Equal;
@@ -152,6 +156,113 @@ package body Examples_Tests is
       Parse (Sample_Fixed_Struct (1 .. 27), S, This);
       Check (not Valid (This) and then Status (S) = End_Of_Stream, "a file one byte short is rejected");
    end Test_Bits_Simple;
+
+   --  Bit fields in types and in repetitions: a type that starts with bit fields goes on in the byte that the bit
+   --  fields before it left open
+
+   procedure Test_Bits_In_Types is
+      use Bits_In_Types;
+      Data   : constant Bytes := (16#AB#, 16#CD#);
+      S      : Stream := Open (Data);
+      This   : Bits_In_Types.T;
+      Target : Bytes (1 .. 2) := (others => 16#EE#);
+      W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples bits_in_types");
+      Parse (Data, S, This);
+      Check (Valid (This) and then Pos (S) = 2, "parses two bytes");
+      if Valid (This) then
+         Check (A (This) = 16#A#, "a");
+         Check (Child_Type.Lo (C (This)) = 16#B#, "c.lo is in the byte that a left open");
+         Check (D (This) = 16#CD#, "d");
+         Write (This, Target, W);
+         Check (Kaitai.Writers.OK (W) and then Size (Kaitai.Writers.Written (W)) = 2 and then Target = Data, "written");
+      end if;
+
+      S := Open (Data (1 .. 1));
+      Parse (Data (1 .. 1), S, This);
+      Check (not Valid (This) and then Status (S) = End_Of_Stream, "a file one byte short is rejected");
+   end Test_Bits_In_Types;
+
+   procedure Test_Bits_In_Repeat is
+      use Bits_In_Repeat;
+      Data    : constant Bytes := (16#AB#, 16#CD#, 16#EF#, 16#12#);
+      Expect  : constant array (Length range 0 .. 2) of U64 := (16#B#, 16#C#, 16#D#);
+      S       : Stream := Open (Data);
+      This    : Bits_In_Repeat.T;
+      Element : Nib_Type.T;
+      Target  : Bytes (1 .. 4) := (others => 16#EE#);
+      W       : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples bits_in_repeat");
+      Parse (Data, S, This);
+      Check (Valid (This) and then Pos (S) = 3, "parses three bytes");
+      if Valid (This) then
+         Check (A (This) = 16#A#, "a");
+         Check (Items_Count (This) = 3, "three items");
+         for I in Expect'Range loop
+            Get_Items (Data, This, I, Element);
+            Check (Nib_Type.Valid (Element) and then Nib_Type.Lo (Element) = Expect (I), "item");
+         end loop;
+         Check (D (This) = 16#EF#, "d");
+         Write (Data, This, Target, W);
+         Check
+           (Kaitai.Writers.OK (W)
+            and then Size (Kaitai.Writers.Written (W)) = 3
+            and then Target (1 .. 3) = Data (1 .. 3),
+            "written");
+      end if;
+   end Test_Bits_In_Repeat;
+
+   procedure Test_Bits_After_Bytes is
+      use Bits_After_Bytes;
+      Data   : constant Bytes := (16#11#, 16#B6#, 16#2A#, 16#07#);
+      S      : Stream := Open (Data);
+      This   : Bits_After_Bytes.T;
+      Target : Bytes (1 .. 4) := (others => 16#EE#);
+      W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples bits_after_bytes");
+      Parse (Data, S, This);
+      Check (Valid (This) and then Pos (S) = 4, "parses four bytes");
+      if Valid (This) then
+         Check (Tag (This) = 16#11#, "tag");
+         Check (Header_Type.Valid (Head (This)), "head");
+         Check
+           (Flags_Type_Type.Ready (Header_Type.Flags (Head (This)))
+            and then Flags_Type_Type.Mode (Header_Type.Flags (Head (This))) = 3,
+            "head.flags");
+         Check (Header_Type.Level (Head (This)) = 6, "head.level goes on in the byte that flags left open");
+         Check (Header_Type.Size (Head (This)) = 16#2A#, "head.size");
+         Check (Tail (This) = 7, "tail");
+         Write (This, Target, W);
+         Check (Kaitai.Writers.OK (W) and then Size (Kaitai.Writers.Written (W)) = 4 and then Target = Data, "written");
+      end if;
+   end Test_Bits_After_Bytes;
+
+   procedure Test_Bits_First_Type is
+      use Bits_First_Type;
+      Data   : constant Bytes := (16#B6#, 16#2A#, 16#07#);
+      S      : Stream := Open (Data);
+      This   : Bits_First_Type.T;
+      Target : Bytes (1 .. 3) := (others => 16#EE#);
+      W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples bits_first_type");
+      Parse (Data, S, This);
+      Check (Valid (This) and then Pos (S) = 3, "parses three bytes");
+      if Valid (This) then
+         Check
+           (Flags_Type_Type.Ready (Header_Type.Flags (Head (This)))
+            and then Flags_Type_Type.Mode (Header_Type.Flags (Head (This))) = 3,
+            "head.flags");
+         Check (Header_Type.Level (Head (This)) = 6, "head.level");
+         Check (Header_Type.Size (Head (This)) = 16#2A#, "head.size");
+         Check (Tail (This) = 7, "tail");
+         Write (This, Target, W);
+         Check (Kaitai.Writers.OK (W) and then Size (Kaitai.Writers.Written (W)) = 3 and then Target = Data, "written");
+      end if;
+   end Test_Bits_First_Type;
 
    procedure Test_Term_Strz is
       use Term_Strz;
@@ -1312,6 +1423,10 @@ package body Examples_Tests is
       Test_Hello_World;
       Test_Fixed_Struct;
       Test_Bits_Simple;
+      Test_Bits_In_Types;
+      Test_Bits_In_Repeat;
+      Test_Bits_After_Bytes;
+      Test_Bits_First_Type;
       Test_Term_Strz;
       Test_Repeat_N_Struct;
       Test_Repeat_Eos_U4;

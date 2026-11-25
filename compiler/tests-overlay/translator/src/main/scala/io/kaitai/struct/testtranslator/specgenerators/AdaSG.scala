@@ -223,7 +223,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
         if (r != null) return r
         v.dataType match {
           case et: EnumType => AInt(s"$pkg.${bs}_Value ($args)", "S64", et.enumSpec)
-          case _: IntType => AInt(s"$pkg.$nm ($args)", "S64", None)
+          case _: IntType => AInt(s"$pkg.$nm ($args)", if (cc.valueInstanceIsU64(cs, v)) "U64" else "S64", None)
           case _: BooleanType => ABool(s"$pkg.$nm ($args)")
           case _: BytesType => ABytes(s"$pkg.$nm ($args)", buf)
           case _: StrType => AStr(s"$pkg.$nm ($args)", instanceEncoding(cs, v), buf)

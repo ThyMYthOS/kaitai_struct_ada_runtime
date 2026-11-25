@@ -5,6 +5,7 @@ with Bytes_Pad_Term;
 with Bytes_Pad_Term_Equal;
 with Default_Endian_Expr_Is_Le;
 with Enum_0;
+with Enum_Long_Range_U;
 with Expr_1;
 with Expr_Sizeof_Type_0;
 with Expr_Sizeof_Value_Sized;
@@ -40,7 +41,9 @@ with Test_Support;   use Test_Support;
 with Valid_Fail_Eq_Int;
 with Valid_Fail_Range_Str;
 with Valid_Fail_Repeat_Eq_Int;
+with Valid_Long;
 with Valid_Switch;
+with Yaml_Ints;
 
 package body Examples_Tests is
 
@@ -1211,6 +1214,99 @@ package body Examples_Tests is
       Check (Valid (This) and then A_Gt_Pound (Data, This), "a larger character");
    end Test_Str_Ordering;
 
+   procedure Test_Valid_Long is
+      use Valid_Long;
+      Data : Bytes := Sample_Data.Fixed_Struct;
+      S    : Stream := Open (Data);
+      This : Valid_Long.T;
+   begin
+      Group ("examples valid_long");
+      Parse (Data, S, This);
+      Check (Valid (This), "the largest value of u8 is valid, as 18446744073709551615 in U64");
+      if Valid (This) then
+         Check (Uint64 (This) = U64'Last and then Sint64 (This) = -1, "uint64 and sint64");
+      end if;
+      Data (32) := 16#FE#;
+      S := Open (Data);
+      Parse (Data, S, This);
+      Check (not Valid (This) and then Status (S) = Validation_Not_Equal, "a value of u8 that is not the largest");
+      Data := Sample_Data.Fixed_Struct;
+      Data (33) := 16#FE#;
+      S := Open (Data);
+      Parse (Data, S, This);
+      Check (not Valid (This), "a letter of the next string");
+   end Test_Valid_Long;
+
+   procedure Test_Yaml_Ints is
+      use Yaml_Ints;
+      S    : Stream := Open (Sample_Fixed_Struct);
+      This : Yaml_Ints.T;
+   begin
+      Group ("examples yaml_ints");
+      Parse (Sample_Fixed_Struct, S, This);
+      Check (Valid (This), "parses");
+      if Valid (This) then
+         Check (Test_U4_Dec (This) = 16#FFFF_FFFF# and then Test_U4_Hex (This) = 16#FFFF_FFFF#, "32 bits");
+         Check
+           (Test_U8_Dec (This) = 16#FFFF_FFFF_FFFF_FFFF# and then Test_U8_Hex (This) = U64'Last,
+            "an integer above the largest S64 is a U64");
+      end if;
+   end Test_Yaml_Ints;
+
+   procedure Test_Enum_Long_Range_U is
+      use Enum_Long_Range_U;
+      Data : Bytes (1 .. 32) :=
+        (0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         0,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         0,
+         0,
+         0,
+         1,
+         0,
+         0,
+         0,
+         0,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#,
+         16#FF#);
+      S    : Stream := Open (Data);
+      This : Enum_Long_Range_U.T;
+   begin
+      Group ("examples enum_long_range_u");
+      Parse (Data, S, This);
+      Check (Valid (This) and then Is_EOF (S), "parses");
+      if Valid (This) then
+         Check (F1 (This) = Constants_Zero, "0");
+         Check (F2 (This) = Constants_Int_Max, "2**32-1");
+         Check (F3 (This) = Constants_Int_Over_Max, "2**32");
+         Check (F4_Value (This) = U64'Last and then F4 (This) = Constants_Long_Max, "2**64-1 is mapped to its label");
+         Check (To_Integer (F4 (This)) = U64'Last, "and back");
+      end if;
+      Data (32) := 16#FE#;
+      S := Open (Data);
+      Parse (Data, S, This);
+      Check (Valid (This) and then not Is_Constants_Enum (F4_Value (This)), "another value has no label");
+   end Test_Enum_Long_Range_U;
+
    procedure Run is
    begin
       Test_Hello_World;
@@ -1256,6 +1352,9 @@ package body Examples_Tests is
       Test_Expr_To_I_Trailing;
       Test_Valid_Fail_Range_Str;
       Test_Str_Ordering;
+      Test_Valid_Long;
+      Test_Yaml_Ints;
+      Test_Enum_Long_Range_U;
    end Run;
 
 end Examples_Tests;

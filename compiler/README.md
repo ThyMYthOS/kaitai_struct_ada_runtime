@@ -62,7 +62,7 @@ Expressions: integer arithmetic in S64 with the guards of `Kaitai.Arithmetic`
 (dropped where interval arithmetic shows they hold), comparisons, `and`,
 `or`, `not`, `?:`, enumeration labels, fields of nested values, `.size` of
 repetitions, `_io.size/pos/eof`, `.length`, `.to_i` (of a literal as well: computed by the compiler), `.min/.max/.first/.last`
-of bytes, subscripts of bytes and of repetitions of integers of a fixed size, comparison of bytes and strings with literals (of any characters in the encodings above), `sizeof` and `_sizeof` (also `x._sizeof`).
+of bytes, subscripts of bytes and of repetitions of integers of a fixed size, comparison of bytes and strings with literals (of any characters in the encodings above), integers up to 2**64-1 as operands of a comparison with an unsigned field and as the value of an instance, enumerations with values up to 2**64-1 on unsigned fields, `sizeof` and `_sizeof` (also `x._sizeof`).
 
 ## What is rejected
 
@@ -74,7 +74,7 @@ elsewhere or in a description whose top-level type contains itself, the
 key `parent` on a field whose type uses `_parent`, `_parent`/`_root` values
 that are not integers, booleans or enumerations, `process` that is custom, on a string, on a repeated field, on
 a switch field or on a parse instance, and an expression or `valid` that
-depends on a processed value, opaque types, floating-point arithmetic,
+depends on a processed value, opaque types, floating-point arithmetic, integers above 2**63-1 in arithmetic, compared with signed values, or in enumerations of signed fields,
 string concatenation, `substring`, `reverse`, `to_s`, array subscripts and
 arrays in expressions beyond `.size` and subscripts of repetitions of other elements, `_index`, casts, parameters of other
 types, `repeat` on parse instances or on switch fields, `valid` on other repeated

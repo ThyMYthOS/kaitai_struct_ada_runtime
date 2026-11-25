@@ -201,6 +201,11 @@ with Pre => Is_Kind_Enum (Value);
 function To_Integer (Value : Kind_Enum) return S64;
 ```
 
+An enumeration with a value above the largest S64 (up to 2**64-1, and no negative value) has `Is_Kind_Enum`,
+`To_Kind_Enum` and `To_Integer` on `U64` instead of `S64`. It is supported on fields and parse instances of unsigned
+integers, which hand the integer on as it was read (`Is_Kind_Enum (F4_Value (This))`); a signed field, a value
+instance, a parameter and `valid: in-enum` with such an enumeration are rejected.
+
 A field with an enumeration keeps the integer that was read, because a value
 that the enumeration does not name is not an error. It has two accessors:
 `Kind_Value` for the integer and `Kind` for the literal, with
@@ -335,6 +340,14 @@ and a `u8` that does not fit makes the expression undefined.
 | `x.size` of a repetition | `X_Count` |
 | `_io.size`, `_io.pos`, `_io.eof` | `Size (S)`, `Pos (S)`, `Is_EOF (S)` |
 | `sizeof<t>`, `_sizeof`, `x._sizeof` | the size in bytes, a constant of the compiler; a begun byte counts as a whole one, and a type or value of dynamic size is an error of the compiler, as in the other targets |
+
+An integer above the largest S64, up to 2**64-1, is not an S64 and takes part in no arithmetic. It is accepted as an
+operand of a comparison with an unsigned integer field (`u1` .. `u8`, `bN`) or with another literal, and the
+comparison is made in `U64`: `This.Uint64 /= Kaitai.Types.U64 (18446744073709551615)`. The field is not converted to
+`S64`, so the comparison needs no condition that it fits, and it is true or false for every value of the field, also
+`valid` with `eq`, `min`, `max`, `any-of` and `range`. Compared with a signed value or an expression, such a literal is
+rejected. A value instance that is such a literal is a function that returns `U64`; it cannot be used in other
+expressions.
 
 Every expression has a condition under which it is defined, the conjunction
 of what the table names for its parts, in the order of evaluation and joined

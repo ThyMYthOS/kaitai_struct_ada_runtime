@@ -170,8 +170,16 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
   private val instInfo = mutable.Map[(String, String), (Boolean, Boolean)]()
 
+  /** A value instance that is an integer literal above the largest S64 (and below 2**64): it is a U64, and nothing else uses it */
+  private def bigLiteral(v: ValueInstanceSpec): Option[BigInt] = v.value match {
+    case Ast.expr.IntNum(n) if n > AdaTranslator.S64Max && n <= AdaTranslator.U64Max && v.ifExpr.isEmpty => Some(n)
+    case _ => None
+  }
+
+  override def valueInstanceIsU64(cs: ClassSpec, inst: ValueInstanceSpec): Boolean = bigLiteral(inst).isDefined
+
   private def valueInfo(cs: ClassSpec, v: ValueInstanceSpec): (Boolean, Boolean) =
-    instInfo.getOrElseUpdate((cs.nameAsStr, v.id.name), {
+    if (bigLiteral(v).isDefined) (false, false) else instInfo.getOrElseUpdate((cs.nameAsStr, v.id.name), {
       val saved = provider.nowClass
       provider.nowClass = cs
       try {
@@ -1071,6 +1079,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       case ValidationInEnum() =>
         dt match {
           case et: EnumType =>
+            if (isWide(et.enumSpec.get)) unsupported("`valid: in-enum` with an enumeration that has a value beyond 63 bits")
             val t = fromValueChecked(dt, target, rc)
             val chk = s"${enumTypeName(et.enumSpec.get).split('.').dropRight(1).mkString(".")}"
             val isFn = (if (chk.isEmpty) "" else chk + ".") + "Is_" + enumTy(et.enumSpec.get)
@@ -1315,23 +1324,29 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
   // enumerations
 
+  /** An enumeration with a value that is above the largest S64: its functions take a U64 */
+  private def isWide(e: EnumSpec): Boolean = e.map.keys.exists(_ > AdaTranslator.S64Max)
+
   private def genEnum(e: EnumSpec): List[String] = {
     val n = enumTy(e)
     val entries = e.map.toList
+    val wide = isWide(e)
     entries.foreach { case (v, _) =>
-      if (v < AdaTranslator.S64Min || v > AdaTranslator.S64Max)
-        fail(e.path, s"enum value $v does not fit into 64 bits")
+      if (v < AdaTranslator.S64Min || v > AdaTranslator.U64Max || (wide && v < 0))
+        fail(e.path, s"enum value $v does not fit into 64 bits" + (if (wide && v < 0) " together with values above 2**63-1" else ""))
     }
+    // the functions take the integer as it was read: a U64 if a value is above the largest S64
+    val intT = if (wide) KT + "U64" else KT + "S64"
     val lits = entries.map { case (_, s) => enumLit(e, s.name) }
     val values = entries.map(_._1.toString)
     val out = ListBuffer[String]()
     out ++= docLines(DocSpec(Some(s"enum ${e.name.last}"), Nil))
     out += s"type $n is (${lits.mkString(", ")});"
     out += ""
-    out += s"function Is_$n (Value : ${KT}S64) return Boolean"
+    out += s"function Is_$n (Value : $intT) return Boolean"
     out += s"is (Value in ${values.mkString(" | ")});"
     out += ""
-    out += s"function To_$n (Value : ${KT}S64) return $n"
+    out += s"function To_$n (Value : $intT) return $n"
     if (entries.exists(_._1 < 0)) {
       // GNAT is very slow on a case with a negative choice over a 64-bit type
       opTypes += "S64"
@@ -1347,7 +1362,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     }
     out += s"with Pre => Is_$n (Value);"
     out += ""
-    out += s"function To_Integer (Value : $n) return ${KT}S64"
+    out += s"function To_Integer (Value : $n) return $intT"
     if (entries.exists(_._1 < 0)) {
       val chain = entries.dropRight(1).zipWithIndex.map { case ((v, s), i) =>
         s"${if (i == 0) "if" else "elsif"} Value = ${enumLit(e, s.name)} then $v"
@@ -1611,6 +1626,16 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val tyName = enumTypeName(spec)
     val pkgPrefix = tyName.split('.').dropRight(1).mkString(".")
     val q = if (pkgPrefix.isEmpty) "" else pkgPrefix + "."
+    if (isWide(spec)) {
+      // the integer is an unsigned one and goes to the functions as a U64
+      if (!Set("U8", "U16", "U32", "U64").contains(ada.stripPrefix(KT)))
+        throw new AdaUnsupported(s"enumeration ${spec.name.last} with a value beyond 63 bits on something that is not an unsigned integer")
+      def asU64(x: String) = if (ada == KT + "U64") x else s"${KT}U64 ($x)"
+      accessor(o, s"${bs}_Value", ada, pre, None, s"This.$comp", comment = comment)
+      accessor(o, nm, tyName, s"$pre and then ${q}Is_${enumTy(spec)} (${asU64(s"${bs}_Value (This)")})", None,
+        s"${q}To_${enumTy(spec)} (${asU64(s"This.$comp")})")
+      return
+    }
     val t = guard(Nil)(tr.fromValue(et, s"${bs}_Value (This)", Nil))
     accessor(o, s"${bs}_Value", ada, pre, None, s"This.$comp", comment = comment)
     val enumPre = (List(pre) ++ t.guards ++ List(s"${q}Is_${enumTy(spec)} (${t.code})")).mkString(" and then ")
@@ -2417,6 +2442,15 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val path = v.path
     val saveBuf = tr.buffer
     tr.buffer = Some("Buffer"); tr.io = None; tr.thisName = "This"; tr.iterator = None; tr.knownValid = Set()
+    bigLiteral(v).foreach { n =>
+      // not an S64, so the value is a U64 that expressions cannot use
+      o.pub += s"   --  instance ${v.id.humanReadable}"
+      o.pub ++= ind(docLines(v.doc))
+      o.pub += ""
+      accessor(o, nm, KT + "U64", "Valid (This)", None, n.toString, "This : T")
+      tr.buffer = saveBuf
+      return
+    }
     val t = guard(path)(tr.translate(v.value))
     val ct = v.ifExpr.map(c => guard(path)(tr.translate(c)))
     val (hasGuard, usesBuf) = valueInfo(cs, v)
@@ -2439,6 +2473,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     }
     v.dataType match {
       case et: EnumType =>
+        if (isWide(et.enumSpec.get)) throw new AdaUnsupported("value instance of an enumeration that has a value beyond 63 bits")
         val ada = KT + "S64"
         accessor(o, s"${bs}_Value", ada, pre, None, t.code, params)
         val spec = et.enumSpec.get

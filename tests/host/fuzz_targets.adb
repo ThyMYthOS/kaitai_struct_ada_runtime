@@ -5,6 +5,7 @@ with Bytes_Pad_Term;
 with Bytes_Pad_Term_Equal;
 with Default_Endian_Expr_Is_Le;
 with Enum_0;
+with Enum_Long_Range_U;
 with Expr_1;
 with Expr_Sizeof_Type_0;
 with Expr_Sizeof_Value_Sized;
@@ -39,8 +40,10 @@ with Term_Strz4;
 with Valid_Fail_Eq_Int;
 with Valid_Fail_Range_Str;
 with Valid_Fail_Repeat_Eq_Int;
+with Valid_Long;
 with Valid_Switch;
 with Write_Model;
+with Yaml_Ints;
 
 package body Fuzz_Targets is
 
@@ -142,6 +145,41 @@ package body Fuzz_Targets is
 
    --  Two bytes that are within the range of the string "P" .. "P1" ("P1")
    Range_Str_Data : constant Bytes := (16#50#, 16#31#, 0, 0);
+
+   --  Four values of an enumeration of values above the largest S64: 0, 2**32-1, 2**32 and 2**64-1
+   Enum_Long_Data : constant Bytes :=
+     (0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      0,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#,
+      16#FF#);
 
    --  Two values that are 0x12345678, and none: the parser accepts no others
    Repeat_Eq_Int_Data : constant Bytes := (16#12#, 16#34#, 16#56#, 16#78#, 16#12#, 16#34#, 16#56#, 16#78#);
@@ -270,6 +308,15 @@ package body Fuzz_Targets is
 
          when Str_Ordering_Parser              =>
             return Str_Ordering_Data;
+
+         when Valid_Long_Parser                =>
+            return Sample_Data.Fixed_Struct;
+
+         when Yaml_Ints_Parser                 =>
+            return Sample_Data.Fixed_Struct;
+
+         when Enum_Long_Range_U_Parser         =>
+            return Enum_Long_Data;
       end case;
    end Seed;
 
@@ -817,6 +864,13 @@ package body Fuzz_Targets is
       end if;
    end Run_Str_Ordering;
 
+   procedure Run_Valid_Long is new Run_Parse_Only (Valid_Long.T, Valid_Long.Parse, Valid_Long.Valid);
+
+   procedure Run_Yaml_Ints is new Run_Parse_Only (Yaml_Ints.T, Yaml_Ints.Parse, Yaml_Ints.Valid);
+
+   procedure Run_Enum_Long_Range_U is new
+     Run_Parse_Only (Enum_Long_Range_U.T, Enum_Long_Range_U.Parse, Enum_Long_Range_U.Valid);
+
    procedure Run (T : Target; Input : Bytes; Argument : U16; Fields : out Natural) is
    begin
       case T is
@@ -939,6 +993,15 @@ package body Fuzz_Targets is
 
          when Str_Ordering_Parser              =>
             Run_Str_Ordering (Input, Fields);
+
+         when Valid_Long_Parser                =>
+            Run_Valid_Long (Input, Fields);
+
+         when Yaml_Ints_Parser                 =>
+            Run_Yaml_Ints (Input, Fields);
+
+         when Enum_Long_Range_U_Parser         =>
+            Run_Enum_Long_Range_U (Input, Fields);
       end case;
    end Run;
 

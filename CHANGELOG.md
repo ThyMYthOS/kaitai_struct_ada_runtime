@@ -22,6 +22,10 @@
   number is a conversion error in every target and makes the expression undefined), and
   strings in ASCII, UTF-8 and ISO-8859-1 are ordered (`<`, `>`, `valid` with `min` and
   `max`) with `Byte_Arrays.Compare` (expr_to_i_trailing, valid_fail_range_str).
+- Compiler: integers above 2**63-1 (up to 2**64-1) are compared with an unsigned
+  field in `U64`, also in `valid`; an instance that is such a literal returns `U64`; an
+  enumeration with such values has its functions on `U64` (valid_long, valid_short,
+  yaml_ints, enum_long_range_u).
 
 ## 0.1.0 (2026-11-25)
 

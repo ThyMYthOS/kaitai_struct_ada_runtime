@@ -22,6 +22,8 @@ case object VBytes extends VT
 case class VBytesLit(bytes: Seq[Int]) extends VT
 case class VStr(encoding: String) extends VT
 case class VStrLit(s: String) extends VT
+/** An integer literal above the largest S64 and below 2**64; it exists only as an operand of a comparison */
+case class VU64Lit(n: BigInt) extends VT
 case class VUser(cs: ClassSpec) extends VT
 /** The number of elements of a repetition; `code` of the translation is that number as S64 */
 case object VArray extends VT
@@ -72,6 +74,8 @@ trait AdaTranslatorEnv {
   def encodingName(enc: String, path: List[String]): String
   /** True if the value instance function needs the buffer as a parameter */
   def valueInstanceUsesBuffer(cs: ClassSpec, inst: ValueInstanceSpec): Boolean
+  /** True if the value instance is an integer literal that does not fit S64, which makes it a U64 that no expression can use */
+  def valueInstanceIsU64(cs: ClassSpec, inst: ValueInstanceSpec): Boolean
   /** True if the field is stored in the record (it is not a `contents` field) */
   def isStored(attr: AttrLikeSpec): Boolean
   /**
@@ -91,6 +95,7 @@ object AdaTranslator {
 
   val S64Min: BigInt = -(BigInt(1) << 63)
   val S64Max: BigInt = (BigInt(1) << 63) - 1
+  val U64Max: BigInt = (BigInt(1) << 64) - 1
   val Half: (BigInt, BigInt) = (-(BigInt(1) << 31), (BigInt(1) << 31) - 1)
 
   /** Size in bytes of an element that a repetition keeps as one slice */
@@ -222,7 +227,7 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     case Ast.expr.InternalName(id) => unsupported(s"internal name ${id.humanReadable}")
     case Ast.expr.UnaryOp(op, v) => translateUnary(op, translate(v))
     case Ast.expr.BinOp(l, op, r) => translateBin(op, translate(l), translate(r))
-    case Ast.expr.Compare(l, op, r) => translateCompare(op, translate(l), translate(r))
+    case Ast.expr.Compare(l, op, r) => translateCompare(op, operand(l), operand(r))
     case Ast.expr.BoolOp(op, values) => translateBoolOp(op, values.map(translate))
     case Ast.expr.IfExp(c, a, b) => translateIf(translate(c), translate(a), translate(b))
     case Ast.expr.Attribute(value, attr) => translateAttribute(value, attr.name)
@@ -233,6 +238,24 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     case Ast.expr.BitSizeOfType(t) => sizeOf(t, 1)
   }
 
+
+  /**
+    * An operand of a comparison. Only here an integer, or the value of a label of an enumeration, can be above the
+    * largest S64: it is compared with an unsigned 64-bit field in U64. Everywhere else such a value is an error.
+    */
+  private def operand(e: Ast.expr): ATr = {
+    def big(n: BigInt): ATr = ATr(n.toString, 0, Nil, VU64Lit(n), n, n, isLiteral = true)
+    e match {
+      case Ast.expr.IntNum(n) if n > S64Max && n <= U64Max => big(n)
+      case Ast.expr.EnumByLabel(enumName, label, inType) =>
+        val spec = provider.resolveEnum(inType, enumName.name)
+        spec.map.collectFirst { case (id, v) if v.name == label.name && id > S64Max && id <= U64Max => id } match {
+          case Some(v) => big(v)
+          case None => translate(e)
+        }
+      case _ => translate(e)
+    }
+  }
 
   /** `a[b]`: a byte of bytes, or an element of a repetition of integers of a fixed size */
   private def translateSubscript(a: Ast.expr, b: Ast.expr): ATr = {
@@ -639,6 +662,8 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
           case _ => unsupported(s"repeated field `$attr` of a nested value")
         }
       case v: ValueInstanceSpec =>
+        if (env.valueInstanceIsU64(cs, v))
+          unsupported(s"instance `$attr` of a nested value, which is an integer beyond 63 bits")
         if (env.valueInstanceUsesBuffer(cs, v))
           unsupported(s"instance `$attr` of a nested value needs the buffer")
         val has = if (env.valueInstanceHasGuard(cs, v)) List(s"$pkg.${env.presenceName(cs, member.id)} (${obj.code})") else Nil
@@ -682,6 +707,7 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
 
   private def requireInt(v: ATr): Unit = v.vt match {
     case VInt | VEnum(_) =>
+    case VU64Lit(n) => unsupported(s"integer literal $n does not fit into 64 bits")
     case _ => unsupported("arithmetic on something that is not an integer")
   }
 
@@ -787,7 +813,44 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     }
     def isEq = op == Ast.cmpop.Eq || op == Ast.cmpop.NotEq
     def negate(code: String) = if (op == Ast.cmpop.NotEq) s"not $code" else code
+    // an unsigned integer as a value of U64, as stored; the condition that it fits S64 does not apply
+    def u64(t: ATr): Option[(String, List[String])] = t.vt match {
+      case VU64Lit(n) => Some((s"Kaitai.Types.U64 ($n)", Nil))
+      case VInt | VEnum(_) =>
+        if (t.isLiteral && t.lo >= 0) Some((s"Kaitai.Types.U64 (${t.code})", Nil))
+        else t.native match {
+          case Some((code, ty)) if t.code == s"Kaitai.Types.S64 ($code)" =>
+            ty match {
+              case "U64" => Some((code, List(s"Kaitai.Arithmetic.Fits ($code)")))
+              case "U8" | "U16" | "U32" => Some((s"Kaitai.Types.U64 ($code)", Nil))
+              case _ => None
+            }
+          case _ => None
+        }
+      case _ => None
+    }
+    def isBig(t: ATr) = t.vt.isInstanceOf[VU64Lit]
     (l.vt, r.vt) match {
+      case (VU64Lit(a), VU64Lit(b)) =>
+        val c = a.compare(b)
+        val res = op match {
+          case Ast.cmpop.Eq => c == 0
+          case Ast.cmpop.NotEq => c != 0
+          case Ast.cmpop.Lt => c < 0
+          case Ast.cmpop.LtE => c <= 0
+          case Ast.cmpop.Gt => c > 0
+          case Ast.cmpop.GtE => c >= 0
+        }
+        ATr(if (res) "True" else "False", 0, Nil, VBool, isLiteral = true)
+      case _ if isBig(l) || isBig(r) =>
+        (u64(l), u64(r)) match {
+          case (Some((lc, lg)), Some((rc, rg))) =>
+            ops += "U64"
+            val gs = g.filterNot(x => lg.contains(x) || rg.contains(x))
+            ATr(s"$lc $opStr $rc", 2, dedupe(gs), VBool, usesBuffer = ub)
+          case _ =>
+            unsupported("comparison of an integer literal beyond 63 bits with something that is not an unsigned integer field or a literal (integers are computed in 64 bits with a sign)")
+        }
       case ((VInt | VEnum(_)), (VInt | VEnum(_))) if l.isLiteral && r.isLiteral =>
         val c = l.lo.compare(r.lo)
         val res = op match {

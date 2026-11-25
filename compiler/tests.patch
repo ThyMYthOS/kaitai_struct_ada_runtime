@@ -1,0 +1,22 @@
+diff -ru a/translator/src/main/scala/io/kaitai/struct/testtranslator/Main.scala b/translator/src/main/scala/io/kaitai/struct/testtranslator/Main.scala
+--- a/translator/src/main/scala/io/kaitai/struct/testtranslator/Main.scala	2026-11-25 00:17:36.733285489 +0000
++++ b/translator/src/main/scala/io/kaitai/struct/testtranslator/Main.scala	2026-11-25 00:17:36.737333249 +0000
+@@ -14,6 +14,7 @@
+   val importDirs = List(s"$baseDir/../formats", s"$formatsDir/ks_path")
+ 
+   val ALL_LANGS = List(
++    "ada",
+     "construct",
+     "cpp_stl_98",
+     "cpp_stl_11",
+diff -ru a/translator/src/main/scala/io/kaitai/struct/testtranslator/TestTranslator.scala b/translator/src/main/scala/io/kaitai/struct/testtranslator/TestTranslator.scala
+--- a/translator/src/main/scala/io/kaitai/struct/testtranslator/TestTranslator.scala	2026-11-25 00:17:36.733349089 +0000
++++ b/translator/src/main/scala/io/kaitai/struct/testtranslator/TestTranslator.scala	2026-11-25 00:17:36.737395010 +0000
+@@ -111,6 +111,7 @@
+   }
+ 
+   def getSG(lang: String, testSpec: TestSpec, provider: ClassTypeProvider): SpecGenerator = lang match {
++    case "ada" => new AdaSG(testSpec, provider)
+     case "construct" => new ConstructSG(testSpec, provider)
+     case "cpp_stl_98" => new CppStlSG(testSpec, provider, CppRuntimeConfig().copyAsCpp98())
+     case "cpp_stl_11" => new CppStlSG(testSpec, provider, CppRuntimeConfig().copyAsCpp11())

@@ -68,3 +68,74 @@ order, `UTF-32` and the like, and `--read-write`.
 
 `compiler/SURVEY.md` lists what happens to the 334 formats of the Kaitai
 Struct test suite.
+
+## Running the Kaitai Struct test suite
+
+The official suite (`kaitai-io/kaitai_struct_tests`, pinned at commit
+`4108136c807f8df88df843de6571f1a7bf29c74e`) describes every test as a
+`formats/<name>.ksy`, a `spec/ks/<name>.kst` (data file and asserts) and a
+file in `src/`. Other targets translate the `.kst` files into native test
+code with the test translator of that repository. For Ada this is done by
+`AdaSG`:
+
+| File | What it is |
+|---|---|
+| `tests-overlay/translator/src/main/scala/io/kaitai/struct/testtranslator/specgenerators/AdaSG.scala` | the test spec generator; copied into the tests repository |
+| `tests.patch` | the two edits of existing files of the tests repository that register the target `ada` (`Main.scala`, `TestTranslator.scala`) |
+| `../scripts/run-kaitai-suite.sh` | does everything below |
+| `SUITE.md` | what the script reported on the last run, and why the tests that are not green are not |
+
+```
+scripts/build-compiler.sh                      # once; KSC_DIR defaults to ~/.cache/kaitai_struct_compiler
+scripts/run-kaitai-suite.sh                    # all tests; KST_DIR defaults to ~/.cache/kaitai_struct_tests
+scripts/run-kaitai-suite.sh --out /tmp/suite hello_world valid_fail_eq_int
+```
+
+`KST_DIR` is cloned (blobless, then only `formats spec/ks src translator` are
+checked out) if it is missing. The script copies the overlay and applies the
+patch (both can be repeated), publishes the compiler locally with
+`sbt compilerJVM/publishLocal` (the translator resolves it as
+`io.kaitai:kaitai-struct-compiler:0.12-SNAPSHOT` from `~/.ivy2/local`),
+builds the translator, and then, for every test:
+
+1. generates the parser with `-t ada` (import path `formats/`),
+2. generates `test_<name>.adb` with `AdaSG`,
+3. builds all programs with `gprbuild` through Alire, in one throw-away
+   project in the output directory that `with`s `kaitai_struct.gpr` and
+   `kaitai_struct_files.gpr` and has one main per test
+   (`-gnat2012 -gnata -gnatwa`, contracts of the library on, `-k`),
+4. runs each program on its data file.
+
+`DIR/results.md` has a table with the result of each test, `DIR/junit.xml`
+one test case per test, `DIR/log/` the logs of every step. The classes are
+`passed`, `failed` (an assert does not hold), `error` (the program raised an
+exception or crashed: with a correct generator this does not happen),
+`build failed`, `not generated` (the backend rejects the format; its message
+is the detail) and `not translated` (`AdaSG` cannot express an assert; the
+reason is the detail). The exit status is 0 only if nothing failed, errored
+or failed to build; `--no-fail` makes it always 0.
+
+### What `AdaSG` generates
+
+A test program reads `src/<data>` (the first argument is the directory that
+holds the data files, default `src`) into a buffer on the heap with
+`Kaitai.Files`, parses with `<Pkg>.Parse (Buffer.all, S, R)` and prints one
+line per assert, `ok <n>` or `FAIL <n>: <expression>`, and `PASSED` or
+`FAILED` at the end (exit status 1 for `FAILED`). The accessors of the
+generated parser have preconditions, so each assert first checks the
+conditions of its access (`Valid`, `Has_X`, `X_Case`, `Index < X_Count`, the
+outcome of an instance, ...); an assert whose value does not exist is a
+`FAIL` with the note "(not defined)", it never raises. Elements of
+repetitions of structures and instances with a position are fetched into
+local variables of a `declare` block. A test with `exception` checks that
+`Parse` fails and that `Kaitai.Streams.Status (S)` is the status that
+corresponds to the expected error (`EndOfStreamError` is `End_Of_Stream`,
+`ValidationNotEqualError` is `Validation_Not_Equal`, and so on).
+
+Expected values: integers, booleans, enumerations (by literal when the
+actual value is of that enumeration), strings (`Kaitai.Strings.Equal_Literal`
+for printable ASCII, otherwise byte-wise in the encoding of the field),
+bytes, lists, `null` (the presence function is false) and floats (within
+1e-6, relative for large values). The names of the generated code are taken
+from the compiler itself (`AdaClassCompiler.memberName` and the like), so the
+test generator follows the compiler when it changes how it names things.

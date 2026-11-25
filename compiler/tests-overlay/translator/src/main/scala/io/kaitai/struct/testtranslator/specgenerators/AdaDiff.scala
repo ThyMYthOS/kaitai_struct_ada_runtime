@@ -250,7 +250,10 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
           case et: EnumType => CalcIntType   // the accessor returns S64
           case other => other
         }
-        val leaf = adaLeaf(dt, code, buf, path)
+        // an instance that is a literal above the largest S64 returns U64
+        val leaf =
+          if (cc.valueInstanceIsU64(cs, v)) List(s"Put_U ($path, ${KT}U64 ($code));")
+          else adaLeaf(dt, code, buf, path)
         // Has_X is false if the condition of the instance does not hold, but also if its expression is
         // not defined: the API does not tell the two apart, so an instance with `if` is `absent` then
         if (cc.valueInstanceHasGuard(cs, v) && v.ifExpr.isDefined)

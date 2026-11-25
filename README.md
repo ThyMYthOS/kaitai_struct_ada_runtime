@@ -1,71 +1,123 @@
-# Kaitai Struct runtime library for Ada and SPARK
+# Kaitai Struct for Ada and SPARK
 
 [Kaitai Struct](https://kaitai.io) describes binary formats in `.ksy` files and
-generates parsers from them. This library is what such parsers are built on
-when the target language is Ada: it provides the stream to read from and the
-operations of the Kaitai Struct stream API.
+generates parsers from them. This repository makes Ada a target language:
 
-The library is written in SPARK. Its aim is that parsers generated from a
-`.ksy` description can be proven free of run-time errors for *any* input, so
-that a malformed or malicious file can at worst be rejected.
+- a **runtime library** in SPARK that generated parsers are built on, and
+- a **backend for the Kaitai Struct compiler** that generates such parsers.
 
-**Status:** early. The stream reads integers, bit fields, floating point
-numbers and byte arrays, and supports substreams; all of it is tested and
-proven. Four formats of the Kaitai Struct test suite are translated by hand
-under `examples/`. Strings, enumerations, repetitions and the compiler backend
-that generates code against the library are still to come. The
+The aim is that a parser generated from a `.ksy` description is proven free
+of run-time errors for *any* input, so that a malformed or malicious file can
+at worst be rejected. GNATprove proves the library and the generated parsers
+automatically.
+
+**Status:** usable for a large part of the language, not complete. The
+compiler generates parsers for more than half of the formats of the Kaitai
+Struct test suite and rejects the rest with an error that names the
+construct; [compiler/SURVEY.md](compiler/SURVEY.md) has the list. The
 [plan](https://github.com/ThyMYthOS/kaitai_struct_ada_runtime/issues/1) (in
 German) tracks what is decided, measured and done.
 
 ## Properties
 
-- **No heap, no exceptions, no secondary stack.** The core runs on a light
-  run-time library on a microcontroller.
-- **Zero copy.** A stream is a cursor over a buffer the caller owns; byte
-  arrays are returned as slices of that buffer.
+- **No heap, no exceptions, no secondary stack.** The library and the
+  generated parsers run on a light run-time library on a microcontroller.
+- **Zero copy.** A stream is a cursor over a buffer the caller owns. Byte
+  arrays and strings are slices of that buffer, and repetitions are parsed
+  again when asked for instead of being stored.
 - **Failures are values.** A read that cannot be carried out records the
-  reason in the stream and delivers zero; the first failure is kept. Check
-  once before a decision that depends on what was read, and at the end.
+  reason in the stream and delivers zero; the first failure is kept.
 - **Proven.** GNATprove proves all run-time checks and the functional
-  contracts of the library, so it can be built with checks left out.
+  contracts of the library, and all run-time checks of generated parsers, so
+  both can be built with checks left out.
+- **Measured.** Design decisions rest on instruction counts on x86-64 and on
+  a simulated Cortex-M4; the programs are under `bench/`.
 
-## Example
+## A generated parser
+
+From
+
+```yaml
+meta:
+  id: hello_world
+seq:
+  - id: one
+    type: u1
+```
+
+the compiler generates a package that is used like this:
 
 ```ada
+with Hello_World;
 with Kaitai.Streams; use Kaitai.Streams;
 with Kaitai.Types;   use Kaitai.Types;
 
-procedure Parse (Buffer : Bytes) is
-   S       : Stream := Open (Buffer);
-   Version : U8;
-   Size    : U32;
-   Payload : Slice;
+procedure Example (Buffer : Bytes) is
+   S : Stream := Open (Buffer);
+   R : Hello_World.T;
 begin
-   Read_U1 (Buffer, S, Version);
-   Read_U4le (Buffer, S, Size);
-   Read_Bytes (S, To_Length (U64 (Size)), Payload);
-   if OK (S) then
-      --  Buffer (Payload.First .. Payload.Last) is the payload
+   Hello_World.Parse (Buffer, S, R);
+   if Hello_World.Valid (R) then
+      --  Hello_World.One (R) is the byte; reading it from a result that
+      --  is not valid would violate a precondition, which GNATprove finds
+      null;
+   else
+      --  Status (S) tells why
       null;
    end if;
-end Parse;
+end Example;
 ```
 
-The parsers under `examples/` show what generated code looks like; they are
-proven against the library. [docs/codegen.md](docs/codegen.md) describes the
-rules they follow.
+[docs/codegen.md](docs/codegen.md) describes what generated code looks like
+and why. `examples/` holds generated parsers with their descriptions;
+`examples/showcase` uses most constructs in one description.
+
+## The library
+
+| Package | Content |
+|---|---|
+| `Kaitai.Types` | integers, `Bytes`, `Slice`, the status of a stream |
+| `Kaitai.Streams` | the stream: integers, bit fields, byte arrays, terminated byte arrays, `contents`, substreams, elements of repetitions |
+| `Kaitai.Decoding`, `Kaitai.Encoding` | integers from and to bytes at an index |
+| `Kaitai.Bits`, `Kaitai.Floats` | bit field arithmetic; floats from their bits |
+| `Kaitai.Byte_Arrays` | search, comparison, minimum and maximum, without copying |
+| `Kaitai.Strings` | validity and character count for ASCII, UTF-8, UTF-16 and UTF-32, conversion to UTF-8, numbers from and to text |
+| `Kaitai.Arithmetic` | integer arithmetic of expressions that cannot overflow |
+| `Kaitai.Processing`, `Kaitai.Zlib` | `process`: xor, rotation, zlib decompression |
+| `Kaitai.Arenas` | hands out parts of an array of the caller |
+| `Kaitai.Writers` | the counterpart of the stream for writing |
+| `Kaitai.Files` | reads a file into a buffer; in `kaitai_struct_files.gpr`, since it needs a file system |
+
+All of it is in SPARK and proven, except the body of `Kaitai.Files`, which
+handles the exceptions of the Ada file packages and is tested instead.
+
+## The compiler backend
+
+`compiler/` is an overlay over the upstream
+[Kaitai Struct compiler](https://github.com/kaitai-io/kaitai_struct_compiler)
+at a pinned commit.
+
+```sh
+scripts/build-compiler.sh             # clones upstream, applies the overlay, builds; prints the launcher
+<launcher> -t ada --outdir out format.ksy
+scripts/generate-examples.sh --check  # the parsers under examples/ are what the compiler generates
+```
+
+[compiler/README.md](compiler/README.md) lists what is supported and what is
+rejected.
 
 ## Layout
 
 | Path | Content |
 |---|---|
-| `src/` | the library: `Kaitai.Streams` and what it builds on |
-| `examples/` | formats of the Kaitai Struct test suite, translated by hand |
-| `docs/codegen.md` | how generated code uses the library |
-| `tests/` | tests for the development machine |
+| `src/`, `files/` | the library |
+| `compiler/` | the backend for the Kaitai Struct compiler |
+| `examples/` | descriptions with the parsers generated from them |
+| `docs/codegen.md` | the rules generated code follows |
+| `tests/` | tests for the development machine, and a fuzz program for the parsers |
 | `tests/target/` | the same tests for a simulated STM32F4 |
 | `bench/` | measurements that back design decisions |
-| `scripts/` | toolchain installation, checks, simulator |
+| `scripts/` | toolchain installation, checks, simulator, compiler build |
 | `kaitai_style.gpr` | coding style shared by all projects |
 
 ## Building and checking
@@ -76,8 +128,8 @@ Debian or Ubuntu; it is what the CI uses.
 
 ```sh
 alr build                 # the library
-scripts/check.sh          # everything the CI checks
-scripts/check.sh prove    # a single step: format, build, test, prove, target, bench
+scripts/check.sh          # everything the first CI job checks
+scripts/check.sh prove    # a single step
 ```
 
 | Step | What it shows |
@@ -85,9 +137,13 @@ scripts/check.sh prove    # a single step: format, build, test, prove, target, b
 | `format` | sources are formatted with `gnatformat` |
 | `build` | the library builds without warnings in all configurations |
 | `test` | the tests pass on the development machine |
-| `prove` | GNATprove proves all checks of the library and of the parsers using it |
+| `fuzz` | the parsers survive input changed at random, with checks on and contracts executed |
+| `prove` | GNATprove proves all checks of the library and of the parsers under `examples/` |
 | `target` | the tests pass on a simulated STM32F4 with a light and an embedded run-time library |
 | `bench` | the benchmarks build and agree on their results |
+
+A second CI job builds the compiler and checks that `examples/` is what it
+generates.
 
 ## Configuration
 
@@ -103,6 +159,17 @@ Scenario variables of `kaitai_struct.gpr`:
 Compile code that uses the library with `-gnatn`. The read operations are
 small and meant to be inlined; without it a parser needs 50 to 70 percent
 more instructions.
+
+## Limits to know about
+
+- The proof covers run-time errors and termination, not the size of the
+  stack. A type that contains itself is parsed recursively up to a fixed
+  depth; `docs/codegen.md` says what a level costs. `Kaitai.Zlib` needs about
+  2 KiB of stack.
+- A light run-time library does not notice a stack overflow.
+- Generated parsers do not store repetitions and do not keep references to
+  parent values; `docs/codegen.md` lists what differs from other Kaitai
+  Struct targets.
 
 ## License
 

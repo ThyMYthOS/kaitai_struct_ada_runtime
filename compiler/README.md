@@ -207,3 +207,102 @@ test generator follows the compiler when it changes how it names things.
   of C)` or `round trip: not written (<status>)`. `same` is the class
   `passed`, `canonical` a class of its own that is not a failure, the others
   `failed`. The causes found are in the section "Round trip" of `SUITE.md`.
+
+## Comparing the Ada parsers with the Python parsers
+
+The suite above checks the asserts of the tests, which are true for the data
+file of each test. A parser can still differ from the other targets on any
+other input: a `valid` that is not checked, bit fields that are aligned
+differently, strings that are compared in another encoding. `scripts/diff-python.sh`
+parses many inputs with the Ada parser and with the Python parser that the
+same compiler build generates, and compares what both found.
+
+```
+scripts/build-compiler.sh                         # once
+scripts/diff-python.sh                            # all formats, 200 mutations of each data file
+scripts/diff-python.sh --out /tmp/diff --inputs 50 --jobs 4 hello_world str_encodings
+```
+
+For every format in `formats/` that has a test with a data file and that the
+Ada backend generates, and for the formats of `compiler/diff-formats/` (our own:
+`x_<name>.ksy` with its data file `x_<name>.bin`, for what the data of the tests
+do not exercise: bit fields in both orders, UTF-16, `valid` on repetitions,
+switches with sizes, integer expressions that overflow, terminators and padding,
+parse instances; `--formats DIR` names another directory), the script
+
+1. generates the Ada and the Python parser,
+2. generates two dump programs from the same `ClassSpec`s with `AdaDiff`
+   (`tests-overlay/.../specgenerators/AdaDiff.scala`, which takes its names from
+   `AdaClassCompiler` as `AdaSG` does): one in Ada, one in Python. A dump has
+   one line `path = value` for every parameter, field, instance (value and
+   parse instance), element of a repetition and nested value, in the order of
+   the description: integers and enumerations in decimal, booleans 0 or 1,
+   floats as the hex of their bits (`nan` for every NaN), bytes and strings as
+   the hex of the raw bytes (Python encodes its string again with the
+   encoding of the field), `absent` for a member that is not there,
+   `path.size = N` for a repetition, `path.case = Name` for the chosen case of
+   a switch that is not all integers. Processed fields are dumped decoded. A
+   failure anywhere while the whole value is walked, in a parse instance, an
+   element, an instance or `Parse`, gives the single line `FAILED` on both
+   sides (and a `#why` line, which the comparison ignores). `contents` fields
+   are not dumped, as the Ada parsers do not keep them; the parsers check them,
+   and a mismatch is a failure.
+3. makes the inputs: the data file and `--inputs N` (default 200) changes of it
+   with a fixed seed. The first eight are the same for every format (empty,
+   zeros, 0xff, one byte less, half, one zero byte more, twice, without the
+   first byte). Then every position of the data file is changed on its own, in
+   a random order, as far as two thirds of the inputs reach, so that no field is
+   missed (a byte order that is wrong in one field shows only if that field is
+   changed to something that is not its own mirror image). The rest flip bits,
+   overwrite bytes, truncate, extend, duplicate, delete or insert ranges, and
+   overwrite with a number or string taken from the description (magic numbers,
+   `valid`, case labels, enumeration values), also several of them together. They
+   come in batches, and a mutant whose Python dump has a shape that no earlier
+   input had (another case of a switch, a member that is there or not, another
+   kind of failure) becomes a seed of the later ones. The same files go to both
+   programs.
+4. builds all Ada dump programs with `gprbuild`, with run-time checks on and
+   contracts executed (`-gnata`, `KAITAI_STRUCT_CONTRACTS=on`), one project
+   in the output directory,
+5. runs both programs on every input (all inputs in one process; a process
+   that dies or hangs is run again one input at a time) and compares.
+
+The Python runtime is taken from `kaitai_struct_python_runtime`, cloned to
+`$HOME/.cache/kaitai_struct_python_runtime` at a pinned commit
+(`KAITAI_PYTHON_RUNTIME` names another checkout), since the code that this
+compiler generates uses `KaitaiStream.substream`, which the release 0.11 of
+`kaitaistruct` on PyPI does not have.
+
+### Reading the result
+
+`DIR/results.md` has a table of the classes of all inputs, a table per format
+(inputs, how many Ada and Python parsed, the leaves of the seed and of all
+inputs with the same dump, the classes), the formats that were skipped with the
+reason, and every difference with its smallest input. The same is printed as a
+summary. Inputs and the dumps of the differences are kept in `DIR/inputs/<format>/`
+and `DIR/diffs/<format>/` (`<input>.bin`, `.ada`, `.py`).
+
+| Class | Meaning |
+|---|---|
+| same dump | both parsed and the dumps are equal |
+| both fail | both gave `FAILED` |
+| dump over the limit | the dump is larger than 8 MB, both gave up at the same line; not compared further |
+| Python timeout or memory | Python did not finish or ran out of memory (3 GiB; a repetition of billions of empty elements), not compared; not a failure of the script |
+| known | a difference of `KNOWN_DIFFERENCES` in the script, each with the reason; counted, not hidden |
+| values differ | both parsed, a line differs: the first differing line is given |
+| only Ada fails / only Python fails | one side gave `FAILED`, the other a dump; the `#why` of the failing side is given |
+| Ada exception | the Ada program raised an exception, or a precondition or postcondition failed |
+| no result | a program crashed or timed out |
+
+The exit status is 0 only if there is no input of the classes `values differ`,
+`only Ada fails`, `only Python fails`, `Ada exception` and `no result`, and no
+program failed to build. Inputs with the same cause are one difference in the
+list. A format is `skipped` if the backend rejects it, it has no test with a
+data file, or no dump can be generated; the reason is in the table.
+
+A comparison that finds nothing says little unless the inputs get far enough:
+look at the columns `Ada ok` and `Python ok` (a format where all inputs fail on
+both sides tests only the first field) and at the leaves per format.
+`--reuse` keeps the generated parsers, dumps and inputs of an earlier run, so
+that a generated Ada parser can be changed by hand to see whether the
+comparison finds the change.

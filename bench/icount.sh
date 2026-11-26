@@ -100,6 +100,42 @@ for mode in checked inlined proven; do
 done
 
 echo
+echo "== repetitions with elements of a variable size: instructions per run (repeat_bench), mode proven"
+echo "   the cost of a run is the difference between 9 runs and 1 run, divided by 8"
+rep_run() {
+   total1=$(count ./bin/proven/repeat_bench "$2" 1 "$1")
+   total9=$(count ./bin/proven/repeat_bench "$2" 9 "$1")
+   printf "%-18s%8d%s\n" "$1" "$2" "$(per "$total9" "$total1" 8)"
+}
+for n in 10 100 1000; do
+   for variant in a_parse a_get_first a_get_mid a_get_last a_next_all a_get_all index_mod index_get \
+         index_fixed_mod index_fixed last_eos last_get last_kept prev_carried other_get other_lockstep; do
+      rep_run $variant $n
+   done
+done
+for n in 8 12 16; do
+   rep_run prev_naive $n
+done
+for n in 500 1000 2000; do
+   rep_run index_worst $n
+done
+for n in 1000 100000 1000000; do
+   for variant in empty_parse empty_get empty_get_stop; do
+      rep_run $variant $n
+   done
+done
+
+echo
+echo "== instances that an expression of seq needs: instructions per record (instance_bench), mode proven"
+echo "   the cost of a record is the difference between 1100 records and 100 records, divided by 1000"
+for variant in int_d1_parse int_d1_access int_d2_parse int_d2_access user_d1_parse user_d1_access \
+      user_d2_parse user_d2_access until_d1_parse until_d1_access until_d2_parse until_d2_access; do
+   total100=$(count ./bin/proven/instance_bench 100 $variant)
+   total1100=$(count ./bin/proven/instance_bench 1100 $variant)
+   printf "%-18s%s\n" $variant "$(per "$total1100" "$total100" 1000)"
+done
+
+echo
 echo "== memory strategies, $RECORDS records, payload 0..$MAX_PAYLOAD bytes"
 echo "   instructions per record: build, traverse; per access: pick; per record: teardown"
 for mode in inlined proven; do

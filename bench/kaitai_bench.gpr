@@ -27,7 +27,14 @@ project Kaitai_Bench is
    for Object_Dir use "obj/" & Mode;
    for Create_Missing_Dirs use "True";
    for Exec_Dir use "bin/" & Mode;
-   for Main use ("arith_bench.adb", "memory_bench.adb", "param_bench.adb", "parse_bench.adb", "stream_bench.adb");
+   for Main use
+     ("arith_bench.adb",
+      "instance_bench.adb",
+      "memory_bench.adb",
+      "param_bench.adb",
+      "parse_bench.adb",
+      "repeat_bench.adb",
+      "stream_bench.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use Switches;

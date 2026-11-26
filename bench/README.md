@@ -148,6 +148,60 @@ the input used, which the compiler cannot know.
 | `checked` | a value carries a validity flag that the operators hand on |
 | `flagged` | a procedure per operation with a flag that stays false after an overflow |
 
+## `repeat_bench`: expressions that use the elements of a repetition
+
+Usage: `repeat_bench [elements] [repetitions] [variant] [none]`. A generated parser does not keep the elements of a
+repetition whose elements have a variable size; `Next` and `Get_X` parse them again. This group measures what an
+expression that is evaluated while parsing, and that needs an element, costs on top of that, and what the cheaper forms
+cost that the compiler could generate for some shapes of expression. The compiler rejects such expressions today
+(`formats/unsupported/rep_*.ksy` are the descriptions, with the error the compiler gives). The generated parts are
+`Bench_Rep` (an element is `len : u1`, `name : len bytes`, `v : u1`; `formats/bench_rep.ksy`), `Bench_Rep_Fixed` (the
+elements are `u1`, which is what the compiler supports today; `Index_Fixed`) and `Bench_Rep_Empty` (elements that may
+read nothing, `formats/bench_rep_empty.ksy`). The parsers of `src/rep_use.ads` are written by hand in the style of
+generated code over them; the loops that stand for the `Parse` of the parent are in `src/rep_runs.adb`, which is in SPARK
+and is proven with the parsers (`kaitai_bench_prove.gpr`). The input of N elements is made by `src/rep_data.adb`. A
+program parses it `repetitions` times (default 1) and prints a checksum; variants of one group must agree, and the
+program fails if they do not. `icount.sh` gets the cost of one run as the difference between 9 runs and 1 run, divided by
+8, in mode `proven` only.
+
+| Variant | What a run does |
+|---|---|
+| `a_parse` | `Bench_Rep.Parse` of the input: the elements are walked once |
+| `a_get_first`, `a_get_mid`, `a_get_last` | `a_parse`, then `Get_Items` for the element 0, N / 2, N - 1 |
+| `a_next_all`, `a_get_all` | `a_parse`, then all elements with `Next`, and with `Get_Items` in a loop |
+| `index_mod`, `index_get`, `index_fixed_mod`, `index_fixed` | N references `idx : u4`, `tag : size items[idx].len` after the elements. `index_get`: `Bench_Rep.Get_Items (idx)` for the size; `index_mod`: the size is `idx mod 8`, which is the same number, without access; `index_fixed`: the elements are `u1` and `Bench_Rep_Fixed.Items (idx)` decodes one from the buffer; `index_fixed_mod`: as `index_mod` for those elements |
+| `last_eos`, `last_get`, `last_kept` | `tail : size items.last.len` after the elements. `last_get`: `Get_Items (N - 1)`; `last_kept`: `Parse` keeps the last element in the value (`Last_Kept`); `last_eos`: the same bytes read as `size-eos`, without access |
+| `prev_naive`, `prev_carried` | `links[_index - 1].len` as the size of a field of the element `links[_index]`, in the repetition `links` itself. `prev_naive`: the element parser finds the one before with `Get_Naive`; `prev_carried`: the loop hands the `len` of the element before on, as a parameter, and the cursor of `Next` carries it. Both run `Parse` and then `Next` over all elements |
+| `other_get`, `other_lockstep` | `items[_index - 1].len` as the size of a field of the element `blocks[_index]`, a repetition of its own. `other_get`: `Get_Items (_index - 1)`; `other_lockstep`: the loop goes through `items` alongside and hands the `len` of the element before on |
+| `index_worst` | the input that costs most for its size: N elements of 2 bytes, then N / 4 references of 4 bytes, each to the last element; `index_get` on it |
+| `empty_parse`, `empty_get`, `empty_get_stop` | a 5-byte input with a count of N and elements that read nothing: `Parse` (which stops at the first element that read nothing), `Get_Items (N - 1)` of the generated parser, and the same where `Get_Stop` stops there as well (`src/rep_empty.adb`) |
+
+`prev_naive` takes 2 ** N parses and is run for N up to 16 only. `target/run_rep.sh` runs the group on the simulated
+STM32F4.
+
+## `instance_bench`: instances with a position that `seq` needs
+
+Usage: `instance_bench [records] [variant] [none]`. The compiler rejects an expression of `seq` that uses an instance
+with a position (`formats/unsupported/bench_inst_*.ksy`). Two ways to generate it are compared. D1: the instance is
+parsed again at every use, in `Parse` where the expression needs it and in the accessor procedure as today. D2: it is
+parsed once at its first use in `Parse` and kept in the value; the accessor is a function that returns it. The packages
+`Bench_Inst_*_D1` and `_D2` in `src/` are written by hand from what the compiler generates for the same description
+without the use (`formats/bench_inst_*.ksy`, `generated/`), in the style of generated code. Records of 18 to 68 bytes are
+parsed one by one, each from a stream of its own over a slice of the buffer (`src/inst_data.adb`), by the loops of
+`src/inst_runs.adb`, which are in SPARK and are proven with the parsers (`kaitai_bench_prove.gpr`).
+
+| Description | The use | Instance |
+|---|---|---|
+| `int` | `chunks` has `num_chunks` elements (8 chunks of two `u4`) | `num_chunks`, a `u4` at the position size - 4 |
+| `user` | `numbers` has `header.qty` elements, `entries` ends at `_ == header.limit` | `header`, a type of `qty : u2`, `limit : s2`, `tag : 2 bytes` (a slice) at size - 6 |
+| `until` | only `entries` ends at `_ == header.limit`, so the first use is in the loop | `header` as above; D2 asks `Has_Header` in every turn |
+
+`int_d1_parse` and `int_d2_parse` parse the record and read everything in `seq`; the `_access` variants then ask for the
+instance four times through the accessor, so that the cost of one access is a quarter of the difference. Variants of one
+group agree on the checksum. `icount.sh` gets the cost of one record as the difference between 1100 and 100 records,
+divided by 1000. `target/run_inst.sh` runs the group on the simulated STM32F4 and prints the size of the value of each
+variant, which is also what `T'Object_Size` says.
+
 ## `target/`: the stream designs on a low-end target
 
 A crate of its own that cross-compiles the stream benchmark for an STM32F4

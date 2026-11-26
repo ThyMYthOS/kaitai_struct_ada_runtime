@@ -6,7 +6,7 @@ licenses = "MIT"
 maintainers = ["Manuel Stahl <thymythos@googlemail.com>"]
 tags = ["benchmark"]
 
-executables = ["arith_bench", "memory_bench", "param_bench", "parse_bench", "stream_bench"]
+executables = ["arith_bench", "instance_bench", "memory_bench", "param_bench", "parse_bench", "repeat_bench", "stream_bench"]
 
 [build-profiles]
 "*" = "release"

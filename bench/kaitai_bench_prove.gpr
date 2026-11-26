@@ -1,0 +1,57 @@
+with "kaitai_struct.gpr";
+with "../kaitai_style.gpr";
+
+--  Proves the parsers of the groups repeat_bench and instance_bench, written by hand and generated, together with the
+--  procedures that call them (Rep_Runs and Inst_Runs).  The other units of the benchmarks are not in SPARK.
+--
+--     alr exec -- gnatprove -P kaitai_bench_prove.gpr
+project Kaitai_Bench_Prove is
+
+   for Source_Dirs use ("src/", "generated/");
+   for Object_Dir use "obj/prove";
+   for Create_Missing_Dirs use "True";
+   for Source_Files use
+     ("bench_inst_int.ads",
+      "bench_inst_int.adb",
+      "bench_inst_int_d1.ads",
+      "bench_inst_int_d1.adb",
+      "bench_inst_int_d2.ads",
+      "bench_inst_int_d2.adb",
+      "bench_inst_until.ads",
+      "bench_inst_until.adb",
+      "bench_inst_until_d1.ads",
+      "bench_inst_until_d1.adb",
+      "bench_inst_until_d2.ads",
+      "bench_inst_until_d2.adb",
+      "bench_inst_user.ads",
+      "bench_inst_user.adb",
+      "bench_inst_user_d1.ads",
+      "bench_inst_user_d1.adb",
+      "bench_inst_user_d2.ads",
+      "bench_inst_user_d2.adb",
+      "bench_rep.ads",
+      "bench_rep.adb",
+      "bench_rep_empty.ads",
+      "bench_rep_empty.adb",
+      "bench_rep_fixed.ads",
+      "bench_rep_fixed.adb",
+      "inst_runs.ads",
+      "inst_runs.adb",
+      "rep_empty.ads",
+      "rep_empty.adb",
+      "rep_runs.ads",
+      "rep_runs.adb",
+      "rep_use.ads",
+      "rep_use.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use ("-O1", "-gnat2022", "-gnatwa") & Kaitai_Style.Style_Switches;
+   end Compiler;
+
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=1", "-j0", "--checks-as-errors=on");
+   end Prove;
+
+   package Format renames Kaitai_Style.Format;
+
+end Kaitai_Bench_Prove;

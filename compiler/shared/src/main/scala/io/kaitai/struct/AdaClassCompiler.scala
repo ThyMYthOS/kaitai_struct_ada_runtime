@@ -2091,6 +2091,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   }
 
   private val opTypes = mutable.Set[String]()
+  /** Repeated fields (their paths) whose element procedure takes the number of the element, `_index` */
+  private val indexUsers = mutable.Set[String]()
 
   private val UseTypes = List("U8", "U16", "U32", "U64", "S8", "S16", "S32", "S64", "Length", "Slice", "Status_Kind", "Byte_Order")
 
@@ -2596,17 +2598,22 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val (elT, elPkg) = dt match {
       case ut: UserType => (userPkg(ut) + ".T", qualOf(ut.classSpec.get))
       case _: BytesType | _: StrType => (KT + "Slice", "")
+      case _: BitsType | _: BitsType1 | EnumType(_, _, _: BitsType) => (intAda(dt), "")
       case other => throw new AdaUnsupported(s"repetition of $other")
     }
     val isSlice = !dt.isInstanceOf[UserType]
-    val body = writeValue(dt, "Element", rc)
+    val indexed = indexUsers.contains(a.path.mkString("/"))
+    tr.indexCode = if (indexed) Some("Number") else None
+    val body = try writeValue(dt, "Element", rc) finally tr.indexCode = None
+    // the number is kept only where what is written needs it
+    val usesIndex = indexed && body.exists(_.contains("Number"))
     val cur = s"${bs}_Cursor"
     val write =
       if (isSlice) body
       else List(s"if ${elPkg}Valid (Element) then") ++ ind(body) ++ List("else", "   --  The buffer is not what was parsed",
         s"   ${KW}Fail (W, ${KT}Validation_Expr);", "end if;")
     // As in Parse: an element that neither read nor wrote anything ends the loop, since all that follow do the same.
-    val idle = a.cond.repeat.isInstanceOf[RepeatExpr] && minBytes(dt) == 0
+    val idle = a.cond.repeat.isInstanceOf[RepeatExpr] && mayBeEmpty(dt) && !indexed
     val (idleDecls, idleBefore, idleExit) =
       if (!idle) (Nil, Nil, Nil)
       else (
@@ -2615,12 +2622,14 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         List("   --  An element that read nothing and wrote nothing: so will all that follow",
           s"   exit when ${KS}Pos (Position.Io) = ${KS}Pos (Read_At) and then ${KS}Bits_Left (Position.Io) = ${KS}Bits_Left (Read_At)",
           s"     and then ${KW}Pos (W) = ${KW}Pos (Write_At) and then ${KW}Bits_Free (W) = ${KW}Bits_Free (Write_At);"))
-    List("declare", s"   Position : $cur := ${bs}_First (This);", s"   Element  : $elT;") ++ idleDecls ++ List("begin") ++
+    List("declare", s"   Position : $cur := ${bs}_First (This);", s"   Element  : $elT;") ++
+      (if (usesIndex) List(s"   Number   : ${KT}Length;") else Nil) ++ idleDecls ++ List("begin") ++
       ind(List(
         "while Has_Element (Position) loop",
         "   pragma Loop_Invariant (Belongs_To (Position, Buffer));",
         s"   pragma Loop_Invariant (${KW}Is_Valid (W, Target) and then ${KW}Same_Window (W'Loop_Entry, W));",
         "   pragma Loop_Variant (Decreases => Remaining (Position));") ++ idleBefore ++ List(
+        ) ++ (if (usesIndex) List("   Number := Position.Index;") else Nil) ++ List(
         "   Next (This, Buffer, Position, Element);") ++ ind(write) ++ idleExit ++ List("end loop;")) ++ List("end;")
   }
 
@@ -3444,6 +3453,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         dt match {
           case _: UserType => genRepeatCursor(cs, a, dt, rep, pre, hasOpt, comment, o, rc)
           case _: BytesType | _: StrType => genRepeatCursor(cs, a, dt, rep, pre, hasOpt, comment, o, rc)
+          case _: BitsType | _: BitsType1 | EnumType(_, _, _: BitsType) => genRepeatCursor(cs, a, dt, rep, pre, hasOpt, comment, o, rc)
           case other => throw new AdaUnsupported(s"repetition of $other")
         }
     }
@@ -3574,6 +3584,32 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     * The least number of whole bytes that a successful read of a value of the type takes from the stream, as far as
     * the description alone tells: 0 where a value may read nothing.
     */
+  /** An element that may read nothing: it is not a bit field, which reads at least a bit, and no field of it reads a byte */
+  /**
+    * The size of an element is `x[_index]`, where `x` is a repetition of integers of a fixed size of the same type: the
+    * element with the number that `x` has no element for fails the stream, so the elements that can be parsed are as
+    * many as `x` has, and that is bounded by the data.
+    */
+  private def sizeFromIndex(cs: ClassSpec, dt: DataType): Boolean = {
+    val size: Option[Ast.expr] = dt match {
+      case BytesLimitType(size, _, _, _, _) => Some(size)
+      case StrFromBytesType(BytesLimitType(size, _, _, _, _), _, _) => Some(size)
+      case ut: UserTypeFromBytes => ut.bytes match { case BytesLimitType(size, _, _, _, _) => Some(size); case _ => None }
+      case _ => None
+    }
+    size.exists {
+      case Ast.expr.Subscript(Ast.expr.Name(x), Ast.expr.Name(i)) if i.name == io.kaitai.struct.format.Identifier.INDEX =>
+        cs.seq.exists(m => m.id.humanReadable == x.name && m.cond.repeat != NoRepeat && m.cond.repeat.isInstanceOf[RepeatExpr] &&
+          AdaTranslator.fixedElement(m.dataType).isDefined && !AdaTranslator.hasProcess(m.dataType))
+      case _ => false
+    }
+  }
+
+  private def mayBeEmpty(dt: DataType): Boolean = dt match {
+    case _: BitsType | _: BitsType1 | EnumType(_, _, _: BitsType) => false
+    case _ => minBytes(dt) == 0
+  }
+
   private def minBytes(dt: DataType, seen: List[ClassSpec] = Nil): Int = dt match {
     case Int1Type(_) => 1
     case IntMultiType(_, w, _) => w.width
@@ -3595,11 +3631,14 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val k = idRaw(a.id)
     val there = hasOpt.toList.map(h => s"Requires that it is there ($h)")
     val isSlice = !dt.isInstanceOf[UserType]
+    // a bit field: the element is an integer or a boolean, and the stream of the cursor carries the bit position
+    val isScalar = dt match { case _: BitsType | _: BitsType1 | EnumType(_, _, _: BitsType) => true; case _ => false }
     opTypes += "Length"
     val selfElem = dt match { case ut: UserType => ut.classSpec.get eq cs; case _ => false }
     val (elT, elPkg, elBelongs) = dt match {
       case ut: UserType if selfElem => ("T", "", true)
       case ut: UserType => (userPkg(ut) + ".T", userPkg(ut) + ".", hasBelongs(ut.classSpec.get))
+      case _ if isScalar => (intAda(dt), "", false)
       case _ => (KT + "Slice", "", true)
     }
     def valid(x: String) = if (isSlice) s"${KS}OK (S)" else s"${elPkg}Valid ($x)"
@@ -3607,14 +3646,36 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     o.comps += s"${bs}_Io : ${KS}Stream;"
     o.comps += s"${bs}_Count : ${KT}Length := 0;"
     o.belongs += s"${KS}Is_Valid (This.${bs}_Io, Buffer)"
-    o.privTypes ++= List(s"type $cur is record", s"   Io   : ${KS}Stream;", s"   Left : ${KT}Length := 0;", "end record;", "")
     o.rereads += s"$bs (see ${bs}_First)"
+    // the statements that read one element, and whether they use `_index`
+    val elScope = new Scope
+    val inHelperRc = RC("S", if (storesOrder(cs)) "This.Order" else "", elScope, a.path)
+    tr.iterator = None
+    tr.indexCode = Some("Index"); tr.usedIndex = false; tr.sliceUses.clear()
+    val elemStmts0 = try readValue(dt, "Element", inHelperRc, defaultTarget = true) finally tr.indexCode = None
+    // the slices of This that the element decodes from: they must lie in the buffer
+    val elemSlices = tr.sliceUses.toList.sorted
+    tr.sliceUses.clear()
+    val usesIndex = tr.usedIndex
+    tr.usedIndex = false
+    if (usesIndex) indexUsers += a.path.mkString("/")
+    o.privTypes ++= List(s"type $cur is record", s"   Io   : ${KS}Stream;", s"   Left : ${KT}Length := 0;") ++
+      (if (usesIndex) List(s"   Index : ${KT}Length := 0;") else Nil) ++ List("end record;", "")
+    // the elements of an index-dependent repetition cannot all be taken to be the same after an empty one
+    rep match {
+      case RepeatExpr(Ast.expr.IntNum(_)) =>
+      case RepeatExpr(_) if usesIndex && mayBeEmpty(dt) && sizeFromIndex(cs, dt) =>
+      case RepeatExpr(_) if usesIndex && mayBeEmpty(dt) =>
+        throw new AdaUnsupported("repetition whose count comes from the data, whose elements may read nothing, and whose parse depends on `_index`: the data do not bound the number of elements")
+      case _ =>
+    }
     val elemValid = if (selfElem) "Valid" else s"${elPkg}Valid"
     val elemTag =
-      if (isSlice) "The element, a slice of Buffer. If it could not be read, Has_Element (Position) is False afterwards"
+      if (isScalar) "The element. If it could not be read, Has_Element (Position) is False afterwards"
+      else if (isSlice) "The element, a slice of Buffer. If it could not be read, Has_Element (Position) is False afterwards"
       else "The element. If it could not be parsed it is not valid, and Has_Element (Position) is False afterwards"
     // an element may read nothing: the count can be far larger than the data
-    val emptyElems = rep.isInstanceOf[RepeatExpr] && minBytes(dt) == 0
+    val emptyElems = rep.isInstanceOf[RepeatExpr] && mayBeEmpty(dt) && !usesIndex
     val nextDoc = render(List(P("Parses the element at Position and moves Position to the next one:"), Gap)) ++
       List(s"Position := ${bs}_First (V);", "while Has_Element (Position) loop", "   Next (V, Buffer, Position, Element);") .map("--     " + _) ++
       (if (isSlice) Nil else List(s"   exit when not $elemValid (Element);").map("--     " + _)) ++
@@ -3632,7 +3693,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       tag("param", "This", "The value that has the repetition") ++
       tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
       tag("param", "Index", s"The number of the element, less than ${bs}_Count (This)") ++
-      tag("param", "Element", if (isSlice) "The element, a slice of Buffer" else "The element. If it could not be parsed it is not valid")
+      tag("param", "Element", if (isScalar) "The element" else if (isSlice) "The element, a slice of Buffer" else "The element. If it could not be parsed it is not valid")
     def one(text: String*): List[String] = render(List(P(sentences(text.toList))))
     o.pub ++= ind(
       describe(List(s"Number of elements of the repeated field ${q(k)}"), doc,
@@ -3650,7 +3711,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       s"function Has_Element (Position : $cur) return Boolean", "is (Remaining (Position) > 0);", "") ++
       nextDoc ++ List(
       s"procedure Next (This : T; Buffer : ${KT}Bytes; Position : in out $cur; Element : out $elT)",
-      "with", "  Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),",
+      "with", "  Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position)" +
+        (if (elemSlices.nonEmpty) " and then Belongs_To (This, Buffer)," else ","),
       "  Post =>", "    Belongs_To (Position, Buffer) and then Remaining (Position) < Remaining (Position'Old)" +
         (if (elBelongs) s"\n    and then ${if (isSlice) KT + "Within" else elPkg + "Belongs_To"} (Element, Buffer);" else ";"), "",
       ) ++ getDoc ++ List(
@@ -3665,35 +3727,30 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     o.privFuncs += s"is (${KS}Is_Valid (Position.Io, Buffer));"
     o.privFuncs += ""
     o.privFuncs += s"function ${bs}_First (This : T) return $cur"
-    o.privFuncs += s"is (Io => This.${bs}_Io, Left => This.${bs}_Count);"
+    o.privFuncs += s"is (Io => This.${bs}_Io, Left => This.${bs}_Count${if (usesIndex) ", Index => 0" else ""});"
     o.privFuncs += ""
     o.privFuncs += s"function Remaining (Position : $cur) return ${KT}Length"
     o.privFuncs += "is (Position.Left);"
     o.privFuncs += ""
 
     // reading one element
-    val elScope = new Scope
-    val elRc = RC("S", rc.order, elScope, a.path)
-    val elRcOuter = elRc
-    // order and arguments inside the helper come from This
-    val inHelperRc = RC("S", if (storesOrder(cs)) "This.Order" else "", elScope, a.path)
-    tr.iterator = None
-    val elemStmts0 = readValue(dt, "Element", inHelperRc, defaultTarget = true)
     val usesThis = elemStmts0.exists(_.contains("This"))
     val elemStmtsText = elemStmts0
-    val needsHelper = isSlice || elemStmts0.size != 1 || elScope.decls.nonEmpty
+    val needsHelper = isSlice || usesIndex || elemStmts0.size != 1 || elScope.decls.nonEmpty
     val helper = s"Parse_${bs}_Element"
-    val helperParams = s"Buffer : ${KT}Bytes; S : in out ${KS}Stream; " + (if (usesThis) "This : T; " else "") + s"Element : out $elT"
+    val helperParams = s"Buffer : ${KT}Bytes; S : in out ${KS}Stream; " + (if (usesThis) "This : T; " else "") +
+      (if (usesIndex) s"Index : ${KT}Length; " else "") + s"Element : out $elT"
     val callThis = if (usesThis) "This, " else ""
+    def callIndex(code: String) = if (usesIndex) s"$code, " else ""
     val postElem = s"${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Old, S)" + (if (isSlice) "" else s" and then (if ${valid("Element")} then ${KS}OK (S))") +
       (if (elBelongs) s" and then ${if (isSlice) KT + "Within" else elPkg + "Belongs_To"} (Element, Buffer)" else "")
-    def elemCall(stream: String): String =
-      if (needsHelper) s"$helper (Buffer, $stream, ${callThis}Element);"
+    def elemCall(stream: String, index: String): String =
+      if (needsHelper) s"$helper (Buffer, $stream, ${callThis}${callIndex(index)}Element);"
       else s"${elemStmts0.head.replace("(Element, Buffer, S", s"(Element, Buffer, $stream")}"
     if (needsHelper) {
-      o.bodyBefore ++= List(s"--  Parse one element of $nm", s"procedure $helper ($helperParams)", "with", s"  Pre  => ${KS}Is_Valid (S, Buffer),") ++
+      o.bodyBefore ++= List(s"--  Parse one element of $nm", s"procedure $helper ($helperParams)", "with", s"  Pre  => ${KS}Is_Valid (S, Buffer)" + elemSlices.map(x => s" and then ${KT}Within ($x, Buffer)").mkString + ",") ++
         (if (selfElem) List(s"  Post => $postElem,", "  Subprogram_Variant => (Decreases => This.Depth, Decreases => 0);", "") else List(s"  Post => $postElem;", ""))
-      val declLines = elScope.decls.toList
+      val declLines = elScope.decls.toList ++ (if (elScope.bit) List(s"Bit : ${KT}U64;") else Nil)
       val body = elemStmts0
       val unref = if (body.exists(_.contains("Buffer"))) Nil else List("pragma Warnings (Off, Buffer);")
       o.bodyBefore ++= List(s"procedure $helper ($helperParams) is") ++ ind(declLines ++ unref) ++ List("begin") ++ ind(body) ++ List(s"end $helper;", "")
@@ -3705,15 +3762,16 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       s"procedure Next (This : T; Buffer : ${KT}Bytes; Position : in out $cur; Element : out $elT) is"
     ) ++ (if (usesThis) Nil else List("   pragma Warnings (Off, This);")) ++ List(
       "begin",
-      "   " + elemCall("Position.Io"),
-      s"   Position.Left := (if ${valid("Element").replace("OK (S)", "OK (Position.Io)")} then Position.Left - 1 else 0);",
+      "   " + elemCall("Position.Io", "Position.Index"),
+      s"   Position.Left := (if ${valid("Element").replace("OK (S)", "OK (Position.Io)")} then Position.Left - 1 else 0);") ++
+      (if (usesIndex) List(s"   Position.Index := (if Position.Index < ${KT}Length'Last then Position.Index + 1 else Position.Index);") else Nil) ++ List(
       "end Next;", ""
     )
-    val within = if (isSlice) s"${KT}Within (Result, Buffer)" else if (elBelongs) s"${elPkg}Belongs_To (Result, Buffer)" else ""
+    val within = if (isScalar) "" else if (isSlice) s"${KT}Within (Result, Buffer)" else if (elBelongs) s"${elPkg}Belongs_To (Result, Buffer)" else ""
     val getBody = List(
       s"procedure Get_$bs (This : T; Buffer : ${KT}Bytes; Index : ${KT}Length; Element : out $elT) is",
       s"   Position : $cur := ${bs}_First (This);",
-      s"   Result   : $elT;") ++ (if (emptyElems) List(s"   Before   : ${KS}Stream;") else Nil) ++ List(
+      s"   Result   : $elT${if (isScalar) " := " + defaultOf(elT) else ""};") ++ (if (emptyElems) List(s"   Before   : ${KS}Stream;") else Nil) ++ List(
       "begin",
       s"   for I in 0 .. Index loop",
       s"      pragma Loop_Invariant (Belongs_To (Position, Buffer)${if (within.nonEmpty) " and then " + within else ""});",
@@ -3732,13 +3790,19 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     // Parse
     val el = rc.scope.fresh("Element")
     rc.scope.decls += s"$el : $elT;"
+    // the value of a bit field is not looked at by Parse
+    if (isScalar) rc.scope.decls += s"pragma Warnings (Off, $el);"
     val parseCall = if (needsHelper) {
       if (usesThis) rc.scope.passesThis = true
-      s"$helper (Buffer, S, ${callThis}$el);"
+      s"$helper (Buffer, S, ${callThis}${callIndex("I - 1")}$el);"
     } else elemStmts0.head.replace("(Element, ", s"($el, ")
     val Iv = "I"
+    // at most one element per byte that is left; a bit field takes at least a bit, so at most eight per byte
+    val bound =
+      if (isScalar) s"(if ${KS}Remaining (S) < ${KT}Length'Last / 8 - 1 then ${KS}Remaining (S) * 8 + 8 else ${KT}Length'Last)"
+      else s"${KS}Remaining (S)"
     // a slice has no validity to look at; the loop uses the element in its invariant
-    val sliceInv = if (isSlice) s" and then ${KT}Within ($el, Buffer)" else ""
+    val sliceInv = if (isSlice && !isScalar) s" and then ${KT}Within ($el, Buffer)" else ""
     val loop: List[String] = rep match {
       case RepeatExpr(e) =>
         val t = T(e, rc)
@@ -3746,7 +3810,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         // elements that may read nothing do not, so the loop is left at the first one that reads nothing: all that
         // follow start in the same state and read nothing either.
         val (before, same) =
-          if (minBytes(dt) > 0) (Nil, Nil)
+          if (!mayBeEmpty(dt) || usesIndex) (Nil, Nil)
           else {
             val at = rc.scope.fresh("Before")
             rc.scope.decls += s"$at : ${KS}Stream;"
@@ -3759,7 +3823,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         ) ++ ind(before ++ List(parseCall, s"exit when not ${valid(el).replace("OK (S)", "OK (S)")};") ++ same ++ List(
           s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv);")) ++ List("end loop;")
       case RepeatEos =>
-        List(s"This.${bs}_Count := 0;", s"for $Iv in 1 .. ${KS}Remaining (S) loop") ++
+        List(s"This.${bs}_Count := 0;", s"for $Iv in 1 .. $bound loop") ++
           ind(List(s"exit when ${KS}Is_EOF (S);", parseCall, s"exit when not ${valid(el)};", s"This.${bs}_Count := $Iv;",
             s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv);")) ++ List(
           "end loop;", s"if ${KS}OK (S) and then not ${KS}Is_EOF (S) then", "   " + failStmt(rc, "Limit_Exceeded"), "end if;")
@@ -3769,11 +3833,12 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         tr.buffer = Some("Buffer"); tr.io = Some("S"); tr.thisName = "This"
         tr.iterator = Some((dt, el))
         tr.knownValid = Set(el)
-        val ct = guard(a.path)(tr.translate(cond))
+        tr.indexCode = Some(s"$Iv - 1")
+        val ct = try guard(a.path)(tr.translate(cond)) finally tr.indexCode = None
         tr.iterator = None
         tr.knownValid = Set()
         val check = guarded(ct.guards, List(s"$done := ${ct.code};"), rc, List(s"$done := True;"), init = false)
-        List(s"This.${bs}_Count := 0;", s"$done := False;", s"for $Iv in 1 .. ${KS}Remaining (S) + 1 loop") ++
+        List(s"This.${bs}_Count := 0;", s"$done := False;", s"for $Iv in 1 .. $bound + 1 loop") ++
           ind(List(parseCall, s"exit when not ${valid(el)};", s"This.${bs}_Count := $Iv;") ++ planLoop ++ check ++ List(
             s"exit when $done;",
             s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv and then not $done${planInvariant});")) ++

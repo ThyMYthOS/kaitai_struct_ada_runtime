@@ -27,7 +27,9 @@ with Kaitai.Writers;
 with Outside;
 with Params_Def;
 with Position_Abs;
+with Repeat_Bits;
 with Repeat_Eos_U4;
+with Repeat_Index;
 with Repeat_N_Empty;
 with Repeat_N_Struct;
 with Repeat_Until_Complex;
@@ -415,6 +417,101 @@ package body Examples_Tests is
       Parse (This, Three (1 .. 7), S);
       Check (not Valid (This) and then Status (S) = End_Of_Stream, "too few elements");
    end Test_Repeat_N_Empty;
+
+   procedure Test_Repeat_Bits is
+      use Repeat_Bits;
+      Data   : constant Bytes (1 .. 8) := (16#03#, 16#00#, 16#00#, 16#00#, 16#AB#, 16#C0#, 16#7F#, 16#A5#);
+      Flags  : constant array (Length range 0 .. 7) of Boolean := (True, False, True, False, False, True, False, True);
+      Huge   : constant Bytes (1 .. 6) := (16#FF#, 16#FF#, 16#FF#, 16#7F#, 16#AB#, 16#C0#);
+      S      : Stream := Open (Data);
+      This   : Repeat_Bits.T;
+      N      : Kaitai.Types.U64;
+      Flag   : Boolean;
+      Target : Bytes (1 .. 8) := (others => 16#EE#);
+      W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples repeat_bits");
+      Parse (This, Data, S);
+      Check (Valid (This) and then Is_EOF (S), "parses all eight bytes");
+      if Valid (This) then
+         Check (Nibbles_Count (This) = 3 and then Tail (This) = 16#7F# and then Flags_Count (This) = 8, "counts");
+         Get_Nibbles (This, Data, 0, N);
+         Check (N = 16#A#, "nibbles[0]");
+         Get_Nibbles (This, Data, 2, N);
+         Check (N = 16#C#, "nibbles[2]");
+         declare
+            Position : Nibbles_Cursor := Nibbles_First (This);
+            Sum      : Kaitai.Types.U64 := 0;
+         begin
+            while Has_Element (Position) loop
+               Next (This, Data, Position, N);
+               Sum := Sum + N;
+            end loop;
+            Check (Sum = 16#A# + 16#B# + 16#C#, "Next goes through the nibbles");
+         end;
+         for I in Flags'Range loop
+            Get_Flags (This, Data, I, Flag);
+            Check (Flag = Flags (I), "flags[i]");
+         end loop;
+         Write (This, Data, Target, W);
+         Check (Kaitai.Writers.OK (W) and then Size (Kaitai.Writers.Written (W)) = 8 and then Target = Data, "written");
+      end if;
+
+      --  A count of 2**31 - 1 and bytes for three nibbles: the bits end at the end of the data, as the loop does
+      S := Open (Huge);
+      Parse (This, Huge, S);
+      Check (not Valid (This) and then Status (S) = End_Of_Stream, "a huge count of nibbles in six bytes");
+
+      S := Open (Data (1 .. 4));
+      Parse (This, Data (1 .. 4), S);
+      Check (not Valid (This) and then Status (S) = End_Of_Stream, "the nibbles are missing");
+   end Test_Repeat_Bits;
+
+   procedure Test_Repeat_Index is
+      use Repeat_Index;
+      Data   : constant Bytes (1 .. 13) :=
+        (16#03#, 16#00#, 16#00#, 16#00#, 16#02#, 16#00#, 16#01#, 16#61#, 16#62#, 16#63#, 16#11#, 16#22#, 16#22#);
+      Huge   : constant Bytes (1 .. 6) := (16#FF#, 16#FF#, 16#FF#, 16#7F#, 16#01#, 16#02#);
+      Short  : constant Bytes (1 .. 7) := (16#02#, 16#00#, 16#00#, 16#00#, 16#05#, 16#05#, 16#61#);
+      S      : Stream := Open (Data);
+      This   : Repeat_Index.T;
+      Buf    : Slice;
+      Row    : Row_Type.T;
+      Target : Bytes (1 .. 13) := (others => 16#EE#);
+      W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples repeat_index");
+      Parse (This, Data, S);
+      Check (Valid (This) and then Is_EOF (S), "parses all thirteen bytes");
+      if Valid (This) then
+         Check (Bufs_Count (This) = 3 and then Rows_Count (This) = 3, "counts");
+         Get_Bufs (This, Data, 0, Buf);
+         Check (Size (Buf) = 2 and then Data (Buf.First) = 16#61#, "bufs[0] has the size sizes[0]");
+         Get_Bufs (This, Data, 1, Buf);
+         Check (Size (Buf) = 0, "bufs[1] is empty");
+         Get_Bufs (This, Data, 2, Buf);
+         Check (Size (Buf) = 1 and then Data (Buf.First) = 16#63#, "bufs[2]");
+         Get_Rows (This, Data, 0, Row);
+         Check (Row_Type.Valid (Row) and then Row_Type.N (Row) = 0 and then Size (Row_Type.Cells (Row)) = 0, "rows[0]");
+         Get_Rows (This, Data, 2, Row);
+         Check
+           (Row_Type.Valid (Row) and then Row_Type.N (Row) = 2 and then Size (Row_Type.Cells (Row)) = 2,
+            "rows[2] has two bytes: its element knows that it is the third");
+         Write (This, Data, Target, W);
+         Check
+           (Kaitai.Writers.OK (W) and then Size (Kaitai.Writers.Written (W)) = 13 and then Target = Data, "written");
+      end if;
+
+      --  A count of 2**31 - 1 and no bytes for it: the sizes are not there
+      S := Open (Huge);
+      Parse (This, Huge, S);
+      Check (not Valid (This) and then Status (S) = End_Of_Stream, "a huge count in six bytes");
+
+      --  The size of the first element is beyond the data
+      S := Open (Short);
+      Parse (This, Short, S);
+      Check (not Valid (This) and then Status (S) = End_Of_Stream, "an element beyond the data");
+   end Test_Repeat_Index;
 
    procedure Test_Repeat_Eos_U4 is
       use Repeat_Eos_U4;
@@ -1577,6 +1674,8 @@ package body Examples_Tests is
       Test_Term_Strz;
       Test_Repeat_N_Struct;
       Test_Repeat_N_Empty;
+      Test_Repeat_Bits;
+      Test_Repeat_Index;
       Test_Repeat_Eos_U4;
       Test_Repeat_Until_Complex;
       Test_Switch_Manual_Int;

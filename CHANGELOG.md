@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Compiler: repetitions of bit fields (`b1`, `bN`, and enumerations over them) with a cursor, and `_index` in the
+  expressions of the elements of a cursor (`size: sizes[_index]`, `type: row(_index)`, the condition of `repeat-until`);
+  the element procedure takes the number, the cursor keeps it. The early exit at an element that read nothing
+  does not apply to such elements; a count from the data with elements that may read nothing is rejected unless the
+  size is `x[_index]` of a repetition of integers. `Next` has `Belongs_To (This, Buffer)` as a precondition where the
+  elements decode a slice of `This`. Examples `repeat_bits` and `repeat_index`.
 - Compiler: a parse instance (`pos`, with or without `size` or `io`) that an expression of the `seq` needs
   (`repeat-expr`, `repeat-until`, `size`, `if`, `valid`, `switch-on`, an argument of a type, a value instance, another
   such instance) is parsed once by `Parse`, where it is first needed, and kept in `T`, as the other targets do, and its

@@ -24,6 +24,8 @@ package Fuzz_Targets is
       Term_Strz_Parser,
       Repeat_N_Struct_Parser,
       Repeat_N_Empty_Parser,
+      Repeat_Bits_Parser,
+      Repeat_Index_Parser,
       Repeat_Eos_U4_Parser,
       Repeat_Until_Complex_Parser,
       Switch_Manual_Int_Parser,

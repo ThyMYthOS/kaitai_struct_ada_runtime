@@ -27,7 +27,9 @@ with Kaitai.Writers;
 with Outside;
 with Params_Def;
 with Position_Abs;
+with Repeat_Bits;
 with Repeat_Eos_U4;
+with Repeat_Index;
 with Repeat_N_Empty;
 with Repeat_N_Struct;
 with Repeat_Until_Complex;
@@ -165,6 +167,11 @@ package body Fuzz_Targets is
    --  No key, nothing to process, and a tree of nodes with one child each
    Extras_Chain : constant Bytes := (0, 0, 0, 1, 1, 2, 1, 3, 1, 4, 1, 5, 1, 6, 0);
 
+   Repeat_Bits_Data : constant Bytes := (16#03#, 16#00#, 16#00#, 16#00#, 16#AB#, 16#C0#, 16#7F#, 16#A5#);
+
+   Repeat_Index_Data : constant Bytes :=
+     (16#03#, 16#00#, 16#00#, 16#00#, 16#02#, 16#00#, 16#01#, 16#61#, 16#62#, 16#63#, 16#11#, 16#22#, 16#22#);
+
    Bits_In_Types_Data    : constant Bytes := (16#AB#, 16#CD#);
    Bits_In_Repeat_Data   : constant Bytes := (16#AB#, 16#CD#, 16#EF#, 16#12#);
    Bits_After_Bytes_Data : constant Bytes := (16#11#, 16#B6#, 16#2A#, 16#07#);
@@ -282,6 +289,12 @@ package body Fuzz_Targets is
 
          when Repeat_N_Empty_Parser            =>
             return Sample_Data.Repeat_N_Empty;
+
+         when Repeat_Bits_Parser               =>
+            return Repeat_Bits_Data;
+
+         when Repeat_Index_Parser              =>
+            return Repeat_Index_Data;
 
          when Repeat_Eos_U4_Parser             =>
             return Sample_Data.Repeat_Eos_Struct;
@@ -576,6 +589,64 @@ package body Fuzz_Targets is
    procedure Run_Repeat_N_Struct is new
      Run_Parse_Only (Repeat_N_Struct.T, Repeat_N_Struct.Parse, Repeat_N_Struct.Valid);
    --  Only Parse: the count of a mutated input can be billions, and walking the elements is the caller's loop
+   --  Walk the first elements of both repetitions with the cursor and by index
+   procedure Run_Repeat_Bits (Input : Bytes; Fields : out Natural);
+
+   procedure Run_Repeat_Bits (Input : Bytes; Fields : out Natural) is
+      S : Stream := Open (Input);
+      R : Repeat_Bits.T;
+      N : Kaitai.Types.U64;
+      B : Boolean;
+   begin
+      Fields := 0;
+      Repeat_Bits.Parse (R, Input, S);
+      pragma Assert (Repeat_Bits.Valid (R) = OK (S));
+      if not Repeat_Bits.Valid (R) then
+         return;
+      end if;
+      Fields := 1;
+      declare
+         Position : Repeat_Bits.Nibbles_Cursor := Repeat_Bits.Nibbles_First (R);
+      begin
+         for I in 1 .. 16 loop
+            exit when not Repeat_Bits.Has_Element (Position);
+            Repeat_Bits.Next (R, Input, Position, N);
+            Count (Fields, N < 16);
+         end loop;
+      end;
+      for I in 0 .. Length'Min (Repeat_Bits.Flags_Count (R), 16) - 1 loop
+         Repeat_Bits.Get_Flags (R, Input, I, B);
+         Count (Fields, B);
+      end loop;
+   end Run_Repeat_Bits;
+
+   --  Walk the first elements of both repetitions with the cursor and by index
+   procedure Run_Repeat_Index (Input : Bytes; Fields : out Natural);
+
+   procedure Run_Repeat_Index (Input : Bytes; Fields : out Natural) is
+      S   : Stream := Open (Input);
+      R   : Repeat_Index.T;
+      Buf : Slice;
+      Row : Repeat_Index.Row_Type.T;
+   begin
+      Fields := 0;
+      Repeat_Index.Parse (R, Input, S);
+      pragma Assert (Repeat_Index.Valid (R) = OK (S));
+      if not Repeat_Index.Valid (R) then
+         return;
+      end if;
+      Fields := 1;
+      for I in 0 .. Length'Min (Repeat_Index.Bufs_Count (R), 16) - 1 loop
+         Repeat_Index.Get_Bufs (R, Input, I, Buf);
+         Count (Fields, Size (Buf) = 0);
+      end loop;
+      for I in 0 .. Length'Min (Repeat_Index.Rows_Count (R), 16) - 1 loop
+         Repeat_Index.Get_Rows (R, Input, I, Row);
+         pragma Assert (Repeat_Index.Row_Type.Valid (Row));
+         Count (Fields, Repeat_Index.Row_Type.N (Row) = Kaitai.Types.U32 (I));
+      end loop;
+   end Run_Repeat_Index;
+
    procedure Run_Repeat_N_Empty is new Run_Parse_Only (Repeat_N_Empty.T, Repeat_N_Empty.Parse, Repeat_N_Empty.Valid);
    procedure Run_Repeat_Eos_U4 is new Run_Parse_Only (Repeat_Eos_U4.T, Repeat_Eos_U4.Parse, Repeat_Eos_U4.Valid);
    procedure Run_Repeat_Until_Complex is new
@@ -1034,6 +1105,12 @@ package body Fuzz_Targets is
 
          when Repeat_N_Empty_Parser            =>
             Run_Repeat_N_Empty (Input, Fields);
+
+         when Repeat_Bits_Parser               =>
+            Run_Repeat_Bits (Input, Fields);
+
+         when Repeat_Index_Parser              =>
+            Run_Repeat_Index (Input, Fields);
 
          when Repeat_Eos_U4_Parser             =>
             Run_Repeat_Eos_U4 (Input, Fields);

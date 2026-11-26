@@ -163,6 +163,12 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
   var knownValid: Set[String] = Set()
   /** What `_` stands for: Kaitai type and code of the value as stored */
   var iterator: Option[(DataType, String)] = None
+  /** What `_index` stands for: the code of the number of the element, a `Kaitai.Types.Length` */
+  var indexCode: Option[String] = None
+  /** The slices of the current record that expressions decode elements from (`This.Sizes`) */
+  val sliceUses = scala.collection.mutable.Set[String]()
+  /** Set when `_index` was translated */
+  var usedIndex: Boolean = false
   /** Value instances being inlined, to find cycles */
   private var inlining: List[String] = Nil
   /** Code that stands for the current record */
@@ -306,6 +312,7 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         ops += "Length"
         val count = s"Kaitai.Types.S64 (Kaitai.Types.Size ($thisName.$comp) / $size)"
         val guards = i.guards ++ has ++ (if (i.lo >= 0) Nil else List(s"${i.atom} >= 0")) ++ List(s"${i.atom} < $count")
+        sliceUses += s"$thisName.$comp"
         val at = s"$thisName.$comp.First + Kaitai.Types.Length (${i.code}) * $size"
         val dec = "Kaitai.Decoding."
         val decoded = base match {
@@ -454,7 +461,14 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         case Some((dt, code)) => fromValue(dt, code, Nil)
         case None => unsupported("`_` outside of `repeat-until` and `valid`")
       }
-    case Identifier.INDEX => unsupported("`_index`")
+    case Identifier.INDEX =>
+      indexCode match {
+        case Some(code) =>
+          usedIndex = true
+          ops += "S64"
+          int(s"Kaitai.Types.S64 ($code)", 0, Nil, 0, S64Max)
+        case None => unsupported("`_index` outside of the element of a repetition whose elements are parsed one by one")
+      }
     case Identifier.SIZEOF =>
       // `_sizeof` alone is the size of the current type, known at compile time
       val n = BigInt(CommonSizeOf.getByteSizeOfClassSpec(provider.nowClass))

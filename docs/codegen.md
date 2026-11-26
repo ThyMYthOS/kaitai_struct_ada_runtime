@@ -425,6 +425,53 @@ the parser busy for minutes. A loop of the caller over all elements with
 A count is the value of an expression and goes through `To_Count`: a
 negative value means no element.
 
+#### Bit fields
+
+A repetition of `bN` or `b1` (an enumeration over them too) has a cursor like
+the other elements. The element is a `U64` (a `Boolean` for `b1`, the integer
+of the enumeration), and the stream of the cursor carries the bit position, so
+the next element goes on in the byte that the one before left open. An element
+reads at least a bit and fails at the end of the data, so the loop of `repeat:
+expr` is bounded by the data and needs no early exit; `repeat: eos` and
+`repeat: until` run at most once per bit that was left, which is eight per byte
+and is the bound of their `for` loop. The cost of `Parse` is the number of
+elements, at most 8 times the bytes that are left; of `Next`, a few instructions;
+of `Get_X`, the index.
+
+#### `_index`
+
+`_index` is a parameter of the procedure of the body that parses one element,
+`Parse_X_Element (Buffer, S, [This,] Index, Element)`, of type `Length`. `Parse`
+passes the number of the loop, `Next` the number that the cursor holds (the
+cursor has a component `Index` then, which `X_First` sets to 0 and `Next` raises
+by one), so `Get_X` and a loop of the caller with `Next` parse an element as
+`Parse` did. A slice of `This` that the expressions of the element decode
+(`sizes[_index]`) must lie in the buffer: the element procedure has it as a
+precondition (`Within (This.Sizes, Buffer)`) and `Next` has `Belongs_To (This,
+Buffer)` as a precondition.
+
+The rule that an element which read nothing ends the loop (above, in `Parse`,
+`Write` and `Get_X`) holds only if every element after it starts in the same
+state. With `_index` in the expressions of an element it does not, so these
+loops run to the end of the count. What bounds them:
+
+- a count that is a literal, or elements that read at least a byte (or a bit):
+  the count, or the data;
+- the size of the element is `x[_index]` where `x` is a repetition of integers of
+  a fixed size of the same type: the element with the number that `x` has no
+  element for makes the stream fail (`Arithmetic_Error`), so at most as many
+  elements are parsed as `x` has, and `x` is part of the data;
+- otherwise (a count from the data and elements that may read nothing) the
+  description is rejected, since nothing bounds the loop: with `00 FF FF FF FF`
+  it would run 4294967295 times.
+
+`repeat: until` takes `_index` in its condition as the number of the element
+just read, `I - 1`. `_index` in the expressions of a repetition of integers of a
+fixed size (a slice, which has no element procedure) is rejected, and so is every
+subscript of a repetition of structures, bytes or strings, `x[_index - 1]`
+included: such an access would parse the elements before it again for each
+element.
+
 ## Expressions
 
 Integer expressions are computed in `S64`. Every operand is converted to it,
@@ -1128,7 +1175,9 @@ Where the rules above are silent, the compiler does the following.
   and `i` is below the number of elements, which becomes a condition of the
   expression like the others. The element is decoded from `Buffer`, so the
   expression needs the buffer like a string length does. A subscript with a
-  literal index of an array literal is the value. `_index` is rejected.
+  literal index of an array literal is the value. `_index` is the number of
+  the element in the expressions of the element of a repetition that is parsed
+  with a cursor (see "Repetitions").
 - `contents` is a constant `X_Expected` of the body, compared by
   `Read_Contents`. `valid` is checked after the read and fails the stream
   with the matching `Validation_*` status.

@@ -202,6 +202,32 @@ group agree on the checksum. `icount.sh` gets the cost of one record as the diff
 divided by 1000. `target/run_inst.sh` runs the group on the simulated STM32F4 and prints the size of the value of each
 variant, which is also what `T'Object_Size` says.
 
+## `float_bench`: asking whether a floating point operation is defined
+
+Usage: `float_bench [records] [variant]`. Parses records of 15 bytes
+(`x: f8le`, `y: f4le`, `n: u2le`, `k: u1`), whose floats are finite and between
+2**(-20) and 2**20 in magnitude, and computes from `x` and `y` with the operators of
+Ada and with the functions of `Kaitai.Float_Arithmetic`, which ask first. The parser of
+a record is not inlined and takes the stream as a parameter, as in `arith_bench`. A
+variant of an operation that asks is held against the one that does not; both must
+give the checksum, which `scripts/check.sh bench` verifies. Every variant of an operation mixes `x`, `y` and the
+result into the checksum, and `nop` parses, converts and mixes `x`, `y` and `x` again,
+so that a variant minus `nop` is the cost of the operation, and a guarded variant
+minus the plain one is the cost of asking.
+
+| Variant | Computes per record |
+|---|---|
+| `add_plain`, `add_guarded` | `x + y`, `y` converted to `F64`, with `Add_OK` first in the second |
+| `add_lit_plain`, `add_lit_guarded` | `x + 0.05` |
+| `sub_plain`, `sub_guarded` | `x - y` |
+| `mul_plain`, `mul_guarded` | `x * y` |
+| `to_i_plain`, `to_i_guarded` | `x.to_i`; the plain one is hand-written with `Floor` and `Ceiling`, the other asks `Truncate_OK` first |
+| `expr_plain`, `expr_guarded` | the four expressions `x + 0.05`, `x * y`, `y * y + 1.0`, `x.to_i` |
+| `expr_guarded_where_needed` | the same, but `y * y + 1.0` is not asked, since `y` is an f4 and cannot make it overflow |
+
+On a target a `Long_Float` operation is a call of the soft-float library, so that
+the programs for `target/` show the cost of an operation that the host does not.
+
 ## `target/`: the stream designs on a low-end target
 
 A crate of its own that cross-compiles the stream benchmark for an STM32F4

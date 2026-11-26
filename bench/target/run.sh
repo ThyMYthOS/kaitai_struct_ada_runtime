@@ -103,5 +103,14 @@ for rts in "${@:-light-stm32f4}"; do
          awk -v name=$variant -v total="$1" -v base="$base" -v n=$RECORDS -v sum="$2" \
             'BEGIN { printf "%-22s%10.1f   %s\n", name, (total - base) / n, sum }'
       done
+      echo "-- floating point, instructions per 15-byte record; the cost of an operation is its variant minus nop"
+      set -- $(simulate "bin/$rts/$mode/target_float_none")
+      base=$1
+      for variant in nop add_plain add_guarded add_lit_plain add_lit_guarded sub_plain sub_guarded mul_plain mul_guarded \
+         to_i_plain to_i_guarded expr_plain expr_guarded expr_guarded_where_needed; do
+         set -- $(simulate "bin/$rts/$mode/target_float_$variant")
+         awk -v name=$variant -v total="$1" -v base="$base" -v n=$RECORDS -v sum="$2" \
+            'BEGIN { printf "%-26s%10.1f   %s\n", name, (total - base) / n, sum }'
+      done
    done
 done

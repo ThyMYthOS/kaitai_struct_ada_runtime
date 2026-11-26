@@ -91,6 +91,12 @@ step_bench() {
       ./bin/proven/instance_bench 100 >/dev/null || { echo "instance variants disagree" >&2; exit 1; }
       sums=$(./bin/proven/arith_bench 10000 | awk '{ print $NF }' | sort -u | wc -l)
       [ "$sums" = 1 ] || { echo "overflow protections disagree" >&2; exit 1; }
+      # The variants of one floating point operation, plain and asked first, compute the same
+      output=$(./bin/proven/float_bench 10000)
+      for op in add add_lit sub mul to_i expr; do
+         sums=$(echo "$output" | grep -E "^${op}_(plain|guarded)" | awk '{ print $NF }' | sort -u | wc -l)
+         [ "$sums" = 1 ] || { echo "floating point variants of $op disagree" >&2; exit 1; }
+      done
       sums=$(for strategy in lazy index_arena index_owned vector_values vector_reserved ada_vector \
          ptr_malloc ptr_pool ptr_pool_kept ptr_subpool owned_malloc owned_pool owned_pool_kept owned_subpool; do
          ./bin/proven/memory_bench $strategy 10000 32 1 | awk '{ print $(NF - 1), $NF }'

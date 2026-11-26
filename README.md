@@ -92,6 +92,7 @@ descriptions; `examples/showcase` uses most constructs in one description.
 | `Kaitai.Byte_Arrays` | search, comparison, minimum and maximum, without copying |
 | `Kaitai.Strings` | validity and character count for ASCII, UTF-8, UTF-16 and UTF-32, conversion to UTF-8, numbers from and to text |
 | `Kaitai.Arithmetic` | integer arithmetic of expressions that cannot overflow |
+| `Kaitai.Float_Arithmetic` | floating point arithmetic of expressions that cannot overflow, and `to_i` |
 | `Kaitai.Processing`, `Kaitai.Zlib` | `process`: xor, rotation, zlib decompression |
 | `Kaitai.Arenas` | hands out parts of an array of the caller |
 | `Kaitai.Writers` | the counterpart of the stream for writing |

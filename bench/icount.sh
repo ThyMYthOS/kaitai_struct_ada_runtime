@@ -136,6 +136,18 @@ for variant in int_d1_parse int_d1_access int_d2_parse int_d2_access user_d1_par
 done
 
 echo
+echo "== floating point: instructions per 15-byte record; the cost of an operation is its variant minus nop"
+for mode in checked inlined proven; do
+   echo "-- mode $mode"
+   base=$(count ./bin/$mode/float_bench "$RECORDS" none)
+   for variant in nop add_plain add_guarded add_lit_plain add_lit_guarded sub_plain sub_guarded mul_plain mul_guarded \
+         to_i_plain to_i_guarded expr_plain expr_guarded expr_guarded_where_needed; do
+      total=$(count ./bin/$mode/float_bench "$RECORDS" $variant)
+      printf "%-26s%s\n" $variant "$(per "$total" "$base" "$RECORDS")"
+   done
+done
+
+echo
 echo "== memory strategies, $RECORDS records, payload 0..$MAX_PAYLOAD bytes"
 echo "   instructions per record: build, traverse; per access: pick; per record: teardown"
 for mode in inlined proven; do

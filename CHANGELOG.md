@@ -23,6 +23,18 @@
   top-level type of another description, or an opaque type, names the variant
   `X_Is_Foo_T` and its component `Foo_T`; before, the component had the name of
   the package and the unit did not compile.
+- Library: `Kaitai.Float_Arithmetic`, the arithmetic of expressions with floats, in
+  `F64`. Every operation has a function that tells whether its result is finite
+  (`Add_OK`, `Subtract_OK`, `Multiply_OK`) and one that computes it, as
+  `Kaitai.Arithmetic` has for integers, and `Truncate_OK` and `Truncate` are the
+  `to_i`. `From_F32` and `From_S64` convert f4 and integer operands. The functions
+  that ask are stricter than the exact condition only where an operand is above
+  2**500 (3.3E150) in magnitude, which the specification states exactly, because
+  that is what GNATprove proves at level 1 with a margin. Division is not in it:
+  its condition did not prove with a margin. The backend does not use the package
+  yet.
+- Benchmarks: `float_bench` measures what asking costs for each operation, on the host
+  (`icount.sh`) and on the simulated STM32F4 (`target/run.sh`).
 - Library: every declaration of a visible part has a documentation comment of its
   own, directly before it, also the integer types, the record components and the
   enumeration literals. Comments that stood before a group of declarations

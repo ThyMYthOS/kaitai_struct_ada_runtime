@@ -29,6 +29,7 @@ project Kaitai_Bench is
    for Exec_Dir use "bin/" & Mode;
    for Main use
      ("arith_bench.adb",
+      "float_bench.adb",
       "instance_bench.adb",
       "memory_bench.adb",
       "param_bench.adb",

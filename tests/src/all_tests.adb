@@ -4,6 +4,7 @@ with Byte_Arrays_Tests;
 with Decoding_Tests;
 with Examples_Tests;
 with Extras_Tests;
+with Float_Arithmetic_Tests;
 with Foreign_Tests;
 with Processing_Tests;
 with Sample_Parser_Tests;
@@ -27,6 +28,7 @@ begin
    Processing_Tests.Run;
    Zlib_Tests.Run;
    Arithmetic_Tests.Run;
+   Float_Arithmetic_Tests.Run;
    Sample_Parser_Tests.Run;
    Examples_Tests.Run;
    Showcase_Tests.Run;

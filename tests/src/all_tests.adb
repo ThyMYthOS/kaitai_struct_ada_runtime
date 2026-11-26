@@ -4,6 +4,7 @@ with Byte_Arrays_Tests;
 with Decoding_Tests;
 with Examples_Tests;
 with Extras_Tests;
+with Foreign_Tests;
 with Processing_Tests;
 with Sample_Parser_Tests;
 with Showcase_Tests;
@@ -30,6 +31,7 @@ begin
    Examples_Tests.Run;
    Showcase_Tests.Run;
    Extras_Tests.Run;
+   Foreign_Tests.Run;
    Writers_Tests.Run;
    Write_Model_Tests.Run;
    Test_Support.Summary;

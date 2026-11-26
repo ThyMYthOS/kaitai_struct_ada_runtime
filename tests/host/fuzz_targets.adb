@@ -16,6 +16,7 @@ with Expr_Sizeof_Value_Sized;
 with Expr_To_I_Trailing;
 with Extras;
 with Fixed_Struct;
+with Foreign;
 with Hello_World;
 with If_Struct;
 with Imports0;
@@ -36,6 +37,7 @@ with Str_Literal_Encodings;
 with Str_Literals_Latin1;
 with Str_Ordering;
 with Subscripts;
+with Timestamp;
 with Switch_Bytearray;
 with Switch_Else_Only;
 with Switch_Manual_Int;
@@ -103,6 +105,32 @@ package body Fuzz_Targets is
       16#00#);
 
    Showcase_Minimal : constant Bytes := (16#53#, 16#48#, 1, 1, 0, 0, 0, 3, 3, 0, 0, 9, 0, 0, 16#10#, 0);
+
+   --  A value of examples/foreign: the key, a timestamp, 3 bytes of text, a frame of 5 bytes, two timestamps
+   Foreign_Data : constant Bytes :=
+     (16#05#,
+      16#00#,
+      16#00#,
+      16#01#,
+      16#00#,
+      16#03#,
+      16#6B#,
+      16#97#,
+      16#69#,
+      16#05#,
+      16#FF#,
+      16#00#,
+      16#12#,
+      16#34#,
+      16#FF#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#0A#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#14#);
 
    Extras_Full : constant Bytes :=
      (16#5A#,
@@ -342,6 +370,9 @@ package body Fuzz_Targets is
 
          when Enum_Long_Range_U_Parser         =>
             return Enum_Long_Data;
+
+         when Foreign_Parser                   =>
+            return Foreign_Data;
       end case;
    end Seed;
 
@@ -904,6 +935,38 @@ package body Fuzz_Targets is
    procedure Run_Enum_Long_Range_U is new
      Run_Parse_Only (Enum_Long_Range_U.T, Enum_Long_Range_U.Parse, Enum_Long_Range_U.Valid);
 
+   procedure Run_Foreign (Input : Bytes; Fields : out Natural) is
+      S       : Stream := Open (Input);
+      R       : Foreign.T;
+      Frame   : Foreign.Frame_Type.T;
+      Element : Timestamp.T;
+      Storage : Bytes (3 .. 12) := (others => 0);
+      Last    : Length;
+      Outcome : Status_Kind;
+   begin
+      Fields := 0;
+      Foreign.Parse (Input, S, R);
+      pragma Assert (Foreign.Valid (R) = OK (S));
+      if not Foreign.Valid (R) then
+         return;
+      end if;
+      Fields := 1;
+      Count (Fields, Timestamp.Seconds (Foreign.Stamp (R)) = 0);
+      Foreign.Text (Input, R, Storage, Last, Outcome);
+      pragma Assert ((Outcome = Success) = (Size (Foreign.Text_Raw (R)) <= Storage'Length));
+      Count (Fields, Outcome = Success and then Last >= Storage'First);
+      Foreign.Frame (Input, R, Storage, Frame, Outcome);
+      pragma Assert (Foreign.Frame_Type.Valid (Frame) = (Outcome = Success));
+      if Foreign.Frame_Type.Valid (Frame) then
+         Count (Fields, Foreign.Frame_Type.A (Frame) = 0 or else Foreign.Frame_Type.B (Frame) = 0);
+      end if;
+      for I in 0 .. Foreign.Stamps_Count (R) - 1 loop
+         Foreign.Get_Stamps (Input, R, I, Element);
+         pragma Assert (Timestamp.Valid (Element));
+         Count (Fields, Timestamp.Seconds (Element) = 0);
+      end loop;
+   end Run_Foreign;
+
    procedure Run (T : Target; Input : Bytes; Argument : U16; Fields : out Natural) is
    begin
       case T is
@@ -1050,6 +1113,9 @@ package body Fuzz_Targets is
 
          when Enum_Long_Range_U_Parser         =>
             Run_Enum_Long_Range_U (Input, Fields);
+
+         when Foreign_Parser                   =>
+            Run_Foreign (Input, Fields);
       end case;
    end Run;
 

@@ -56,7 +56,8 @@ package Fuzz_Targets is
       Str_Ordering_Parser,
       Valid_Long_Parser,
       Yaml_Ints_Parser,
-      Enum_Long_Range_U_Parser);
+      Enum_Long_Range_U_Parser,
+      Foreign_Parser);
 
    --  An input the parser accepts.  Round selects one where there are
    --  several.

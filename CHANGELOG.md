@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Compiler: a parse instance (`pos`, with or without `size` or `io`) that an expression of the `seq` needs
+  (`repeat-expr`, `repeat-until`, `size`, `if`, `valid`, `switch-on`, an argument of a type, a value instance, another
+  such instance) is parsed once by `Parse`, where it is first needed, and kept in `T`, as the other targets do, and its
+  accessor is a function that returns the value (for a user type with the postcondition that it is valid). A failure in
+  the instance fails `Parse`. `_io.pos` and `_io.eof` in its expressions are the position at the first use. A value
+  instance that uses one is an expression function again. An instance that no expression of the `seq` needs stays a
+  procedure that parses at every call, and `_io.pos` in it stays rejected. Rejected with a message: an instance that
+  may not be evaluated at all when it is first needed (under an `if` of the field, per element, in a case of a
+  `switch-on`), that needs a field read later, with `if`, `repeat`, `process`, a float or another `io`, and with
+  `--read-write` a type whose `seq` needs one (instances are not written). New formats generated:
+  `instance_in_repeat_expr`, `instance_in_repeat_until`, `position_in_seq`, `valid_fail_contents_inst`,
+  `valid_fail_inst`. See `docs/codegen.md`, "An instance that an expression of the `seq` needs", and
+  `examples/instance_kept`.
+- Compiler: a comparison whose result the ranges of its operands decide (`u1 >= 0`) is a constant, as for literals, so
+  that an `if` on it does not make a condition that is always true in the generated code.
 - Compiler: BREAKING. In generated code `This` is now the first parameter of every
   operation of the visible part that has it. This breaks every positional call of
   generated code of 0.2.0: `Parse (Buffer, S, [arguments,] V)` becomes

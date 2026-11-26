@@ -20,6 +20,7 @@ with Foreign;
 with Hello_World;
 with If_Struct;
 with Imports0;
+with Instance_Kept;
 with Instance_Std;
 with Kaitai.Streams; use Kaitai.Streams;
 with Kaitai.Writers;
@@ -303,6 +304,9 @@ package body Fuzz_Targets is
          when Instance_Std_Parser              =>
             return Sample_Data.Str_Encodings;
 
+         when Instance_Kept_Parser             =>
+            return Sample_Data.Instance_Kept;
+
          when Position_Abs_Parser              =>
             return Sample_Data.Position_Abs;
 
@@ -582,6 +586,7 @@ package body Fuzz_Targets is
    procedure Run_If_Struct is new Run_Parse_Only (If_Struct.T, If_Struct.Parse, If_Struct.Valid);
    procedure Run_Expr_1 is new Run_Parse_Only (Expr_1.T, Expr_1.Parse, Expr_1.Valid);
    procedure Run_Instance_Std is new Run_Parse_Only (Instance_Std.T, Instance_Std.Parse, Instance_Std.Valid);
+   procedure Run_Instance_Kept is new Run_Parse_Only (Instance_Kept.T, Instance_Kept.Parse, Instance_Kept.Valid);
    procedure Run_Position_Abs is new Run_Parse_Only (Position_Abs.T, Position_Abs.Parse, Position_Abs.Valid);
    procedure Run_Str_Encodings is new Run_Parse_Only (Str_Encodings.T, Str_Encodings.Parse, Str_Encodings.Valid);
    procedure Run_Default_Endian_Expr_Is_Le is new
@@ -1050,6 +1055,9 @@ package body Fuzz_Targets is
 
          when Instance_Std_Parser              =>
             Run_Instance_Std (Input, Fields);
+
+         when Instance_Kept_Parser             =>
+            Run_Instance_Kept (Input, Fields);
 
          when Position_Abs_Parser              =>
             Run_Position_Abs (Input, Fields);

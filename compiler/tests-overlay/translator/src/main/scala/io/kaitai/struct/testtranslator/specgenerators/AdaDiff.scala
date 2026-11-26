@@ -266,6 +266,12 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
         else if (cc.valueInstanceHasGuard(cs, v))
           List(s"if $has ($args) then") ++ ind(leaf) ++ List("else", s"   Fail (\"undefined \" & $path);", "end if;")
         else leaf
+      case p: ParseInstanceSpec if cc.instanceNotKept(cs, p).isEmpty =>
+        // Parse kept it, and the accessor is a function
+        p.dataType match {
+          case et: EnumType => adaLeaf(et, s"$pkg.${bs}_Value ($obj)", buf, path)
+          case dt => adaLeaf(dt, s"$pkg.$mname ($obj)", buf, path)
+        }
       case p: ParseInstanceSpec =>
         val l = nm("L")
         val o = nm("Outcome")

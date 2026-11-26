@@ -489,14 +489,14 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       case _ => false
     }
     cs.seq.exists(a => !isContents(a) && (a.cond.repeat != NoRepeat && dtHasRepeat(a) || dtHas(a.dataType) && a.cond.repeat == NoRepeat)) ||
-      hasIo(cs)
+      hasIo(cs) || keptOf(cs).exists(k => dtHas(k.dataType))
   })
 
   private def dtHasRepeat(a: AttrLikeSpec): Boolean = true
 
   private def hasIo(cs: ClassSpec): Boolean =
     cs.instances.values.exists {
-      case p: ParseInstanceSpec => p.io.isEmpty
+      case p: ParseInstanceSpec => p.io.isEmpty && !isKept(cs, p)
       case _ => false
     }
 
@@ -1117,6 +1117,257 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     case _ => Set()
   }
 
+  // ------------------------------------------- parse instances that the seq needs
+
+  private def exprKids(e: Ast.expr): List[Ast.expr] = e match {
+    case Ast.expr.Attribute(v, _) => List(v)
+    case Ast.expr.BinOp(l, _, r) => List(l, r)
+    case Ast.expr.Compare(l, _, r) => List(l, r)
+    case Ast.expr.BoolOp(_, vs) => vs.toList
+    case Ast.expr.UnaryOp(_, v) => List(v)
+    case Ast.expr.IfExp(a, b, c) => List(a, b, c)
+    case Ast.expr.Call(f, args) => f :: args.toList
+    case Ast.expr.Subscript(a, b) => List(a, b)
+    case Ast.expr.List(es) => es.toList
+    case Ast.expr.CastToType(v, _) => List(v)
+    case Ast.expr.EnumById(_, v, _) => List(v)
+    case _ => Nil
+  }
+
+  /** `_io.pos` or `_io.eof` is written in the expression */
+  private def mentionsIoPos(e: Ast.expr): Boolean = e match {
+    case Ast.expr.Attribute(Ast.expr.Name(Ast.identifier(Identifier.IO)), Ast.identifier("pos" | "eof")) => true
+    case _ => exprKids(e).exists(mentionsIoPos)
+  }
+
+  /**
+    * The parse instances of `cs` that the expressions need: those they name, and those that the value instances and
+    * the parse instances they name need in turn, each after those it needs.
+    */
+  private def instanceUses(cs: ClassSpec, es: List[Ast.expr]): List[ParseInstanceSpec] = {
+    val out = ListBuffer[ParseInstanceSpec]()
+    val seenValues = mutable.Set[String]()
+    def walk(e: Ast.expr, path: List[String]): Unit = e match {
+      case Ast.expr.Name(Ast.identifier(n)) if !n.startsWith("_") =>
+        memberOpt(cs, n) match {
+          case Some(v: ValueInstanceSpec) if !seenValues.contains(n) =>
+            seenValues += n
+            (v.value :: v.ifExpr.toList).foreach(walk(_, path))
+          case Some(p: ParseInstanceSpec) =>
+            if (path.contains(n)) throw new AdaUnsupported(s"parse instances that need each other (`$n`)")
+            if (!out.exists(_.id == p.id)) {
+              attrExprs(p).foreach(walk(_, n :: path))
+              if (!out.exists(_.id == p.id)) out += p
+            }
+          case _ =>
+        }
+      case _ => exprKids(e).foreach(walk(_, path))
+    }
+    es.foreach(walk(_, Nil))
+    out.toList
+  }
+
+  /** Why `Parse` cannot keep the parse instance; empty if it can. */
+  private def keptShape(p: ParseInstanceSpec): String = {
+    val reason: Option[String] =
+      if (p.cond.repeat != NoRepeat) Some("it has `repeat`")
+      else if (AdaTranslator.hasProcess(p.dataType)) Some("it has `process`")
+      else if (p.pos.isEmpty) Some("it has no `pos`")
+      else if (p.cond.ifExpr.isDefined) Some("it has `if`")
+      else p.dataType match {
+        case _: SwitchType => Some("its type depends on a value")
+        case _: FloatType => Some("it is a float")
+        case _ =>
+          p.io match {
+            case None => None
+            case Some(e) if isRootIoExpr(e) =>
+              if (attrExprs(p).exists(mentionsIoPos)) Some("it has `io: _root._io` and `_io.pos` or `_io.eof` in an expression") else None
+            case Some(_) => Some("it has an `io` other than `_root._io`")
+          }
+      }
+    reason.getOrElse("")
+  }
+
+  private val keptMemo = mutable.Map[String, List[ParseInstanceSpec]]()
+
+  /** The parse instances of `cs` that an expression of its `seq` needs, and that `Parse` therefore keeps. */
+  private def keptOf(cs: ClassSpec): List[ParseInstanceSpec] = keptMemo.getOrElseUpdate(cs.nameAsStr, {
+    val all = guard(cs.path)(instanceUses(cs, cs.seq.toList.flatMap(attrExprs)))
+    all.filter(p => keptShape(p).isEmpty)
+  })
+
+  private def isKept(cs: ClassSpec, p: ParseInstanceSpec): Boolean = keptOf(cs).exists(_.id == p.id)
+
+  override def instanceNotKept(cs: ClassSpec, inst: ParseInstanceSpec): Option[String] =
+    if (isKept(cs, inst)) None
+    else {
+      val shape = keptShape(inst)
+      Some(if (shape.isEmpty) "only an instance that an expression of the `seq` needs can be used, and none does" else s"it cannot be kept: $shape")
+    }
+
+  /** The instance depends on `_io.pos` or `_io.eof`, itself or through the instances it needs */
+  private def dependsOnIoPos(cs: ClassSpec, p: ParseInstanceSpec): Boolean =
+    (p :: instanceUses(cs, attrExprs(p))).exists(q => attrExprs(q).exists(mentionsIoPos))
+
+  /**
+    * The expressions of a field by when they are evaluated: `ifE` always, at the start of the field; `start` once
+    * when the field is there, before it is read; `until` after the first element of `repeat-until`; `valid` after the
+    * field is read; `late` once per element of a repetition, or only in some case of a switch.
+    */
+  private case class Slots(ifE: List[Ast.expr], start: List[Ast.expr], until: List[Ast.expr], valid: List[Ast.expr], late: List[Ast.expr])
+
+  private def slotsOf(a: AttrSpec): Slots = {
+    val ifE = a.cond.ifExpr.toList
+    val (own, perElement) = a.dataType match {
+      case st: SwitchType => (List(st.on), st.cases.toList.flatMap { case (k, v) => k :: dtExprs(v) })
+      case dt => (dtExprs(dt), Nil)
+    }
+    val valid = validExprs(a.valid)
+    a.cond.repeat match {
+      case NoRepeat => Slots(ifE, own, Nil, valid, perElement)
+      case RepeatExpr(e) => Slots(ifE, List(e), Nil, Nil, own ++ perElement ++ valid)
+      case RepeatEos => Slots(ifE, Nil, Nil, Nil, own ++ perElement ++ valid)
+      case RepeatUntil(c) => Slots(ifE, own, List(c), Nil, perElement ++ valid)
+    }
+  }
+
+  /** What `Parse` does to read the parse instances that the field needs, decided before the field is generated */
+  private case class Plan(pre: List[String] = Nil, loop: List[String] = Nil, invariant: List[String] = Nil)
+
+  private var plan: Plan = Plan()
+
+  /** How often the generator of the field took `plan.pre`, and whether it took `plan.loop` */
+  private var preTaken = 0
+  private var loopTaken = false
+
+  private def planLoop: List[String] = {
+    loopTaken = true
+    plan.loop
+  }
+
+  /** Terms for the loop invariant of the loop that reads parse instances */
+  private def planInvariant: String = plan.invariant.map(" and then " + _).mkString
+
+  /** Kept instances that `Parse` has read on every way to the field being generated, and those it reads inside a loop */
+  private val certain = mutable.Set[String]()
+  private val flagged = mutable.Set[String]()
+
+  /**
+    * The statements that read the parse instance into `This`, at the position of `S`: from a copy of `S`, which is
+    * joined to `S` afterwards, so that `S` stays where it is and fails if the instance cannot be read.
+    */
+  private def keptRead(cs: ClassSpec, p: ParseInstanceSpec, rc: RC, flag: Boolean): List[String] = {
+    val nm = plain(idRaw(p.id))
+    val bs = base(idRaw(p.id))
+    val l = rc.scope.fresh("L")
+    rc.scope.decls += s"$l : ${KS}Stream;"
+    if (flag) rc.scope.needsInit = true
+    val rcl = rc.copy(s = l, path = p.path)
+    val init = if (p.io.isDefined) s"$l := ${KS}Open (Buffer);" else s"$l := S;"
+    val posT = T(p.pos.get, rcl)
+    val seek = guarded(posT.guards, List(s"${KS}Seek ($l, ${sizeCode(posT)});"), rcl, init = false)
+    val target = s"This.$nm"
+    val reads = readValue(p.dataType, target, rcl) ++ p.valid.toList.flatMap(v => validate(v, p.dataType, target, rcl))
+    val body = List(init) ++ seek ++ reads ++ List(s"${KS}Join (S, $l);")
+    if (flag) List(s"if not This.${hasNm(bs)} then") ++ ind(body ++ List(s"This.${hasNm(bs)} := ${KS}OK (S);")) ++ List("end if;")
+    else body
+  }
+
+  /**
+    * Decides where `Parse` reads the parse instances that the field `a` (number `i` of the `seq`) needs, and puts it in
+    * `plan`. An instance is read where an expression first needs it, once, and every instance that `Parse` keeps has
+    * to be read on every way through `Parse`, because its accessor is a function. So an instance may be first needed
+    * only where the field is certainly evaluated.
+    */
+  private def planAttr(cs: ClassSpec, a: AttrSpec, i: Int, rc: RC): Unit = {
+    plan = Plan()
+    val sl = slotsOf(a)
+    val kq = q(idRaw(a.id))
+    def need(es: List[Ast.expr]) = instanceUses(cs, es).filter(p => isKept(cs, p))
+    def withDeps(ps: List[ParseInstanceSpec]) =
+      ps.flatMap(p => need(attrExprs(p)) :+ p).distinct
+    val ifU = need(sl.ifE)
+    val startU = need(sl.start)
+    val untilU = need(sl.until)
+    val validU = need(sl.valid)
+    val lateU = need(sl.late)
+    if (ifU.isEmpty && startU.isEmpty && untilU.isEmpty && validU.isEmpty && lateU.isEmpty) return
+    val pre = ListBuffer[String]()
+    val loop = ListBuffer[String]()
+    val inv = ListBuffer[String]()
+    def key(p: ParseInstanceSpec) = idRaw(p.id)
+    def fieldsBefore(p: ParseInstanceSpec): Unit =
+      (p :: instanceUses(cs, attrExprs(p))).flatMap(attrExprs).flatMap(e => memberDeps(cs, e)).foreach { n =>
+        if (cs.seq.indexWhere(x => idRaw(x.id) == n) >= i)
+          throw new AdaUnsupported(s"parse instance `${key(p)}` is first needed by the field `${idRaw(a.id)}`, but it needs the field `$n`, which is read at the same place or after")
+      }
+    def top(ps: List[ParseInstanceSpec]): Unit = ps.filterNot(p => certain.contains(key(p))).foreach { p =>
+      fieldsBefore(p)
+      pre ++= keptRead(cs, p, rc, flag = false)
+      certain += key(p)
+    }
+    def conditional(ps: List[ParseInstanceSpec], why: String): Unit = ps.filterNot(p => certain.contains(key(p))).foreach { p =>
+      throw new AdaUnsupported(s"parse instance `${key(p)}` is first needed $why, where it may not be evaluated at all; it can be kept only if it is certainly read")
+    }
+    top(ifU)
+    if (a.cond.ifExpr.isEmpty) {
+      top(startU)
+      // before the loop, where the position of the stream does not matter
+      top(withDeps(untilU.filterNot(p => dependsOnIoPos(cs, p))))
+      top(validU.filterNot(p => dependsOnIoPos(cs, p)))
+      validU.filter(p => dependsOnIoPos(cs, p) && !certain.contains(key(p))).foreach { p =>
+        throw new AdaUnsupported(s"parse instance `${key(p)}` is first needed by the `valid` of the field $kq and depends on `_io.pos` or `_io.eof`, which would be taken after the field is read")
+      }
+      val inLoop = withDeps(untilU.filter(p => dependsOnIoPos(cs, p))).filterNot(p => certain.contains(key(p)))
+      inLoop.foreach { p =>
+        fieldsBefore(p)
+        flagged += key(p)
+        loop ++= keptRead(cs, p, rc, flag = true)
+        p.dataType match {
+          case ut: UserType => inv += s"(if This.${hasNm(base(key(p)))} then ${userPkg(ut)}.Valid (This.${plain(key(p))}))"
+          case _ =>
+        }
+      }
+      inLoop.foreach(p => certain += key(p))
+    } else {
+      conditional(startU, s"by the field $kq, which has an `if`")
+      conditional(untilU, s"by the field $kq, which has an `if`")
+      conditional(validU, s"by the field $kq, which has an `if`")
+    }
+    conditional(lateU, s"by an expression of the field $kq that is evaluated for each element of a repetition, or only in some case of a `switch-on`")
+    plan = Plan(pre.toList, loop.toList, inv.toList)
+  }
+
+  /** The accessor and the component of a parse instance that `Parse` keeps */
+  private def genKeptInstance(cs: ClassSpec, p: ParseInstanceSpec, o: Out): Unit = {
+    val nm = plain(idRaw(p.id))
+    val bs = base(idRaw(p.id))
+    val k = idRaw(p.id)
+    val dt = p.dataType
+    val (stored, default) = storedType(dt, p.path)
+    o.comps += s"$nm : $stored${default.map(d => s" := $d").getOrElse("")};"
+    if (flagged.contains(k)) o.comps += s"${hasNm(bs)} : Boolean := False;"
+    val after = List("Parse read it once, where an expression of the `seq` first needed it, and keeps it in This") ++
+      (if (p.io.isDefined) List("It is read from the whole of Buffer (`io: _root._io`)") else Nil)
+    val pre = "Valid (This)"
+    dt match {
+      case et: EnumType =>
+        enumAccessors(o, nm, bs, stored, et, pre, s"Instance ${q(k)}", "as the integer that is in the data", "The integer in the data", p.doc, after)
+      case ut: UserType =>
+        val pkg = userPkg(ut)
+        accessor(o, nm, stored, pre, Some(s"$pkg.Valid ($nm'Result)"), s"This.$nm",
+          comment = describe(List(s"Instance ${q(k)}, ${whatIs(dt)}"), p.doc, after))
+        o.valid += s"$pkg.Valid (This.$nm)"
+        if (hasBelongs(ut.classSpec.get)) o.belongs += s"$pkg.Belongs_To (This.$nm, Buffer)"
+      case _: BytesType | _: StrType =>
+        accessor(o, nm, stored, pre, None, s"This.$nm", comment = describe(sliceHead(s"Instance ${q(k)}", dt), p.doc, after))
+        o.belongs += s"${KT}Within (This.$nm, Buffer)"
+      case _ =>
+        accessor(o, nm, stored, pre, None, s"This.$nm", comment = describe(List(s"Instance ${q(k)}, ${whatIs(dt)}"), p.doc, after))
+    }
+    o.kept += nm
+  }
+
   /** Position in the seq of the field that is being generated; larger than any for an instance. */
   private var curSeqIdx: Int = Int.MaxValue
 
@@ -1304,6 +1555,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     /** Fields that `Parse` goes over once but does not keep, and parse instances and processed fields that it does not look at */
     val rereads = ListBuffer[String]()
     val unread = ListBuffer[String]()
+    /** Parse instances that `Parse` reads once and keeps */
+    val kept = ListBuffer[String]()
   }
 
   private def T(e: Ast.expr, rc: RC): ATr = {
@@ -2038,6 +2291,10 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       items += Gap
       items += P("Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.")
     }
+    if (o.kept.nonEmpty) {
+      items += Gap
+      items += P(s"Parsed here once, where an expression of the description first needs them, and kept in This: ${o.kept.mkString(", ")}.")
+    }
     if (o.rereads.nonEmpty || o.unread.nonEmpty) {
       items += Gap
       items += P(List(
@@ -2371,11 +2628,21 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val rc = RC("S", if (storesOrder(cs)) "Order" else "", sc, cs.path)
     // parameters
     keptParams(cs).foreach { p => guard(p.path)(genParamMember(p, cs, o, rc)) }
+    certain.clear(); flagged.clear(); plan = Plan()
+    if (config.readWrite) keptOf(cs).headOption.foreach { p =>
+      fail(p.path, s"`Write` of a type whose `seq` needs the parse instance `${idRaw(p.id)}`: the instance is not written (instances with a position are not), so what is written would not agree with the count, size or condition that was computed from it")
+    }
     // sequence
     cs.seq.zipWithIndex.foreach { case (a, i) =>
       val rcA = rc.copy(path = a.path)
       curSeqIdx = i
+      guard(a.path)(planAttr(cs, a, i, rcA))
+      preTaken = 0
+      loopTaken = false
       guard(a.path)(genSeqAttr(cs, a, i == 0, o, rcA))
+      // a generator that does not place the reads would let an expression use an instance that was never read
+      if (plan.pre.nonEmpty && preTaken != 1 || plan.loop.nonEmpty && !loopTaken)
+        fail(a.path, s"the field `${idRaw(a.id)}` needs a parse instance, and this kind of field has no place to read it")
       if (config.readWrite) guard(a.path)(genWriteAttr(cs, a, i == 0, o, writeCtx(cs, o.wscope, a.path)))
     }
     // instances
@@ -2384,9 +2651,11 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       provider.nowClass = cs
       inst match {
         case v: ValueInstanceSpec => guard(v.path)(genValueInstance(cs, v, o))
-        case p: ParseInstanceSpec => guard(p.path)(genParseInstance(cs, p, o))
+        case p: ParseInstanceSpec =>
+          if (isKept(cs, p)) guard(p.path)(genKeptInstance(cs, p, o)) else guard(p.path)(genParseInstance(cs, p, o))
       }
     }
+    plan = Plan()
     provider.nowClass = cs
   }
 
@@ -2461,7 +2730,12 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
   private def hasCond(a: AttrLikeSpec): Boolean = a.cond.ifExpr.isDefined
 
-  private def wrapCond(a: AttrSpec, hasName: Option[String], stmts: List[String], rc: RC): List[String] =
+  private def wrapCond(a: AttrSpec, hasName: Option[String], stmts: List[String], rc: RC): List[String] = {
+    preTaken += 1
+    plan.pre ++ wrapCond0(a, hasName, stmts, rc)
+  }
+
+  private def wrapCond0(a: AttrSpec, hasName: Option[String], stmts: List[String], rc: RC): List[String] =
     a.cond.ifExpr match {
       case None => stmts
       case Some(c) =>
@@ -3253,9 +3527,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         tr.iterator = None
         val check = guarded(ct.guards, List(s"$done := ${ct.code};"), rc, List(s"$done := True;"), init = false)
         List(s"$start := S;", s"$done := False;", s"for I in 1 .. ${KS}Remaining (S) + 1 loop") ++
-          ind(readValue(base0, value, rc) ++ List(s"exit when not ${KS}OK (S);") ++ a.valid.toList.flatMap(v => validate(v, dt, value, rc)) ++ check ++ List(
+          ind(readValue(base0, value, rc) ++ List(s"exit when not ${KS}OK (S);") ++ planLoop ++ a.valid.toList.flatMap(v => validate(v, dt, value, rc)) ++ check ++ List(
             s"exit when $done;",
-            s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced ($start, S) and then not $done);"
+            s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced ($start, S) and then not $done${planInvariant});"
           )) ++ List(
           "end loop;",
           s"if ${KS}OK (S) and then not $done then",
@@ -3500,9 +3774,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         tr.knownValid = Set()
         val check = guarded(ct.guards, List(s"$done := ${ct.code};"), rc, List(s"$done := True;"), init = false)
         List(s"This.${bs}_Count := 0;", s"$done := False;", s"for $Iv in 1 .. ${KS}Remaining (S) + 1 loop") ++
-          ind(List(parseCall, s"exit when not ${valid(el)};", s"This.${bs}_Count := $Iv;") ++ check ++ List(
+          ind(List(parseCall, s"exit when not ${valid(el)};", s"This.${bs}_Count := $Iv;") ++ planLoop ++ check ++ List(
             s"exit when $done;",
-            s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv and then not $done);")) ++
+            s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv and then not $done${planInvariant});")) ++
           List("end loop;", s"if ${KS}OK (S) and then not $done then", "   " + failStmt(rc, "Limit_Exceeded"), "end if;")
       case NoRepeat => Nil
     }

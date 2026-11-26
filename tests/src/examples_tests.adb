@@ -18,6 +18,7 @@ with Fixed_Struct;
 with Hello_World;
 with If_Struct;
 with Imports0;
+with Instance_Kept;
 with Instance_Std;
 with Kaitai.Byte_Arrays;
 with Kaitai.Streams; use Kaitai.Streams;
@@ -678,6 +679,52 @@ package body Examples_Tests is
       Header (This, Data (1 .. 5), Result, Outcome);
       Check (Outcome = End_Of_Stream and then Is_Empty (Result), "the instance runs out of bytes");
    end Test_Instance_Std;
+
+   --  A parse instance that expressions of the sequence need is parsed once, where it is first needed, and kept: the
+   --  count of the records and the size of the body come from `header`, which is in the last bytes, and the end of the
+   --  numbers from `limit`, which lies two bytes after the first number.  The count is a number of the data and the
+   --  input is tiny: the loop ends at the first record that cannot be read.
+   procedure Test_Instance_Kept is
+      use Instance_Kept;
+      Data   : Bytes renames Sample_Data.Instance_Kept;
+      Huge   : constant Bytes (1 .. 6) := (16#01#, 16#FF#, 16#FF#, 16#FF#, 16#7F#, 16#00#);
+      Short  : constant Bytes (1 .. 4) := (16#01#, 16#02#, 16#03#, 16#04#);
+      No_End : constant Bytes (1 .. 5) := (16#00#, 16#00#, 16#00#, 16#00#, 16#00#);
+      S      : Stream := Open (Data);
+      This   : Instance_Kept.T;
+      Rec    : Record_Type.T;
+   begin
+      Group ("examples instance_kept");
+      Parse (This, Data, S);
+      Check (Valid (This) and then Pos (S) = 12, "parses up to the header, which no field reads");
+      if Valid (This) then
+         Check
+           (Header_Type_Type.Count (Header (This)) = 2 and then Header_Type_Type.Body_Len (Header (This)) = 2,
+            "the instance is kept and its accessor returns it");
+         Check (Records_Count (This) = 2, "the count of the records is the field of the instance");
+         Get_Records (This, Data, 1, Rec);
+         Check (Record_Type.Valid (Rec) and then Record_Type.Key (Rec) = 2, "records[1]");
+         Check (Has_Len_Body (This) and then Len_Body (This) = 4, "a value instance of a kept instance");
+         Check (Size (Body_Field (This)) = 4 and then Data (Body_Field (This).First) = 16#41#, "the size of the body");
+         Check (Limit (This) = 5, "limit was read after the first number, two bytes further");
+         Check
+           (Numbers_Count (This) = 3 and then Numbers (This, Data, 0) = 7 and then Numbers (This, Data, 2) = 5,
+            "the numbers end where one equals the limit");
+      end if;
+
+      S := Open (Huge);
+      Parse (This, Huge, S);
+      Check
+        (not Valid (This) and then Status (S) = End_Of_Stream, "a count of 2**31-1 in a tiny input ends at the data");
+
+      S := Open (Short);
+      Parse (This, Short, S);
+      Check (not Valid (This), "the header does not fit into the input");
+
+      S := Open (No_End);
+      Parse (This, No_End, S);
+      Check (not Valid (This) and then Status (S) = End_Of_Stream, "the limit lies beyond the input");
+   end Test_Instance_Kept;
 
    procedure Test_Position_Abs is
       use Position_Abs;
@@ -1539,6 +1586,7 @@ package body Examples_Tests is
       Test_Params_Def;
       Test_Outside;
       Test_Instance_Std;
+      Test_Instance_Kept;
       Test_Position_Abs;
       Test_Valid_Fail_Eq_Int;
       Test_Default_Endian;

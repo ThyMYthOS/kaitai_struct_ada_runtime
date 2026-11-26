@@ -269,6 +269,27 @@ package Sample_Data is
    If_Struct : constant Bytes (1 .. 13) :=
      (16#53#, 16#03#, 16#66#, 16#6F#, 16#6F#, 16#54#, 16#42#, 16#43#, 16#53#, 16#03#, 16#62#, 16#61#, 16#72#);
 
+   --  records 01 02, body "ABCD", numbers 7, 9, 5 with the limit 5 two bytes after the first, and the header
+   --  (count 2, body_len 2) in the last five bytes
+   Instance_Kept : constant Bytes (1 .. 17) :=
+     (16#01#,
+      16#02#,
+      16#41#,
+      16#42#,
+      16#43#,
+      16#44#,
+      16#07#,
+      16#00#,
+      16#09#,
+      16#00#,
+      16#05#,
+      16#00#,
+      16#02#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#02#);
+
    --  position_abs.bin
    Position_Abs : constant Bytes (1 .. 36) :=
      (16#20#,

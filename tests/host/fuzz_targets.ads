@@ -31,6 +31,7 @@ package Fuzz_Targets is
       If_Struct_Parser,
       Expr_1_Parser,
       Instance_Std_Parser,
+      Instance_Kept_Parser,
       Position_Abs_Parser,
       Str_Encodings_Parser,
       Default_Endian_Expr_Is_Le_Parser,

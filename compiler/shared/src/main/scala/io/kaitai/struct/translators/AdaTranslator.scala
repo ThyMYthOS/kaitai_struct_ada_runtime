@@ -84,6 +84,11 @@ trait AdaTranslatorEnv {
     * `cs` itself that means the same (`Right`).
     */
   def outsideRef(cs: ClassSpec, e: Ast.expr): Option[Either[(String, DataType), Ast.expr]]
+  /**
+    * None if `Parse` of `cs` parses the instance once, where an expression of the `seq` first needs it, and keeps it in
+    * the record, so that expressions can use it as they use a field; otherwise why not.
+    */
+  def instanceNotKept(cs: ClassSpec, inst: ParseInstanceSpec): Option[String]
 }
 
 object AdaTranslator {
@@ -405,8 +410,11 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
           }
         case v: ValueInstanceSpec =>
           inlineInstance(cs, v)
-        case _: ParseInstanceSpec =>
-          unsupported(s"parse instance `$name` used in an expression")
+        case p: ParseInstanceSpec =>
+          env.instanceNotKept(cs, p) match {
+            case Some(why) => unsupported(s"parse instance `$name` used in an expression ($why)")
+            case None => fromValue(p.dataType, s"$thisName.${env.memberName(cs, p.id)}", Nil)
+          }
       }
   }
 
@@ -837,6 +845,19 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
       s"$b (${t.atom}.First .. ${t.atom}.Last)"
   }
 
+  /** The result of the comparison if the ranges of the operands decide it for every value, and neither can fail */
+  private def decided(op: Ast.cmpop, l: ATr, r: ATr): Option[Boolean] = {
+    val (alwaysTrue, alwaysFalse) = op match {
+      case Ast.cmpop.Lt => (l.hi < r.lo, l.lo >= r.hi)
+      case Ast.cmpop.LtE => (l.hi <= r.lo, l.lo > r.hi)
+      case Ast.cmpop.Gt => (l.lo > r.hi, l.hi <= r.lo)
+      case Ast.cmpop.GtE => (l.lo >= r.hi, l.hi < r.lo)
+      case Ast.cmpop.Eq => (false, l.hi < r.lo || l.lo > r.hi)
+      case Ast.cmpop.NotEq => (l.hi < r.lo || l.lo > r.hi, false)
+    }
+    if (alwaysTrue) Some(true) else if (alwaysFalse) Some(false) else None
+  }
+
   private def translateCompare(op: Ast.cmpop, l: ATr, r: ATr): ATr = {
     val g = l.guards ++ r.guards
     val ub = l.usesBuffer || r.usesBuffer
@@ -899,6 +920,8 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
           case Ast.cmpop.GtE => c >= 0
         }
         ATr(if (res) "True" else "False", 0, Nil, VBool, isLiteral = true)
+      case ((VInt | VEnum(_)), (VInt | VEnum(_))) if g.isEmpty && decided(op, l, r).isDefined =>
+        ATr(if (decided(op, l, r).get) "True" else "False", 0, Nil, VBool, isLiteral = true)
       case ((VInt | VEnum(_)), (VInt | VEnum(_))) =>
         ops += "S64"
         ATr(s"${wrapOp(l, 1)} $opStr ${wrapOp(r, 1)}", 2, dedupe(g), VBool, usesBuffer = ub)

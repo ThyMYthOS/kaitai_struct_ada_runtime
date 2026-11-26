@@ -506,6 +506,66 @@ with
 Asking twice parses twice. The caller keeps the result if it needs it again.
 `io: _root._io` is a stream over the whole buffer, `Open (Buffer)`.
 
+### An instance that an expression of the `seq` needs
+
+An instance with a position that an expression of the `seq` needs (a `size`, a
+`repeat-expr`, a `repeat-until`, an `if`, a `valid`, a `switch-on`, an argument
+of a type, a value instance that uses it, another such instance) is not a
+procedure. `Parse` reads it once, at the place where an expression first needs
+it, and keeps it in `T`, as the other targets do, where the expression is what
+triggers the read. Its accessor is a function that returns the kept value:
+
+```ada
+function Header (This : T) return Header_Obj_Type.T
+with Pre => Valid (This), Post => Header_Obj_Type.Valid (Header'Result);
+```
+
+The value is read from a copy of the stream, so that `Parse` stays where it
+was, and the copy is joined to the stream afterwards (`Kaitai.Streams.Join`):
+if the instance cannot be read, or its `valid` does not hold, the stream fails
+with that reason, and `Parse` fails. `Valid (This)` includes the validity of
+the kept value, and `Belongs_To` what it refers to.
+
+- `_io.pos` and `_io.eof` in the expressions of such an instance are the
+  position and end of the stream at the place of the first use, as in the other
+  targets: for `pos: _io.pos + 12` in the `repeat-until` of a field, the
+  position after the first element. (In an instance that no expression of the
+  `seq` needs they stay rejected, since the accessor would have to guess where
+  the stream is when it is first asked.)
+- The first use comes before the field is read (in `if`, `size`, `repeat-expr`,
+  arguments, `switch-on`), after the first element (`repeat-until`) or after
+  the field (`valid`). An instance that the `if` of a field first needs is read
+  before the condition is evaluated.
+- An instance whose position does not depend on `_io.pos` or `_io.eof` and that
+  is first needed by a `repeat-until` or a `valid` is read before the loop, or
+  before the check. That differs from the other targets only if two things fail
+  in one input, the field and the instance: they report the field, `Parse`
+  reports the instance. An instance that does depend on them and is first
+  needed by a `repeat-until` is read inside the loop, in the first turn, and
+  `T` has a component `Has_X` that tells that it has been read: one test per
+  turn.
+- The accessor is a function, so every kept instance must be read on every way
+  through `Parse`. An instance whose first use is where it may not be
+  evaluated (an expression of a field that has an `if`, of each element of a
+  repetition, or in some case of a `switch-on`) is rejected with a message that
+  says so, unless an earlier use certainly reads it; so is an instance that
+  needs a field that is read at the same place or after its first use, one with
+  `if`, `repeat`, `process`, a float, or an `io` other than `_root._io`, and one
+  whose `valid` or `pos` needs `_io.pos` where it would be taken after the field.
+- A value instance that uses a kept instance is an expression function of the
+  kept values, and can be used in `Parse`.
+- `Write` does not write instances with a position, so a description whose
+  `seq` needs one is rejected with `--read-write`: what was written would not
+  agree with the count, size or condition that was computed from the instance.
+
+Cost: one read of the instance per `Parse`, and a copy of the stream (a few
+words) for it; in the loop a test of `Has_X` per element. Measured with
+hand-written models of the generated code (`bench/src/bench_inst_*_d2`): a
+header that is needed by a count and an end condition is 54 % (x86-64) and 61 %
+(Cortex-M4) cheaper per record than parsing it at every use, and the accessor
+costs 0 to 3 instructions instead of 70 to 96. `T` grows by the kept value:
+4 to 32 bytes in the models.
+
 ## Parameters
 
 The parameters of a type that are integers, booleans or enumerations are
@@ -991,7 +1051,9 @@ Where the rules above are silent, the compiler does the following.
 - A parse instance without `io` reads from `This.Io`; with `io: _root._io`
   from `Open (Buffer)`. `pos` is required. An instance with `if` has `Has_X`.
   The result is an `out` parameter of the type of the value; the postcondition
-  says `Within (Result, Buffer)` for a slice.
+  says `Within (Result, Buffer)` for a slice. A parse instance that an
+  expression of the `seq` needs is read once by `Parse` and kept, and `T` has no
+  `Io` for it; see "An instance that an expression of the `seq` needs".
 - An expression of a repeated field, `_index`, `_parent._io`, floats, string operations other than comparison with a
   literal or another string, `.length` and `.to_i` are
   supported only as the translator lists in `compiler/README.md`; whatever is
@@ -1138,7 +1200,8 @@ no field reads (a description that skips bits) are written as zero, bytes
 that follow a terminator in a field with a size are written as the
 terminator byte, padding is written with the padding byte whatever was there,
 a terminator that `eos-error: false` allows to be missing is written if the
-writer has room for it, and instances with a position are not written. An
+writer has room for it, and instances with a position are not written (so a
+description whose `seq` needs one is rejected with `--read-write`). An
 element of a repetition is parsed again to be written; if the buffer is no
 longer what was parsed, the writer fails with `Validation_Expr`.
 

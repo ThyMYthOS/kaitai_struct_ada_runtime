@@ -81,6 +81,12 @@ step_bench() {
       done
       # The parsing designs compare the checksums of each group themselves
       ./bin/proven/parse_bench 10000 1 >/dev/null || { echo "parsing designs disagree" >&2; exit 1; }
+      for children in 1 10 100; do
+         for phase in 1 2 3; do
+            ./bin/proven/param_bench 1000 $children all $phase >/dev/null ||
+               { echo "designs for values from outside disagree" >&2; exit 1; }
+         done
+      done
       sums=$(./bin/proven/arith_bench 10000 | awk '{ print $NF }' | sort -u | wc -l)
       [ "$sums" = 1 ] || { echo "overflow protections disagree" >&2; exit 1; }
       sums=$(for strategy in lazy index_arena index_owned vector_values vector_reserved ada_vector \

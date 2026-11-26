@@ -16,6 +16,7 @@ set -eu
 RECORDS=${1:-100000}
 MAX_PAYLOAD=${2:-32}
 PICKS=1000
+PARAM_RECORDS=1000
 cd "$(dirname "$0")"
 
 count() {
@@ -78,6 +79,23 @@ for mode in checked inlined proven; do
    for variant in plain guarded guarded_where_needed checked flagged; do
       total=$(count ./bin/$mode/arith_bench "$RECORDS" $variant)
       printf "%-22s%s\n" $variant "$(per "$total" "$base" "$RECORDS")"
+   done
+done
+
+echo
+echo "== values from outside: instructions per parent (parse), per child (walk, access); $PARAM_RECORDS parents"
+echo "   parse: Parse of the parent with N children; walk: Next per child; access: the accessor that needs the value"
+for mode in checked inlined proven; do
+   for n in 1 10 100; do
+      echo "-- mode $mode, N = $n"
+      base=$(count ./bin/$mode/param_bench "$PARAM_RECORDS" $n none 1)
+      for variant in pstr_v1 pstr_v2 pstr_v2w puser_v1 puser_v2 puser_v2w puser_v3 pnav_v1 pnav_v2 pnav_v3; do
+         p1=$(count ./bin/$mode/param_bench "$PARAM_RECORDS" $n $variant 1)
+         p2=$(count ./bin/$mode/param_bench "$PARAM_RECORDS" $n $variant 2)
+         p3=$(count ./bin/$mode/param_bench "$PARAM_RECORDS" $n $variant 3)
+         printf "%-12s%s%s%s\n" $variant "$(per "$p1" "$base" "$PARAM_RECORDS")" \
+            "$(per "$p2" "$p1" "$((PARAM_RECORDS * n))")" "$(per "$p3" "$p2" "$((PARAM_RECORDS * n))")"
+      done
    done
 done
 

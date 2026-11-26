@@ -94,6 +94,45 @@ target program uses as well.
 
 `scripts/check.sh bench` runs it over all variants.
 
+## `param_bench`: where a value from outside lives
+
+Usage: `param_bench [records] [children] [variant] [phase]`. A child type needs a value that is not its own: a
+parameter or the value of `_parent`. Today only integers, booleans and enumerations can come in (they are
+parameters of `Parse` and are kept in `T`); the compiler rejects the rest. The variants hold hand-written parsers in
+the style of generated code and answer where a string, a value of a user type or a stream should live. They are the
+formats in `formats/outside/` (rejected by the compiler for exactly this reason), each with a parent of N children
+that all need the value:
+
+| Variant | The value of the parent is | Child accessors | Parsers |
+|---|---|---|---|
+| V1 | a parameter of the child's `Parse`, kept in the child's `T` | find it in `T` | `pstr_v1`, `puser_v1`, `pnav_v1` |
+| V2 | a parameter of the child's `Parse`, not kept | take it as a parameter again from the caller | `pstr_v2`, `puser_v2`, `pnav_v2` |
+| V2w | as V2 | the parent has an accessor that gives the value itself (`Items_Is_Key`) | `pstr_v2w`, `puser_v2w` |
+| V3 | reduced by the compiler to what the child uses (`puser_v3`: the two integers `Parent_Hdr_Width` and `Parent_Hdr_Height`; `pnav_v3`: the truth of `_parent.s1 == 'foo'`), kept in `T` | find it in `T` | `puser_v3` is the parser the compiler generates today for `formats/bench_puser_v3.ksy`; `pnav_v3` is written by hand |
+
+| Format | Parent | Child needs |
+|---|---|---|
+| `pstr` | a string of 4 bytes, N, N strings of 4 bytes | `key`, a string parameter: its length (`size: key.length`) and the comparison `body == key` |
+| `puser` | `width` and `height` (`u2le`), N, N children | `hdr`, a parameter of the user type `header`: `hdr.height` as a size and `x < hdr.width and y < hdr.height` |
+| `pnav` | `"foo\|"` or `"bar\|"`, N, N children | `_parent.s1`, a string of the parent: `if: _parent.s1 == 'foo'` and the instance `_parent.s1 == 'foo'` |
+
+`phase` says how far a run goes, which is how a cost is told from the cost of the part before it: 1 parses the
+parents (`Parse` of the parent walks the N children once), 2 also walks the children with the cursor (`Next`) and reads
+a field of each that needs nothing from outside, 3 also reads what needs the value; 0 parses nothing. `icount.sh` and
+`target/run.sh` print the cost of `Parse` per parent and of `Next` and of the access per child. The variants of a
+format must agree on the checksum of every phase; `param_bench` fails if they do not. `param_bench 1 1 sizes` prints
+the sizes of the types of the child and the parent in bytes. The parsers and the loops are in `src/pstr_v*.ad?`,
+`src/puser_v*.ad?`, `src/pnav_v*.ad?`, `src/param_runs.adb` (the data in `src/param_data.adb`); `target/` has one
+program, `target_param`, that takes variant, N and phase from the unit `Target_Param_Config`, which `target/run.sh`
+writes for each measurement (`PARAM_DIR`).
+
+`outside_proof/outside_proof.gpr` is for GNATprove: the parsers and the callers in `src/outside_callers.ads` that walk
+a parent and read each child. It is not a benchmark and no part of `scripts/check.sh`.
+
+```sh
+cd outside_proof && alr exec -- gnatprove -P outside_proof.gpr --no-subprojects --level=1
+```
+
 ## `arith_bench`: protection against overflow in expressions
 
 Usage: `arith_bench [records] [variant]`. Parses the records of `stream_bench`

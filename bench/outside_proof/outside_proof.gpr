@@ -1,0 +1,44 @@
+with "../../kaitai_struct.gpr";
+with "../../kaitai_style.gpr";
+
+--  The parsers of param_bench that are written to be proven, with the callers that read a child of each, for GNATprove:
+--
+--    alr exec -- gnatprove -P outside_proof.gpr
+--
+--  This is no benchmark and no part of scripts/check.sh; it backs the proof figures of bench/README.md.
+project Outside_Proof is
+
+   for Source_Dirs use ("../src/", "../generated/");
+   for Object_Dir use "obj/";
+   for Create_Missing_Dirs use "True";
+   for Source_Files use
+     ("outside_callers.ads",
+      "outside_callers.adb",
+      "bench_puser_v3.ads",
+      "bench_puser_v3.adb",
+      "pnav_v1.ads",
+      "pnav_v1.adb",
+      "pnav_v2.ads",
+      "pnav_v2.adb",
+      "pnav_v3.ads",
+      "pnav_v3.adb",
+      "pstr_v1.ads",
+      "pstr_v1.adb",
+      "pstr_v2.ads",
+      "pstr_v2.adb",
+      "puser_v1.ads",
+      "puser_v1.adb",
+      "puser_v2.ads",
+      "puser_v2.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2012", "-gnata", "-gnatwa") & Kaitai_Style.Style_Switches;
+   end Compiler;
+
+   package Prove is
+      for Proof_Switches ("Ada") use ("--level=1", "-j0", "--checks-as-errors=on");
+   end Prove;
+
+   package Format renames Kaitai_Style.Format;
+
+end Outside_Proof;

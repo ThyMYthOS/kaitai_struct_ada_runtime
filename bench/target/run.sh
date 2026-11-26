@@ -12,6 +12,7 @@
 set -eu
 
 RECORDS=1000   # Target_Data.Records
+PARAM_RECORDS=100   # parents of target_param
 cd "$(dirname "$0")"
 
 # Print "<instructions> <checksum>" for one program
@@ -19,6 +20,26 @@ simulate() {
    ../../scripts/renode-run.sh "$1" |
       awk '/^SUM/ { sum = $2 } /^INSTRUCTIONS/ { count = $2 } END { print count, sum }'
 }
+
+# Print "<instructions> <checksum>" of target_param for a variant, N children per parent and a phase.  The program is
+# built anew with a unit Target_Param_Config of its own, in the directory that PARAM_DIR names.
+simulate_param() {
+   cat >"$param_dir/target_param_config.ads" <<ADS
+with Param_Runs;
+package Target_Param_Config is
+   Variant : constant Param_Runs.Variant := Param_Runs.$1;
+   Records : constant := $PARAM_RECORDS;
+   N : constant := $2;
+   Phase : constant Param_Runs.Phase_Number := $3;
+end Target_Param_Config;
+ADS
+   alr -n build -- -XRTS="$rts" -XMODE=$mode -XKAITAI_STRUCT_CHECKS=$checks -XKAITAI_STRUCT_SUBDIR="$rts" \
+      -XPARAM_DIR="$param_dir" >/dev/null
+   simulate "bin/$rts/$mode/target_param"
+}
+
+param_dir=$(mktemp -d)
+trap 'rm -rf "$param_dir"' EXIT
 
 echo "== stream designs on STM32F4: instructions per 15-byte record, checksum"
 for rts in "${@:-light-stm32f4}"; do
@@ -53,6 +74,27 @@ for rts in "${@:-light-stm32f4}"; do
                'BEGIN { printf "%-26s%10.1f   %s\n", name, (total - base) / n, sum }'
          done
       done
+      echo "-- values from outside, instructions per parent (parse), per child (walk, access); $PARAM_RECORDS parents"
+      for n in 1 10 100; do
+         echo "N = $n"
+         # Phase 0 parses nothing; the variants of a format fill the same input, so one base serves them
+         for group in "Pstr_1 Pstr_2 Pstr_2w" "Puser_1 Puser_2 Puser_2w Puser_3" "Pnav_1 Pnav_2 Pnav_3"; do
+            set -- $(simulate_param "${group%% *}" $n 0)
+            base=$1
+            for variant in $group; do
+               set -- $(simulate_param $variant $n 1)
+               p1=$1
+               set -- $(simulate_param $variant $n 2)
+               p2=$1
+               set -- $(simulate_param $variant $n 3)
+               awk -v name=$variant -v base="$base" -v p1="$p1" -v p2="$p2" -v p3="$1" -v n=$n -v r=$PARAM_RECORDS \
+                  -v sum="$2" 'BEGIN { printf "%-12s%10.1f%10.1f%10.1f   %s\n", name, (p1 - base) / r,
+                     (p2 - p1) / (r * n), (p3 - p2) / (r * n), sum }'
+            done
+         done
+      done
+      echo "-- values from outside, size of the types in bytes: child, parent"
+      ../../scripts/renode-run.sh "bin/$rts/$mode/target_param_sizes" | grep '^p'
       echo "-- overflow protection, instructions per 15-byte record with two expressions"
       set -- $(simulate "bin/$rts/$mode/target_arith_none")
       base=$1

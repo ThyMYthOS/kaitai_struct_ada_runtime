@@ -3339,6 +3339,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val elemTag =
       if (isSlice) "The element, a slice of Buffer. If it could not be read, Has_Element (Position) is False afterwards"
       else "The element. If it could not be parsed it is not valid, and Has_Element (Position) is False afterwards"
+    // an element may read nothing: the count can be far larger than the data
+    val emptyElems = rep.isInstanceOf[RepeatExpr] && minBytes(dt) == 0
     val nextDoc = render(List(P("Parses the element at Position and moves Position to the next one:"), Gap)) ++
       List(s"Position := ${bs}_First (V);", "while Has_Element (Position) loop", "   Next (V, Buffer, Position, Element);") .map("--     " + _) ++
       (if (isSlice) Nil else List(s"   exit when not $elemValid (Element);").map("--     " + _)) ++
@@ -3346,11 +3348,13 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       render(List(Gap, P(
         if (isSlice) "Parse has accepted every element, and an element is read again as long as the buffer has not changed"
         else "Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That is not proven, so check that Element is valid."))) ++
+      (if (emptyElems) render(List(Gap, P(s"An element may read nothing, and the count is the one in the data, so the loop runs as often as ${bs}_Count (This) says, which can be far more often than the data are long."))) else Nil) ++
       tag("param", "This", "The value that has the repetition") ++
       tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
       tag("param", "Position", "Where to parse; moved to the next element") ++
       tag("param", "Element", elemTag)
-    val getDoc = render(List(P(s"Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going through all elements with this procedure takes time that grows with the square of their number; use Next for that."))) ++
+    val getDoc = render(List(P(s"Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going through all elements with this procedure takes time that grows with the square of their number; use Next for that." +
+      (if (emptyElems) " An element that reads nothing ends the search, as it ends Parse: all that follow are the same, so it is the one that is delivered." else "")))) ++
       tag("param", "This", "The value that has the repetition") ++
       tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
       tag("param", "Index", s"The number of the element, less than ${bs}_Count (This)") ++
@@ -3435,12 +3439,15 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val getBody = List(
       s"procedure Get_$bs (This : T; Buffer : ${KT}Bytes; Index : ${KT}Length; Element : out $elT) is",
       s"   Position : $cur := ${bs}_First (This);",
-      s"   Result   : $elT;",
+      s"   Result   : $elT;") ++ (if (emptyElems) List(s"   Before   : ${KS}Stream;") else Nil) ++ List(
       "begin",
       s"   for I in 0 .. Index loop",
       s"      pragma Loop_Invariant (Belongs_To (Position, Buffer)${if (within.nonEmpty) " and then " + within else ""});",
-      "      exit when not Has_Element (Position);",
-      "      Next (This, Buffer, Position, Result);",
+      "      exit when not Has_Element (Position);") ++
+      (if (emptyElems) List("      Before := Position.Io;") else Nil) ++ List(
+      "      Next (This, Buffer, Position, Result);") ++
+      (if (emptyElems) List("      --  An element that read nothing: so will all that follow",
+        s"      exit when ${KS}Pos (Position.Io) = ${KS}Pos (Before) and then ${KS}Bits_Left (Position.Io) = ${KS}Bits_Left (Before);") else Nil) ++ List(
       "   end loop;",
       "   Element := Result;",
       s"end Get_$bs;", ""

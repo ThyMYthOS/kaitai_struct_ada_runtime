@@ -195,11 +195,17 @@ is
    is
       Position : Items_Cursor := Items_First (This);
       Result   : Item_Type.T;
+      Before   : Kaitai.Streams.Stream;
    begin
       for I in 0 .. Index loop
          pragma Loop_Invariant (Belongs_To (Position, Buffer) and then Item_Type.Belongs_To (Result, Buffer));
          exit when not Has_Element (Position);
+         Before := Position.Io;
          Next (This, Buffer, Position, Result);
+         --  An element that read nothing: so will all that follow
+         exit when
+           Kaitai.Streams.Pos (Position.Io) = Kaitai.Streams.Pos (Before)
+           and then Kaitai.Streams.Bits_Left (Position.Io) = Kaitai.Streams.Bits_Left (Before);
       end loop;
       Element := Result;
    end Get_Items;

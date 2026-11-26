@@ -353,6 +353,7 @@ package body Examples_Tests is
    procedure Test_Repeat_N_Empty is
       use Repeat_N_Empty;
       Many  : constant Bytes (1 .. 6) := (16#00#, 16#00#, 16#E1#, 16#F5#, 16#05#, 16#7F#);
+      Huge  : constant Bytes (1 .. 6) := (16#00#, 16#FF#, 16#FF#, 16#FF#, 16#7F#, 16#7F#);
       Three : constant Bytes (1 .. 9) := (16#01#, 16#03#, 16#00#, 16#00#, 16#00#, 16#61#, 16#62#, 16#63#, 16#7F#);
       S     : Stream := Open (Many);
       This  : Repeat_N_Empty.T;
@@ -368,6 +369,25 @@ package body Examples_Tests is
          Check (Item_Type.Valid (E) and then Is_Empty (Item_Type.Content (E)), "items[0] is empty");
          Get_Items (This, Many, 2, E);
          Check (Item_Type.Valid (E) and then Is_Empty (Item_Type.Content (E)), "items[2] is empty");
+         Get_Items (This, Many, Items_Count (This) - 1, E);
+         Check (Item_Type.Valid (E) and then Is_Empty (Item_Type.Content (E)), "the last of 100 million is empty");
+      end if;
+
+      --  A count of 2**31 - 1, the largest Length of the target, and no byte for any element: Get_Items stops at the
+      --  first element, as Parse did, and does not go through two billion
+      S := Open (Huge);
+      Parse (This, Huge, S);
+      Check (Valid (This) and then Is_EOF (S), "two billion empty elements parse at once");
+      if Valid (This) then
+         Check (Items_Count (This) = 2_147_483_647, "the count is what the data say");
+         Get_Items (This, Huge, Items_Count (This) - 1, E);
+         Check (Item_Type.Valid (E) and then Is_Empty (Item_Type.Content (E)), "the last of two billion is empty");
+         declare
+            Position : Items_Cursor := Items_First (This);
+         begin
+            Next (This, Huge, Position, E);
+            Check (Item_Type.Valid (E) and then Remaining (Position) = 2_147_483_646, "Next goes one element on");
+         end;
       end if;
 
       S := Open (Three);

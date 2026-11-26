@@ -416,9 +416,11 @@ ends. Elements that may read nothing (a type whose fields all have a size
 from an expression, for example) do not, so `Parse` leaves the loop at the
 first element that read nothing: every element after it starts in the same
 state and reads nothing either. The count stays what the expression says.
-`Write` leaves its loop in the same way at an element that neither read nor
-wrote anything. Without this a count of billions in a file of a few bytes
-would keep the parser busy for minutes.
+`Get_X` stops in the same way, at the first element that read nothing, and
+delivers it; so does `Write` at an element that neither read nor wrote
+anything. Without this a count of billions in a file of a few bytes would keep
+the parser busy for minutes. A loop of the caller over all elements with
+`Next` still runs as often as the count says, and the comment of `Next` says so.
 
 A count is the value of an expression and goes through `To_Count`: a
 negative value means no element.

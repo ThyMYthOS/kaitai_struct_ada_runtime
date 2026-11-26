@@ -474,6 +474,9 @@ is
    --
    --  Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That is
    --  not proven, so check that Element is valid.
+   --
+   --  An element may read nothing, and the count is the one in the data, so the loop runs as often as Items_Count
+   --  (This) says, which can be far more often than the data are long.
    --  @param This The value that has the repetition
    --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Position Where to parse; moved to the next element
@@ -489,7 +492,8 @@ is
 
    --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going
    --  through all elements with this procedure takes time that grows with the square of their number; use Next for
-   --  that.
+   --  that. An element that reads nothing ends the search, as it ends Parse: all that follow are the same, so it is the
+   --  one that is delivered.
    --  @param This The value that has the repetition
    --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Index The number of the element, less than Items_Count (This)

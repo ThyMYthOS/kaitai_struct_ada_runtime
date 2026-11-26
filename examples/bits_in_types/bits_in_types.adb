@@ -6,7 +6,7 @@ is
 
    package body Child_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_Bits_Int_Be (Buffer, S, 4, This.Lo);
          This.Is_Valid := Kaitai.Streams.OK (S);
@@ -19,11 +19,11 @@ is
 
    end Child_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       Kaitai.Streams.Align_To_Byte (S);
       Kaitai.Streams.Read_Bits_Int_Be (Buffer, S, 4, This.A);
-      Child_Type.Parse (Buffer, S, This.C);
+      Child_Type.Parse (This.C, Buffer, S);
       Kaitai.Streams.Read_U1 (Buffer, S, This.D);
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;

@@ -4,7 +4,7 @@ package body Bench_Bits_Mixed
   with SPARK_Mode
 is
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       Kaitai.Streams.Align_To_Byte (S);
       Kaitai.Streams.Read_Bits_Int_Be (Buffer, S, 4, This.A);

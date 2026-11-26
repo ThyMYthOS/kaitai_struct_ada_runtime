@@ -6,7 +6,7 @@ is
 
    package body Flags_Type_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
          Bit : Kaitai.Types.U64;
       begin
          Kaitai.Streams.Align_To_Byte (S);
@@ -27,9 +27,9 @@ is
 
    package body Header_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
-         Flags_Type_Type.Parse (Buffer, S, This.Flags);
+         Flags_Type_Type.Parse (This.Flags, Buffer, S);
          Kaitai.Streams.Read_Bits_Int_Be (Buffer, S, 4, This.Level);
          Kaitai.Streams.Read_U1 (Buffer, S, This.Size);
          This.Is_Valid := Kaitai.Streams.OK (S);
@@ -44,10 +44,10 @@ is
 
    end Header_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       Kaitai.Streams.Read_U1 (Buffer, S, This.Tag);
-      Header_Type.Parse (Buffer, S, This.Head);
+      Header_Type.Parse (This.Head, Buffer, S);
       Kaitai.Streams.Read_U1 (Buffer, S, This.Tail);
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;

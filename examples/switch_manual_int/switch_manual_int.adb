@@ -10,7 +10,7 @@ is
 
       package body Intval_Type is
 
-         procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+         procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
          begin
             Kaitai.Streams.Read_U1 (Buffer, S, This.Value);
             This.Is_Valid := Kaitai.Streams.OK (S);
@@ -20,7 +20,7 @@ is
 
       package body Strval_Type is
 
-         procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+         procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
          begin
             Kaitai.Streams.Read_Bytes_Term
               (Buffer, S, Term => 0, Include => False, Consume => True, EOS_Error => True, Data => This.Value);
@@ -32,7 +32,7 @@ is
 
       end Strval_Type;
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_U1 (Buffer, S, This.Code);
          case This.Code is
@@ -40,7 +40,7 @@ is
                declare
                   Value : Opcode_Type.Intval_Type.T;
                begin
-                  Opcode_Type.Intval_Type.Parse (Buffer, S, Value);
+                  Opcode_Type.Intval_Type.Parse (Value, Buffer, S);
                   This.Body_Field := (Kind => Body_Is_Intval, Intval => Value);
                end;
 
@@ -48,7 +48,7 @@ is
                declare
                   Value : Opcode_Type.Strval_Type.T;
                begin
-                  Opcode_Type.Strval_Type.Parse (Buffer, S, Value);
+                  Opcode_Type.Strval_Type.Parse (Value, Buffer, S);
                   This.Body_Field := (Kind => Body_Is_Strval, Strval => Value);
                end;
 
@@ -60,14 +60,14 @@ is
 
    end Opcode_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Opcode_Type.T;
    begin
       This.Opcodes_Io := S;
       This.Opcodes_Count := 0;
       for I in 1 .. Kaitai.Streams.Remaining (S) loop
          exit when Kaitai.Streams.Is_EOF (S);
-         Opcode_Type.Parse (Buffer, S, Element);
+         Opcode_Type.Parse (Element, Buffer, S);
          exit when not Opcode_Type.Valid (Element);
          This.Opcodes_Count := I;
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
@@ -78,16 +78,16 @@ is
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Opcodes_Cursor; Element : out Opcode_Type.T)
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Opcodes_Cursor; Element : out Opcode_Type.T)
    is
       pragma Warnings (Off, This);
    begin
-      Opcode_Type.Parse (Buffer, Position.Io, Element);
+      Opcode_Type.Parse (Element, Buffer, Position.Io);
       Position.Left := (if Opcode_Type.Valid (Element) then Position.Left - 1 else 0);
    end Next;
 
    procedure Get_Opcodes
-     (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Opcode_Type.T)
+     (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Opcode_Type.T)
    is
       Position : Opcodes_Cursor := Opcodes_First (This);
       Result   : Opcode_Type.T;
@@ -95,7 +95,7 @@ is
       for I in 0 .. Index loop
          pragma Loop_Invariant (Belongs_To (Position, Buffer) and then Opcode_Type.Belongs_To (Result, Buffer));
          exit when not Has_Element (Position);
-         Next (Buffer, This, Position, Result);
+         Next (This, Buffer, Position, Result);
       end loop;
       Element := Result;
    end Get_Opcodes;

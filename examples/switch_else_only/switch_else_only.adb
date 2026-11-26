@@ -6,7 +6,7 @@ is
 
    package body Data_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_Bytes (S, 4, This.Value);
          This.Is_Valid := Kaitai.Streams.OK (S);
@@ -14,7 +14,7 @@ is
 
    end Data_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       Kaitai.Streams.Read_S1 (Buffer, S, This.Opcode);
       case This.Opcode is
@@ -25,7 +25,7 @@ is
       declare
          Value : Data_Type.T;
       begin
-         Data_Type.Parse (Buffer, S, Value);
+         Data_Type.Parse (Value, Buffer, S);
          This.Ut := (Kind => Ut_Is_Data, Data => Value);
       end;
       This.Is_Valid := Kaitai.Streams.OK (S);

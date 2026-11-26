@@ -14,7 +14,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Params_Def.T;
    --     ...
-   --     Params_Def.Parse (Buffer, S, Len, Has_Trailer_Field, V);
+   --     Params_Def.Parse (V, Buffer, S, Len, Has_Trailer_Field);
    --     if Params_Def.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -46,17 +46,17 @@ is
    --
    --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
    --  @param Len Parameter `len` of the type
    --  @param Has_Trailer_Field Parameter `has_trailer` of the type
-   --  @param This The result. Valid if and only if S has not failed
    procedure Parse
-     (Buffer            : Kaitai.Types.Bytes;
+     (This              : out T;
+      Buffer            : Kaitai.Types.Bytes;
       S                 : in out Kaitai.Streams.Stream;
       Len               : Kaitai.Types.U32;
-      Has_Trailer_Field : Boolean;
-      This              : out T)
+      Has_Trailer_Field : Boolean)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>

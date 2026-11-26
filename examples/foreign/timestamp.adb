@@ -3,7 +3,7 @@ package body Timestamp
 is
 
    procedure Parse
-     (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Rate : Kaitai.Types.S64; This : out T)
+     (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Rate : Kaitai.Types.S64)
    is
       Seconds : Kaitai.Types.U32;
    begin

@@ -15,7 +15,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Str_Literals_Latin1.T;
    --     ...
-   --     Str_Literals_Latin1.Parse (Buffer, S, V);
+   --     Str_Literals_Latin1.Parse (V, Buffer, S);
    --     if Str_Literals_Latin1.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -48,10 +48,10 @@ is
    --
    --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -71,7 +71,7 @@ is
 
    --  Instance `parsed_eq_literal`, a boolean. Computed from the fields at every call. Buffer is the buffer that This
    --  was parsed from.
-   function Parsed_Eq_Literal (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Parsed_Eq_Literal (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
 private
@@ -94,7 +94,7 @@ private
    function Parsed (This : T) return Kaitai.Types.Slice
    is (This.Parsed);
 
-   function Parsed_Eq_Literal (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Parsed_Eq_Literal (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    is (Kaitai.Byte_Arrays.Equal (Buffer, This.Parsed, (16#C2#, 16#A3#)));
 
 end Str_Literals_Latin1;

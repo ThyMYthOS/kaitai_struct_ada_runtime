@@ -20,7 +20,7 @@ is
       Magic_Sint_Be_Expected : constant Kaitai.Types.Bytes :=
         (16#50#, 16#41#, 16#43#, 16#4B#, 16#2D#, 16#53#, 16#2D#, 16#42#, 16#45#);
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_Contents (Buffer, S, Magic1_Expected);
          Kaitai.Streams.Read_U1 (Buffer, S, This.Uint8);
@@ -54,7 +54,7 @@ is
 
    end Header_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       pragma Unmodified (S);
    begin
       This.Io := S;
@@ -62,13 +62,13 @@ is
    end Parse;
 
    procedure Hdr
-     (Buffer : Kaitai.Types.Bytes; This : T; Result : out Header_Type.T; Outcome : out Kaitai.Types.Status_Kind)
+     (This : T; Buffer : Kaitai.Types.Bytes; Result : out Header_Type.T; Outcome : out Kaitai.Types.Status_Kind)
    is
       L : Kaitai.Streams.Stream := This.Io;
       pragma Warnings (Off, This);
    begin
       Kaitai.Streams.Seek (L, 0);
-      Header_Type.Parse (Buffer, L, Result);
+      Header_Type.Parse (Result, Buffer, L);
       Outcome := Kaitai.Streams.Status (L);
    end Hdr;
 

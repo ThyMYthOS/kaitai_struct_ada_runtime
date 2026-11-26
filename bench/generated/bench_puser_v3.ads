@@ -14,7 +14,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Bench_Puser_V3.T;
    --     ...
-   --     Bench_Puser_V3.Parse (Buffer, S, V);
+   --     Bench_Puser_V3.Parse (V, Buffer, S);
    --     if Bench_Puser_V3.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -45,10 +45,10 @@ is
       --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
       --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-      --  @param This The result. Valid if and only if S has not failed
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
         Post =>
@@ -105,19 +105,19 @@ is
       --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
       --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
       --  @param Parent_Hdr_Height The value of `_parent.hdr.height`: the caller is the parser of the value that this
       --  one is part of and passes its own `hdr.height`
       --  @param Parent_Hdr_Width The value of `_parent.hdr.width`: the caller is the parser of the value that this one
       --  is part of and passes its own `hdr.width`
-      --  @param This The result. Valid if and only if S has not failed
       procedure Parse
-        (Buffer            : Kaitai.Types.Bytes;
+        (This              : out T;
+         Buffer            : Kaitai.Types.Bytes;
          S                 : in out Kaitai.Streams.Stream;
          Parent_Hdr_Height : Kaitai.Types.U16;
-         Parent_Hdr_Width  : Kaitai.Types.U16;
-         This              : out T)
+         Parent_Hdr_Width  : Kaitai.Types.U16)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
         Post =>
@@ -198,10 +198,10 @@ is
    --  Not kept in This, but read again when asked for (Parse has gone over them once and checked them): Items (see
    --  Items_First).
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -244,19 +244,19 @@ is
    --
    --     Position := Items_First (V);
    --     while Has_Element (Position) loop
-   --        Next (Buffer, V, Position, Element);
+   --        Next (V, Buffer, Position, Element);
    --        exit when not Item_Type.Valid (Element);
    --        ...
    --     end loop;
    --
    --  Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That is
    --  not proven, so check that Element is valid.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Position Where to parse; moved to the next element
    --  @param Element The element. If it could not be parsed it is not valid, and Has_Element (Position) is False
    --  afterwards
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Items_Cursor; Element : out Item_Type.T)
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Items_Cursor; Element : out Item_Type.T)
    with
      Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
      Post =>
@@ -267,11 +267,11 @@ is
    --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going
    --  through all elements with this procedure takes time that grows with the square of their number; use Next for
    --  that.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Index The number of the element, less than Items_Count (This)
    --  @param Element The element. If it could not be parsed it is not valid
-   procedure Get_Items (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Item_Type.T)
+   procedure Get_Items (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Item_Type.T)
    with
      Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Index < Items_Count (This),
      Post => Item_Type.Belongs_To (Element, Buffer);

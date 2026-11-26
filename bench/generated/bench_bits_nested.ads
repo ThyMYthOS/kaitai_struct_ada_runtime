@@ -7,28 +7,62 @@ package Bench_Bits_Nested
   with SPARK_Mode, Always_Terminates
 is
 
-   --  type bench_bits_nested::inner
+   --  Parser for `bench_bits_nested`.
+   --
+   --  Use, where Buffer is the data (a Kaitai.Types.Bytes):
+   --
+   --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   --     V : Bench_Bits_Nested.T;
+   --     ...
+   --     Bench_Bits_Nested.Parse (V, Buffer, S);
+   --     if Bench_Bits_Nested.Valid (V) then
+   --        --  read V with the functions below
+   --     else
+   --        --  Kaitai.Streams.Status (S) tells why the data were not accepted
+   --     end if;
+   --
+   --  Nothing here allocates memory or raises an exception.
 
+   --  The type `inner` of the description (`bench_bits_nested::inner`)
    package Inner_Type is
 
+      --  A parsed `bench_bits_nested::inner`. A variable that Parse has not filled is not valid (see Valid). It has no
+      --  pointers and can be copied and kept freely.
       type T is private;
 
+      --  True if This is the result of a Parse that succeeded. The accessors below require it.
       function Valid (This : T) return Boolean;
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+      --  Parses one `bench_bits_nested::inner` at the position of S and leaves S behind it.
+      --
+      --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed
+      --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
+      --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+      --
+      --  S must be at a byte boundary (Kaitai.Streams.Bits_Left (S) = 0) unless it has failed. That holds for a stream
+      --  that was just opened and after a read of whole bytes, such as an integer or a byte array.
+      --
+      --  @param This The result. Valid if and only if S has not failed
+      --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+      --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
       with
-        Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
+        Pre  =>
+          Kaitai.Streams.Is_Valid (S, Buffer) and then (if Kaitai.Streams.OK (S) then Kaitai.Streams.Bits_Left (S) = 0),
         Post =>
           Kaitai.Streams.Is_Valid (S, Buffer)
           and then Kaitai.Streams.Advanced (S'Old, S)
           and then Valid (This) = Kaitai.Streams.OK (S);
 
+      --  Field `x`, a bit field of 4 bits
       function X (This : T) return Kaitai.Types.U64
       with Pre => Valid (This);
 
+      --  Field `y`, a bit field of 4 bits
       function Y (This : T) return Kaitai.Types.U64
       with Pre => Valid (This);
 
+      --  Field `z`, a bit field of 8 bits
       function Z (This : T) return Kaitai.Types.U64
       with Pre => Valid (This);
 
@@ -55,11 +89,25 @@ is
 
    end Inner_Type;
 
+   --  A parsed `bench_bits_nested`. A variable that Parse has not filled is not valid (see Valid). It has no pointers
+   --  and can be copied and kept freely.
    type T is private;
 
+   --  True if This is the result of a Parse that succeeded. The accessors below require it.
    function Valid (This : T) return Boolean;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   --  Parses one `bench_bits_nested` at the position of S and leaves S behind it.
+   --
+   --  It does not raise an exception. If the data are not accepted (for example they end too early, or a fixed content
+   --  or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is the reason
+   --  and This is not valid. If S had failed before the call, nothing is read and This is not valid.
+   --
+   --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
+   --
+   --  @param This The result. Valid if and only if S has not failed
+   --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
+   --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -67,9 +115,11 @@ is
        and then Kaitai.Streams.Advanced (S'Old, S)
        and then Valid (This) = Kaitai.Streams.OK (S);
 
+   --  Field `a`, an unsigned integer of 1 byte
    function A (This : T) return Kaitai.Types.U8
    with Pre => Valid (This);
 
+   --  Field `b`, an `inner`
    function B (This : T) return Inner_Type.T
    with Pre => Valid (This), Post => Inner_Type.Valid (B'Result);
 

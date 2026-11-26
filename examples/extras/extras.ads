@@ -14,7 +14,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Extras.T;
    --     ...
-   --     Extras.Parse (Buffer, S, V);
+   --     Extras.Parse (V, Buffer, S);
    --     if Extras.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -50,10 +50,10 @@ is
       --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
       --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-      --  @param This The result. Valid if and only if S has not failed
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
         Post =>
@@ -110,18 +110,18 @@ is
       --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
       --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
       --  @param Parent_Len_Secret The value of `_parent.len_secret`: the caller is the parser of the value that this
       --  one is part of and passes its own `len_secret`
       --  @param Root_Key The value of `_root.key`, passed down from the top-level value
-      --  @param This The result. Valid if and only if S has not failed
       procedure Parse
-        (Buffer            : Kaitai.Types.Bytes;
+        (This              : out T;
+         Buffer            : Kaitai.Types.Bytes;
          S                 : in out Kaitai.Streams.Stream;
          Parent_Len_Secret : Kaitai.Types.U8;
-         Root_Key          : Kaitai.Types.U8;
-         This              : out T)
+         Root_Key          : Kaitai.Types.U8)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
         Post =>
@@ -195,18 +195,18 @@ is
       --  Not kept in This, but read again when asked for (Parse has gone over them once and checked them): Children
       --  (see Children_First).
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
       --  @param Root_Key The value of `_root.key`, passed down from the top-level value
       --  @param Depth How many levels of values of this type may be nested inside this one. Pass Max_Depth. A nested
       --  value is parsed with Depth - 1, and where Depth is 0 the stream fails with Limit_Exceeded instead
-      --  @param This The result. Valid if and only if S has not failed
       procedure Parse
-        (Buffer   : Kaitai.Types.Bytes;
+        (This     : out T;
+         Buffer   : Kaitai.Types.Bytes;
          S        : in out Kaitai.Streams.Stream;
          Root_Key : Kaitai.Types.U8;
-         Depth    : Natural;
-         This     : out T)
+         Depth    : Natural)
       with
         Pre                => Kaitai.Streams.Is_Valid (S, Buffer),
         Post               =>
@@ -250,19 +250,19 @@ is
       --
       --     Position := Children_First (V);
       --     while Has_Element (Position) loop
-      --        Next (Buffer, V, Position, Element);
+      --        Next (V, Buffer, Position, Element);
       --        exit when not Valid (Element);
       --        ...
       --     end loop;
       --
       --  Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That
       --  is not proven, so check that Element is valid.
-      --  @param Buffer The buffer that This was parsed from, unchanged
       --  @param This The value that has the repetition
+      --  @param Buffer The buffer that This was parsed from, unchanged
       --  @param Position Where to parse; moved to the next element
       --  @param Element The element. If it could not be parsed it is not valid, and Has_Element (Position) is False
       --  afterwards
-      procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Children_Cursor; Element : out T)
+      procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Children_Cursor; Element : out T)
       with
         Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
         Post =>
@@ -273,11 +273,11 @@ is
       --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so
       --  going through all elements with this procedure takes time that grows with the square of their number; use Next
       --  for that.
-      --  @param Buffer The buffer that This was parsed from, unchanged
       --  @param This The value that has the repetition
+      --  @param Buffer The buffer that This was parsed from, unchanged
       --  @param Index The number of the element, less than Children_Count (This)
       --  @param Element The element. If it could not be parsed it is not valid
-      procedure Get_Children (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out T)
+      procedure Get_Children (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out T)
       with
         Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Index < Children_Count (This),
         Post => Belongs_To (Element, Buffer);
@@ -365,10 +365,10 @@ is
    --  Items_First). Not looked at here at all, so that an error in them shows only when they are asked for: Secret,
    --  Packed.
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -393,16 +393,16 @@ is
    --  Field `secret`, the bytes of Secret_Raw with the processing (`process: xor`) undone, written to Target
    --  (Target'First .. Last). Parse does not do this: the procedure does it at every call, and This does not keep the
    --  result.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the field
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Target Where the result goes, from Target'First, which must be at least 1. It must have room for as many
    --  bytes as Secret_Raw has
    --  @param Last The index in Target of the last byte of the result: Target'First - 1 if the result is empty or
    --  Outcome is not Success
    --  @param Outcome Success, Capacity_Exceeded if Target is too small
    procedure Secret
-     (Buffer  : Kaitai.Types.Bytes;
-      This    : T;
+     (This    : T;
+      Buffer  : Kaitai.Types.Bytes;
       Target  : in out Kaitai.Types.Bytes;
       Last    : out Kaitai.Types.Length;
       Outcome : out Kaitai.Types.Status_Kind)
@@ -425,15 +425,15 @@ is
    --  Field `packed`, an `inner`: the bytes of Packed_Raw with the processing (`process: rol`) undone into Storage, and
    --  the value parsed from there. Parse does not do this: the procedure does it at every call, and This does not keep
    --  the result.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the field
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Storage Where the processed bytes go, from Storage'First, which must be at least 1. It must have room for
    --  as many bytes as Packed_Raw has
    --  @param Result The value. Valid if and only if Outcome is Success
    --  @param Outcome Success, Capacity_Exceeded if Storage is too small, or else why the value was not accepted
    procedure Packed
-     (Buffer  : Kaitai.Types.Bytes;
-      This    : T;
+     (This    : T;
+      Buffer  : Kaitai.Types.Bytes;
       Storage : in out Kaitai.Types.Bytes;
       Result  : out Inner_Type.T;
       Outcome : out Kaitai.Types.Status_Kind)
@@ -467,19 +467,19 @@ is
    --
    --     Position := Items_First (V);
    --     while Has_Element (Position) loop
-   --        Next (Buffer, V, Position, Element);
+   --        Next (V, Buffer, Position, Element);
    --        exit when not Item_Type.Valid (Element);
    --        ...
    --     end loop;
    --
    --  Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That is
    --  not proven, so check that Element is valid.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Position Where to parse; moved to the next element
    --  @param Element The element. If it could not be parsed it is not valid, and Has_Element (Position) is False
    --  afterwards
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Items_Cursor; Element : out Item_Type.T)
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Items_Cursor; Element : out Item_Type.T)
    with
      Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
      Post =>
@@ -490,11 +490,11 @@ is
    --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going
    --  through all elements with this procedure takes time that grows with the square of their number; use Next for
    --  that.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Index The number of the element, less than Items_Count (This)
    --  @param Element The element. If it could not be parsed it is not valid
-   procedure Get_Items (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Item_Type.T)
+   procedure Get_Items (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Item_Type.T)
    with
      Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Index < Items_Count (This),
      Post => Item_Type.Belongs_To (Element, Buffer);

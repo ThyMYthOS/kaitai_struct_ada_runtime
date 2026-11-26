@@ -6,7 +6,7 @@ is
 
    package body Inner_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_U1 (Buffer, S, This.V);
          This.Is_Valid := Kaitai.Streams.OK (S);
@@ -14,12 +14,12 @@ is
 
    end Inner_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
-      Inner_Type.Parse (Buffer, S, This.A);
-      Inner_Type.Parse (Buffer, S, This.B);
-      Inner_Type.Parse (Buffer, S, This.C);
-      Inner_Type.Parse (Buffer, S, This.D);
+      Inner_Type.Parse (This.A, Buffer, S);
+      Inner_Type.Parse (This.B, Buffer, S);
+      Inner_Type.Parse (This.C, Buffer, S);
+      Inner_Type.Parse (This.D, Buffer, S);
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

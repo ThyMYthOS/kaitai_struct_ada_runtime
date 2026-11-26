@@ -15,7 +15,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Bench_Rep_Fixed.T;
    --     ...
-   --     Bench_Rep_Fixed.Parse (Buffer, S, V);
+   --     Bench_Rep_Fixed.Parse (V, Buffer, S);
    --     if Bench_Rep_Fixed.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -50,10 +50,10 @@ is
    --
    --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -72,7 +72,7 @@ is
 
    --  Element Index of the repeated field `items`, counted from 0, an unsigned integer of 1 byte, decoded from Buffer.
    --  Buffer is the buffer that This was parsed from. Requires Index < Items_Count (This).
-   function Items (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U8
+   function Items (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U8
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Items_Count (This);
 
 private
@@ -95,7 +95,7 @@ private
    function Items_Count (This : T) return Kaitai.Types.Length
    is (Kaitai.Types.Size (This.Items) / 1);
 
-   function Items (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U8
+   function Items (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U8
    is (Kaitai.Decoding.U8_At (Buffer, This.Items.First + Index * 1));
 
 end Bench_Rep_Fixed;

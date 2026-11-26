@@ -15,7 +15,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Repeat_Until_Complex.T;
    --     ...
-   --     Repeat_Until_Complex.Parse (Buffer, S, V);
+   --     Repeat_Until_Complex.Parse (V, Buffer, S);
    --     if Repeat_Until_Complex.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -52,10 +52,10 @@ is
       --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
       --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-      --  @param This The result. Valid if and only if S has not failed
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
         Post =>
@@ -74,7 +74,7 @@ is
 
       --  Element Index of the repeated field `values`, counted from 0, an unsigned integer of 1 byte, decoded from
       --  Buffer. Buffer is the buffer that This was parsed from. Requires Index < Values_Count (This).
-      function Values (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U8
+      function Values (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U8
       with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Values_Count (This);
 
    private
@@ -97,7 +97,7 @@ is
       function Values_Count (This : T) return Kaitai.Types.Length
       is (Kaitai.Types.Size (This.Values) / 1);
 
-      function Values (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U8
+      function Values (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U8
       is (Kaitai.Decoding.U8_At (Buffer, This.Values.First + Index * 1));
 
    end Type_U1_Type;
@@ -124,10 +124,10 @@ is
       --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
       --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-      --  @param This The result. Valid if and only if S has not failed
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
         Post =>
@@ -146,7 +146,7 @@ is
 
       --  Element Index of the repeated field `values`, counted from 0, an unsigned integer of 2 bytes, little endian,
       --  decoded from Buffer. Buffer is the buffer that This was parsed from. Requires Index < Values_Count (This).
-      function Values (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U16
+      function Values (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U16
       with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Values_Count (This);
 
    private
@@ -169,7 +169,7 @@ is
       function Values_Count (This : T) return Kaitai.Types.Length
       is (Kaitai.Types.Size (This.Values) / 2);
 
-      function Values (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U16
+      function Values (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U16
       is (Kaitai.Decoding.U16_LE (Buffer, This.Values.First + Index * 2));
 
    end Type_U2_Type;
@@ -198,10 +198,10 @@ is
    --  Not kept in This, but read again when asked for (Parse has gone over them once and checked them): First (see
    --  First_First), Second (see Second_First).
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -236,19 +236,19 @@ is
    --
    --     Position := First_First (V);
    --     while Has_Element (Position) loop
-   --        Next (Buffer, V, Position, Element);
+   --        Next (V, Buffer, Position, Element);
    --        exit when not Type_U1_Type.Valid (Element);
    --        ...
    --     end loop;
    --
    --  Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That is
    --  not proven, so check that Element is valid.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Position Where to parse; moved to the next element
    --  @param Element The element. If it could not be parsed it is not valid, and Has_Element (Position) is False
    --  afterwards
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out First_Cursor; Element : out Type_U1_Type.T)
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out First_Cursor; Element : out Type_U1_Type.T)
    with
      Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
      Post =>
@@ -259,12 +259,12 @@ is
    --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going
    --  through all elements with this procedure takes time that grows with the square of their number; use Next for
    --  that.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Index The number of the element, less than First_Count (This)
    --  @param Element The element. If it could not be parsed it is not valid
    procedure Get_First
-     (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Type_U1_Type.T)
+     (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Type_U1_Type.T)
    with
      Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Index < First_Count (This),
      Post => Type_U1_Type.Belongs_To (Element, Buffer);
@@ -295,19 +295,19 @@ is
    --
    --     Position := Second_First (V);
    --     while Has_Element (Position) loop
-   --        Next (Buffer, V, Position, Element);
+   --        Next (V, Buffer, Position, Element);
    --        exit when not Type_U2_Type.Valid (Element);
    --        ...
    --     end loop;
    --
    --  Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That is
    --  not proven, so check that Element is valid.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Position Where to parse; moved to the next element
    --  @param Element The element. If it could not be parsed it is not valid, and Has_Element (Position) is False
    --  afterwards
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Second_Cursor; Element : out Type_U2_Type.T)
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Second_Cursor; Element : out Type_U2_Type.T)
    with
      Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
      Post =>
@@ -318,12 +318,12 @@ is
    --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going
    --  through all elements with this procedure takes time that grows with the square of their number; use Next for
    --  that.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Index The number of the element, less than Second_Count (This)
    --  @param Element The element. If it could not be parsed it is not valid
    procedure Get_Second
-     (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Type_U2_Type.T)
+     (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Type_U2_Type.T)
    with
      Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Index < Second_Count (This),
      Post => Type_U2_Type.Belongs_To (Element, Buffer);
@@ -334,7 +334,7 @@ is
 
    --  Element Index of the repeated field `third`, counted from 0, an unsigned integer of 1 byte, decoded from Buffer.
    --  Buffer is the buffer that This was parsed from. Requires Index < Third_Count (This).
-   function Third (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U8
+   function Third (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U8
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Third_Count (This);
 
 private
@@ -393,7 +393,7 @@ private
    function Third_Count (This : T) return Kaitai.Types.Length
    is (Kaitai.Types.Size (This.Third) / 1);
 
-   function Third (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U8
+   function Third (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U8
    is (Kaitai.Decoding.U8_At (Buffer, This.Third.First + Index * 1));
 
 end Repeat_Until_Complex;

@@ -9,7 +9,7 @@ is
 
    package body Frame_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_U2be (Buffer, S, This.A);
          Kaitai.Streams.Read_U1 (Buffer, S, This.B);
@@ -18,12 +18,12 @@ is
 
    end Frame_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Timestamp.T;
       Before  : Kaitai.Streams.Stream;
    begin
       Kaitai.Streams.Read_U1 (Buffer, S, This.Key);
-      Timestamp.Parse (Buffer, S, 100, This.Stamp);
+      Timestamp.Parse (This.Stamp, Buffer, S, 100);
       Kaitai.Streams.Read_U1 (Buffer, S, This.Len_Text);
       Kaitai.Streams.Read_Bytes (S, Kaitai.Types.To_Size (Kaitai.Types.S64 (This.Len_Text)), This.Text);
       Kaitai.Streams.Read_U1 (Buffer, S, This.Len_Frame);
@@ -32,7 +32,7 @@ is
       This.Stamps_Count := 2;
       for I in 1 .. This.Stamps_Count loop
          Before := S;
-         Timestamp.Parse (Buffer, S, Kaitai.Types.S64 (This.Key) + 1, Element);
+         Timestamp.Parse (Element, Buffer, S, Kaitai.Types.S64 (This.Key) + 1);
          exit when not Timestamp.Valid (Element);
          --  An element that read nothing: so will all that follow
          exit when
@@ -44,8 +44,8 @@ is
    end Parse;
 
    procedure Text
-     (Buffer  : Kaitai.Types.Bytes;
-      This    : T;
+     (This    : T;
+      Buffer  : Kaitai.Types.Bytes;
       Target  : in out Kaitai.Types.Bytes;
       Last    : out Kaitai.Types.Length;
       Outcome : out Kaitai.Types.Status_Kind) is
@@ -61,8 +61,8 @@ is
    end Text;
 
    procedure Frame
-     (Buffer  : Kaitai.Types.Bytes;
-      This    : T;
+     (This    : T;
+      Buffer  : Kaitai.Types.Bytes;
       Storage : in out Kaitai.Types.Bytes;
       Result  : out Frame_Type.T;
       Outcome : out Kaitai.Types.Status_Kind)
@@ -74,20 +74,20 @@ is
       Unwrap.Decode (Buffer (This.Frame.First .. This.Frame.Last), Storage, Last, Outcome);
       if Outcome = Kaitai.Types.Success then
          Sub := Kaitai.Streams.Open (Storage (Storage'First .. Last));
-         Frame_Type.Parse (Storage, Sub, Result);
+         Frame_Type.Parse (Result, Storage, Sub);
          Outcome := Kaitai.Streams.Status (Sub);
       else
          Result := None;
       end if;
    end Frame;
 
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Stamps_Cursor; Element : out Timestamp.T) is
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Stamps_Cursor; Element : out Timestamp.T) is
    begin
-      Timestamp.Parse (Buffer, Position.Io, Kaitai.Types.S64 (This.Key) + 1, Element);
+      Timestamp.Parse (Element, Buffer, Position.Io, Kaitai.Types.S64 (This.Key) + 1);
       Position.Left := (if Timestamp.Valid (Element) then Position.Left - 1 else 0);
    end Next;
 
-   procedure Get_Stamps (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Timestamp.T)
+   procedure Get_Stamps (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Timestamp.T)
    is
       Position : Stamps_Cursor := Stamps_First (This);
       Result   : Timestamp.T;
@@ -95,7 +95,7 @@ is
       for I in 0 .. Index loop
          pragma Loop_Invariant (Belongs_To (Position, Buffer));
          exit when not Has_Element (Position);
-         Next (Buffer, This, Position, Result);
+         Next (This, Buffer, Position, Result);
       end loop;
       Element := Result;
    end Get_Stamps;

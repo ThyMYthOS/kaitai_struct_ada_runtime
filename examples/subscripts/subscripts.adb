@@ -22,7 +22,7 @@ is
       Kaitai.Streams.Read_Bytes (S, 3, Element);
    end Parse_Records_Element;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Kaitai.Types.Slice;
       Done    : Boolean;
    begin
@@ -58,7 +58,7 @@ is
    end Parse;
 
    procedure Next
-     (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Records_Cursor; Element : out Kaitai.Types.Slice)
+     (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Records_Cursor; Element : out Kaitai.Types.Slice)
    is
       pragma Warnings (Off, This);
    begin
@@ -67,7 +67,7 @@ is
    end Next;
 
    procedure Get_Records
-     (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Kaitai.Types.Slice)
+     (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Kaitai.Types.Slice)
    is
       Position : Records_Cursor := Records_First (This);
       Result   : Kaitai.Types.Slice;
@@ -75,7 +75,7 @@ is
       for I in 0 .. Index loop
          pragma Loop_Invariant (Belongs_To (Position, Buffer) and then Kaitai.Types.Within (Result, Buffer));
          exit when not Has_Element (Position);
-         Next (Buffer, This, Position, Result);
+         Next (This, Buffer, Position, Result);
       end loop;
       Element := Result;
    end Get_Records;

@@ -15,7 +15,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Bench_Inst_User.T;
    --     ...
-   --     Bench_Inst_User.Parse (Buffer, S, V);
+   --     Bench_Inst_User.Parse (V, Buffer, S);
    --     if Bench_Inst_User.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -53,10 +53,10 @@ is
       --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
       --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-      --  @param This The result. Valid if and only if S has not failed
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
         Post =>
@@ -126,10 +126,10 @@ is
    --
    --  Not looked at here at all, so that an error in them shows only when they are asked for: Header.
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -144,7 +144,7 @@ is
 
    --  Element Index of the repeated field `numbers`, counted from 0, an unsigned integer of 1 byte, decoded from
    --  Buffer. Buffer is the buffer that This was parsed from. Requires Index < Numbers_Count (This).
-   function Numbers (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U8
+   function Numbers (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U8
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Numbers_Count (This);
 
    --  Number of elements of the repeated field `entries`
@@ -153,17 +153,17 @@ is
 
    --  Element Index of the repeated field `entries`, counted from 0, a signed integer of 2 bytes, little endian,
    --  decoded from Buffer. Buffer is the buffer that This was parsed from. Requires Index < Entries_Count (This).
-   function Entries (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.S16
+   function Entries (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.S16
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Entries_Count (This);
 
    --  Instance `header`, a `header_obj`. It has a position of its own in the data (`pos`), which Parse does not read:
    --  this procedure parses it at every call, and This does not keep it.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the instance
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Result The instance. Valid if and only if Outcome is Success
    --  @param Outcome Success, or why the instance could not be parsed
    procedure Header
-     (Buffer : Kaitai.Types.Bytes; This : T; Result : out Header_Obj_Type.T; Outcome : out Kaitai.Types.Status_Kind)
+     (This : T; Buffer : Kaitai.Types.Bytes; Result : out Header_Obj_Type.T; Outcome : out Kaitai.Types.Status_Kind)
    with
      Pre  => Valid (This) and then Belongs_To (This, Buffer),
      Post =>
@@ -190,13 +190,13 @@ private
    function Numbers_Count (This : T) return Kaitai.Types.Length
    is (Kaitai.Types.Size (This.Numbers) / 1);
 
-   function Numbers (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U8
+   function Numbers (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U8
    is (Kaitai.Decoding.U8_At (Buffer, This.Numbers.First + Index * 1));
 
    function Entries_Count (This : T) return Kaitai.Types.Length
    is (Kaitai.Types.Size (This.Entries) / 2);
 
-   function Entries (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.S16
+   function Entries (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.S16
    is (Kaitai.Decoding.To_S16 (Kaitai.Decoding.U16_LE (Buffer, This.Entries.First + Index * 2)));
 
 end Bench_Inst_User;

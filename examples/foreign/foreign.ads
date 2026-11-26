@@ -19,7 +19,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Foreign.T;
    --     ...
-   --     Foreign.Parse (Buffer, S, V);
+   --     Foreign.Parse (V, Buffer, S);
    --     if Foreign.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -54,10 +54,10 @@ is
       --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
       --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-      --  @param This The result. Valid if and only if S has not failed
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
         Post =>
@@ -116,10 +116,10 @@ is
    --  Stamps_First). Not looked at here at all, so that an error in them shows only when they are asked for: Text,
    --  Frame.
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -149,8 +149,8 @@ is
    --  Field `text`, the bytes of Text_Raw with the processing (`process: acme.scramble`) undone, written to Target
    --  (Target'First .. Last). Parse does not do this: the procedure does it at every call, and This does not keep the
    --  result.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the field
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Target Where the result goes, from Target'First, which must be at least 1. It must have room for the bytes
    --  that Decode of Acme.Scramble delivers
    --  @param Last The index in Target of the last byte of the result: Target'First - 1 if the result is empty or
@@ -158,8 +158,8 @@ is
    --  @param Outcome Success, Capacity_Exceeded if Target is too small, or else why Decode of Acme.Scramble did not
    --  accept the bytes
    procedure Text
-     (Buffer  : Kaitai.Types.Bytes;
-      This    : T;
+     (This    : T;
+      Buffer  : Kaitai.Types.Bytes;
       Target  : in out Kaitai.Types.Bytes;
       Last    : out Kaitai.Types.Length;
       Outcome : out Kaitai.Types.Status_Kind)
@@ -182,16 +182,16 @@ is
    --  Field `frame`, a `frame`: the bytes of Frame_Raw with the processing (`process: unwrap`) undone into Storage, and
    --  the value parsed from there. Parse does not do this: the procedure does it at every call, and This does not keep
    --  the result.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the field
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Storage Where the processed bytes go, from Storage'First, which must be at least 1. It must have room for
    --  the bytes that Decode of Unwrap delivers
    --  @param Result The value. Valid if and only if Outcome is Success
    --  @param Outcome Success, Capacity_Exceeded if Storage is too small, why Decode of Unwrap did not accept the bytes,
    --  or else why the value was not accepted
    procedure Frame
-     (Buffer  : Kaitai.Types.Bytes;
-      This    : T;
+     (This    : T;
+      Buffer  : Kaitai.Types.Bytes;
       Storage : in out Kaitai.Types.Bytes;
       Result  : out Frame_Type.T;
       Outcome : out Kaitai.Types.Status_Kind)
@@ -225,19 +225,19 @@ is
    --
    --     Position := Stamps_First (V);
    --     while Has_Element (Position) loop
-   --        Next (Buffer, V, Position, Element);
+   --        Next (V, Buffer, Position, Element);
    --        exit when not Timestamp.Valid (Element);
    --        ...
    --     end loop;
    --
    --  Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That is
    --  not proven, so check that Element is valid.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Position Where to parse; moved to the next element
    --  @param Element The element. If it could not be parsed it is not valid, and Has_Element (Position) is False
    --  afterwards
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Stamps_Cursor; Element : out Timestamp.T)
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Stamps_Cursor; Element : out Timestamp.T)
    with
      Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
      Post => Belongs_To (Position, Buffer) and then Remaining (Position) < Remaining (Position'Old);
@@ -245,11 +245,11 @@ is
    --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going
    --  through all elements with this procedure takes time that grows with the square of their number; use Next for
    --  that.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Index The number of the element, less than Stamps_Count (This)
    --  @param Element The element. If it could not be parsed it is not valid
-   procedure Get_Stamps (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Timestamp.T)
+   procedure Get_Stamps (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Timestamp.T)
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Stamps_Count (This);
 
 private

@@ -25,7 +25,7 @@ package body Bit_Runs is
       Sum  : U64 := 0;
    begin
       while not Kaitai.Streams.Is_EOF (S) loop
-         Bench_Bits_Flat.Parse (Data, S, This);
+         Bench_Bits_Flat.Parse (This, Data, S);
          exit when not Kaitai.Streams.OK (S) or else not Bench_Bits_Flat.Valid (This);
          Sum :=
            Sum
@@ -110,7 +110,7 @@ package body Bit_Runs is
       Sum  : U64 := 0;
    begin
       while not Kaitai.Streams.Is_EOF (S) loop
-         Bench_Bits_Le.Parse (Data, S, This);
+         Bench_Bits_Le.Parse (This, Data, S);
          exit when not Kaitai.Streams.OK (S) or else not Bench_Bits_Le.Valid (This);
          Sum :=
            Sum
@@ -195,7 +195,7 @@ package body Bit_Runs is
       Sum  : U64 := 0;
    begin
       while not Kaitai.Streams.Is_EOF (S) loop
-         Bench_Bits_Mixed.Parse (Data, S, This);
+         Bench_Bits_Mixed.Parse (This, Data, S);
          exit when not Kaitai.Streams.OK (S) or else not Bench_Bits_Mixed.Valid (This);
          Sum :=
            Sum
@@ -286,7 +286,7 @@ package body Bit_Runs is
       Sum  : U64 := 0;
    begin
       while not Kaitai.Streams.Is_EOF (S) loop
-         Bench_Bits_Nested.Parse (Data, S, This);
+         Bench_Bits_Nested.Parse (This, Data, S);
          exit when not Kaitai.Streams.OK (S) or else not Bench_Bits_Nested.Valid (This);
          Sum :=
            Sum

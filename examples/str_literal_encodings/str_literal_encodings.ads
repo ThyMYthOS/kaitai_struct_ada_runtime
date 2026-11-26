@@ -15,7 +15,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Str_Literal_Encodings.T;
    --     ...
-   --     Str_Literal_Encodings.Parse (Buffer, S, V);
+   --     Str_Literal_Encodings.Parse (V, Buffer, S);
    --     if Str_Literal_Encodings.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -48,10 +48,10 @@ is
    --
    --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -91,7 +91,7 @@ is
 
    --  Instance `ascii_has_newline`, a boolean. Computed from the fields at every call. Buffer is the buffer that This
    --  was parsed from.
-   function Ascii_Has_Newline (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Ascii_Has_Newline (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
    --  Instance `grin_length`, an integer (a Kaitai.Types.S64). Computed from the fields at every call.
@@ -100,27 +100,27 @@ is
 
    --  Instance `latin1_is_pound`, a boolean. Computed from the fields at every call. Buffer is the buffer that This was
    --  parsed from.
-   function Latin1_Is_Pound (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Latin1_Is_Pound (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
    --  Instance `utf16be_is_grin`, a boolean. Computed from the fields at every call. Buffer is the buffer that This was
    --  parsed from.
-   function Utf16be_Is_Grin (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Utf16be_Is_Grin (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
    --  Instance `utf16be_is_not_grin`, a boolean. Computed from the fields at every call. Buffer is the buffer that This
    --  was parsed from.
-   function Utf16be_Is_Not_Grin (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Utf16be_Is_Not_Grin (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
    --  Instance `utf16le_is_pound_euro`, a boolean. Computed from the fields at every call. Buffer is the buffer that
    --  This was parsed from.
-   function Utf16le_Is_Pound_Euro (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Utf16le_Is_Pound_Euro (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
    --  Instance `utf8_is_pound`, a boolean. Computed from the fields at every call. Buffer is the buffer that This was
    --  parsed from.
-   function Utf8_Is_Pound (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Utf8_Is_Pound (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
 private
@@ -164,25 +164,25 @@ private
    function Tagged_Field (This : T) return Kaitai.Types.Slice
    is (This.Tagged_Field);
 
-   function Ascii_Has_Newline (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Ascii_Has_Newline (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    is (Kaitai.Byte_Arrays.Equal (Buffer, This.Ascii, (16#61#, 16#0A#)));
 
    function Grin_Length (This : T) return Kaitai.Types.S64
    is (1);
 
-   function Latin1_Is_Pound (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Latin1_Is_Pound (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    is (Kaitai.Byte_Arrays.Equal (Buffer, This.Latin1, (1 => 16#A3#)));
 
-   function Utf16be_Is_Grin (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Utf16be_Is_Grin (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    is (Kaitai.Byte_Arrays.Equal (Buffer, This.Utf16be, (16#D8#, 16#3D#, 16#DE#, 16#00#)));
 
-   function Utf16be_Is_Not_Grin (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Utf16be_Is_Not_Grin (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    is (not Kaitai.Byte_Arrays.Equal (Buffer, This.Utf16be, (16#D8#, 16#3D#, 16#DE#, 16#00#)));
 
-   function Utf16le_Is_Pound_Euro (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Utf16le_Is_Pound_Euro (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    is (Kaitai.Byte_Arrays.Equal (Buffer, This.Utf16le, (16#A3#, 16#00#, 16#AC#, 16#20#)));
 
-   function Utf8_Is_Pound (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Utf8_Is_Pound (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    is (Kaitai.Byte_Arrays.Equal (Buffer, This.Utf8, (16#C2#, 16#A3#)));
 
 end Str_Literal_Encodings;

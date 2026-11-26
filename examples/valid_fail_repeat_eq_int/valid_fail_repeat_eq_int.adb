@@ -4,7 +4,7 @@ package body Valid_Fail_Repeat_Eq_Int
   with SPARK_Mode
 is
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Value : Kaitai.Types.U32;
    begin
       Kaitai.Streams.Read_Elements_Full (S, 4, This.Foo);

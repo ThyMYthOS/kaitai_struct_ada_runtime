@@ -29,7 +29,7 @@ is
       Position : Bench_Rep.Items_Cursor;
       Sum      : U64;
    begin
-      Bench_Rep.Parse (Data, S, This);
+      Bench_Rep.Parse (This, Data, S);
       if not Bench_Rep.Valid (This) then
          return 0;
       end if;
@@ -41,8 +41,8 @@ is
             when A_Get_First | A_Get_Mid | A_Get_Last =>
                if Count > 0 then
                   Bench_Rep.Get_Items
-                    (Data,
-                     This,
+                    (This,
+                     Data,
                      (case V is
                         when A_Get_First => 0,
                         when A_Get_Mid   => Count / 2,
@@ -58,14 +58,14 @@ is
                while Bench_Rep.Has_Element (Position) loop
                   pragma Loop_Invariant (Bench_Rep.Belongs_To (Position, Data));
                   pragma Loop_Variant (Decreases => Bench_Rep.Remaining (Position));
-                  Bench_Rep.Next (Data, This, Position, Element);
+                  Bench_Rep.Next (This, Data, Position, Element);
                   exit when not Bench_Rep.Item_Type.Valid (Element);
                   Sum := Sum + Mix (Element);
                end loop;
 
             when A_Get_All                            =>
                for I in 0 .. Count - 1 loop
-                  Bench_Rep.Get_Items (Data, This, I, Element);
+                  Bench_Rep.Get_Items (This, Data, I, Element);
                   exit when not Bench_Rep.Item_Type.Valid (Element);
                   Sum := Sum + Mix (Element);
                end loop;
@@ -90,9 +90,9 @@ is
       Sum   : U64 := 0;
    begin
       if V in Index_Fixed | Index_Fixed_Mod then
-         Bench_Rep_Fixed.Parse (Data, S, Fixed);
+         Bench_Rep_Fixed.Parse (Fixed, Data, S);
       else
-         Bench_Rep.Parse (Data, S, Head);
+         Bench_Rep.Parse (Head, Data, S);
       end if;
       Read_U4le (Data, S, Num);
       if not OK (S) then
@@ -144,7 +144,7 @@ is
             end if;
 
          when others    =>
-            Bench_Rep.Parse (Data, S, Head);
+            Bench_Rep.Parse (Head, Data, S);
             if Bench_Rep.Valid (Head) then
                if V = Last_Get then
                   Rep_Use.Tail_Type.Parse_Get (Data, S, Head, Tail);
@@ -208,7 +208,7 @@ is
       Prev     : U8 := 0;
       Sum      : U64 := 0;
    begin
-      Bench_Rep.Parse (Data, S, Head);
+      Bench_Rep.Parse (Head, Data, S);
       if not Bench_Rep.Valid (Head) then
          return 0;
       end if;
@@ -223,7 +223,7 @@ is
             else
                Rep_Use.Block_Type.Parse_Lockstep (Data, S, I, Prev, Block);
                if Bench_Rep.Has_Element (Position) then
-                  Bench_Rep.Next (Data, Head, Position, Element);
+                  Bench_Rep.Next (Head, Data, Position, Element);
                   if Bench_Rep.Item_Type.Valid (Element) then
                      Prev := Bench_Rep.Item_Type.Len (Element);
                   end if;
@@ -249,11 +249,11 @@ is
    begin
       case V is
          when Empty_Get =>
-            Bench_Rep_Empty.Parse (Data, S, Plain);
+            Bench_Rep_Empty.Parse (Plain, Data, S);
             if Bench_Rep_Empty.Valid (Plain) then
                Sum := U64 (Bench_Rep_Empty.Items_Count (Plain));
                if Bench_Rep_Empty.Items_Count (Plain) > 0 then
-                  Bench_Rep_Empty.Get_Items (Data, Plain, Bench_Rep_Empty.Items_Count (Plain) - 1, Element);
+                  Bench_Rep_Empty.Get_Items (Plain, Data, Bench_Rep_Empty.Items_Count (Plain) - 1, Element);
                   if Bench_Rep_Empty.Item_Type.Valid (Element) then
                      Sum := Sum + 1;
                   end if;

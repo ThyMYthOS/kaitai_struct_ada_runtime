@@ -8,7 +8,7 @@ is
 
    package body Index_Obj_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_Bytes_Term
            (Buffer, S, Term => 0, Include => False, Consume => True, EOS_Error => True, Data => This.Entry_Field);
@@ -20,7 +20,7 @@ is
 
    end Index_Obj_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       This.Io := S;
       Kaitai.Streams.Read_U4le (Buffer, S, This.Index_Offset);
@@ -28,12 +28,12 @@ is
    end Parse;
 
    procedure Index
-     (Buffer : Kaitai.Types.Bytes; This : T; Result : out Index_Obj_Type.T; Outcome : out Kaitai.Types.Status_Kind)
+     (This : T; Buffer : Kaitai.Types.Bytes; Result : out Index_Obj_Type.T; Outcome : out Kaitai.Types.Status_Kind)
    is
       L : Kaitai.Streams.Stream := This.Io;
    begin
       Kaitai.Streams.Seek (L, Kaitai.Types.To_Size (Kaitai.Types.S64 (This.Index_Offset)));
-      Index_Obj_Type.Parse (Buffer, L, Result);
+      Index_Obj_Type.Parse (Result, Buffer, L);
       Outcome := Kaitai.Streams.Status (L);
    end Index;
 

@@ -1636,7 +1636,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
   private def userCall(ut: UserTypeInstream, target: String, rc: RC): List[String] = {
     val (pre, args) = callArgs(ut, rc)
-    selfGuard(ut, pre ++ List(s"${qualOf(ut.classSpec.get)}Parse (Buffer, ${rc.s}, ${(args :+ target).mkString(", ")});"), target, rc)
+    selfGuard(ut, pre ++ List(s"${qualOf(ut.classSpec.get)}Parse (${(List(target, "Buffer", rc.s) ++ args).mkString(", ")});"), target, rc)
   }
 
   private def userCallSub(ut: UserTypeFromBytes, target: String, rc: RC): List[String] = {
@@ -1669,7 +1669,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val none = if (cut) rc.scope.fresh("None") else ""
     if (cut) rc.scope.decls += s"$none : ${userPkg(ut)}.T;"
     val reset = if (cut) List(s"if not ${KS}OK (${rc.s}) then", s"   $target := $none;", "end if;") else Nil
-    selfGuard(ut, pre ++ mk ++ List(s"${qualOf(ut.classSpec.get)}Parse (Buffer, $sub, ${(args :+ target).mkString(", ")});", s"${KS}Join (${rc.s}, $sub);") ++ reset, target, rc)
+    selfGuard(ut, pre ++ mk ++ List(s"${qualOf(ut.classSpec.get)}Parse (${(List(target, "Buffer", sub) ++ args).mkString(", ")});", s"${KS}Join (${rc.s}, $sub);") ++ reset, target, rc)
   }
 
   // ---------------------------------------------------------------- validation
@@ -1782,7 +1782,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     code += "S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);"
     code += s"V : $pkg.T;"
     code += "..."
-    code ++= callLines(s"$pkg.Parse", List("Buffer", "S") ++ args :+ "V")
+    code ++= callLines(s"$pkg.Parse", List("V", "Buffer", "S") ++ args)
     code ++= List(s"if $pkg.Valid (V) then", "   --  read V with the functions below", "else",
       "   --  Kaitai.Streams.Status (S) tells why the data were not accepted", "end if;")
     val items = ListBuffer[Item]()
@@ -1804,7 +1804,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     if (config.readWrite) {
       val wr = ListBuffer[String]()
       wr += "W : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);"
-      wr ++= callLines(s"$pkg.Write", (if (belongs) List("Buffer") else Nil) ++ List("V", "Target", "W"))
+      wr ++= callLines(s"$pkg.Write", List("V") ++ (if (belongs) List("Buffer") else Nil) ++ List("Target", "W"))
       wr ++= List("if Kaitai.Writers.OK (W) then", "   --  Kaitai.Writers.Written (W) is the part of Target that holds the bytes",
         "else", "   --  Kaitai.Writers.Status (W) tells why they could not be written", "end if;")
       tail ++= List(Gap, P("Write, which the compiler generates because of --read-write, puts a valid value back into bytes:"))
@@ -1883,9 +1883,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val paramDecls = keptParams(cs).map(p => s"${paramName(idRaw(p.id))} : ${guard(p.path)(paramAda(p))}")
     val refDecls = refsOf(cs).map(r => s"${r.adaName} : ${refParamType(refTypes((cs.nameAsStr, r)), r.source)}")
     val depthDecl = if (isRecursive(cs)) List("Depth : Natural") else Nil
-    val parseParams = (List(s"Buffer : ${KT}Bytes", s"S : in out ${KS}Stream") ++ orderPar ++ paramDecls ++ refDecls ++ depthDecl :+ "This : out T").mkString("; ")
+    val parseParams = (List("This : out T", s"Buffer : ${KT}Bytes", s"S : in out ${KS}Stream") ++ orderPar ++ paramDecls ++ refDecls ++ depthDecl).mkString("; ")
     val belongsOk = hasBelongs(cs)
-    val writeParams = (if (belongsOk) s"Buffer : ${KT}Bytes; " else "") + s"This : T; Target : in out ${KT}Bytes; W : in out ${KW}Writer"
+    val writeParams = "This : T; " + (if (belongsOk) s"Buffer : ${KT}Bytes; " else "") + s"Target : in out ${KT}Bytes; W : in out ${KW}Writer"
 
     val tName = q(cs.nameAsStr)
     specB ++= render(List(P(sentences(List(
@@ -2051,6 +2051,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     }
     items += Gap
     val tags = ListBuffer[String]()
+    tags ++= tag("param", "This", "The result. Valid if and only if S has not failed")
     tags ++= tag("param", "Buffer", "The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))")
     tags ++= tag("param", "S", "Where to read. Afterwards it is at the position behind the value, or it has failed")
     if (hasOrderParam(cs)) {
@@ -2080,7 +2081,6 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     }
     if (isRecursive(cs))
       tags ++= tag("param", "Depth", "How many levels of values of this type may be nested inside this one. Pass Max_Depth. A nested value is parsed with Depth - 1, and where Depth is 0 the stream fails with Limit_Exceeded instead")
-    tags ++= tag("param", "This", "The result. Valid if and only if S has not failed")
     render(items.toList) ++ tags
   }
 
@@ -2094,8 +2094,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       P("Parsing what was written gives the same value again, with the same fields and slices of the same contents. The output is the input again, except for what a parsed value does not keep: bytes that no field uses and skipped bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as the padding byte, and instances with a position are not written.")
     )
     render(items :+ Gap) ++
-      (if (belongsOk) tag("param", "Buffer", "The buffer that This was parsed from, unchanged. What This refers to is written from it") else Nil) ++
       tag("param", "This", "The value to write. It must be valid") ++
+      (if (belongsOk) tag("param", "Buffer", "The buffer that This was parsed from, unchanged. What This refers to is written from it") else Nil) ++
       tag("param", "Target", "Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))") ++
       tag("param", "W", "Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes written, or it has failed")
   }
@@ -2243,7 +2243,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   /** The call of `Write` of the type of a field kept as `target` */
   private def writeCall(callee: ClassSpec, target: String, writer: String): String = {
     val buf = if (hasBelongs(callee)) "Buffer, " else ""
-    s"${qualOf(callee)}Write ($buf$target, Target, $writer);"
+    s"${qualOf(callee)}Write ($target, ${buf}Target, $writer);"
   }
 
   private def writeValue(dt: DataType, target: String, rc: RC): List[String] = withPath(rc.path) {
@@ -2364,7 +2364,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         "   pragma Loop_Invariant (Belongs_To (Position, Buffer));",
         s"   pragma Loop_Invariant (${KW}Is_Valid (W, Target) and then ${KW}Same_Window (W'Loop_Entry, W));",
         "   pragma Loop_Variant (Decreases => Remaining (Position));") ++ idleBefore ++ List(
-        "   Next (Buffer, This, Position, Element);") ++ ind(write) ++ idleExit ++ List("end loop;")) ++ List("end;")
+        "   Next (This, Buffer, Position, Element);") ++ ind(write) ++ idleExit ++ List("end loop;")) ++ List("end;")
   }
 
   private def genMembers(cs: ClassSpec, o: Out, sc: Scope): Unit = {
@@ -2641,7 +2641,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     userT match {
       case None =>
         val dst = "Target (Target'First .. Last)"
-        val params = s"Buffer : ${KT}Bytes; This : T; Target : in out ${KT}Bytes; Last : out ${KT}Length; Outcome : out ${KT}Status_Kind"
+        val params = s"This : T; Buffer : ${KT}Bytes; Target : in out ${KT}Bytes; Last : out ${KT}Length; Outcome : out ${KT}Status_Kind"
         val post =
           if (isZlib || isCustom)
             s"Last >= Target'First - 1 and then Last - (Target'First - 1) <= ${KT}Length (Target'Length) and then (if Outcome /= ${KT}Success then Last = Target'First - 1)"
@@ -2653,8 +2653,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
                         else "Arithmetic_Error if the expression of the amount is not defined"
         o.pub ++= ind(describe(List(s"Field ${q(k)}, the bytes of ${bs}_Raw with the processing (`process: $procName`) undone, written to Target (Target'First .. Last)"),
           a.doc, List(s"Parse does not do this: the procedure does it at every call, and This does not keep the result") ++ there) ++
-          tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
           tag("param", "This", "The value that has the field") ++
+          tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
           tag("param", "Target", "Where the result goes, from Target'First, which must be at least 1. It must have room for " +
             (if (isZlib) "the inflated bytes" else if (isCustom) s"the bytes that Decode of ${processPackage(procNames)} delivers" else s"as many bytes as ${bs}_Raw has")) ++
           tag("param", "Last", "The index in Target of the last byte of the result: Target'First - 1 if the result is empty or Outcome is not Success") ++
@@ -2694,7 +2694,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       case Some(ut) =>
         val pkg = qualOf(ut.classSpec.get)
         val belongsOk = hasBelongs(ut.classSpec.get)
-        val params = s"Buffer : ${KT}Bytes; This : T; Storage : in out ${KT}Bytes; Result : out ${userPkg(ut)}.T; Outcome : out ${KT}Status_Kind"
+        val params = s"This : T; Buffer : ${KT}Bytes; Storage : in out ${KT}Bytes; Result : out ${userPkg(ut)}.T; Outcome : out ${KT}Status_Kind"
         opTypes += "Status_Kind"
         val notUsable = if (isZlib) "Illegal_Sequence if the data are not valid zlib data"
                         else if (isCustom) "Arithmetic_Error if an argument of the process is not defined"
@@ -2702,8 +2702,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
                         else "Arithmetic_Error if the expression of the amount is not defined"
         o.pub ++= ind(describe(List(s"Field ${q(k)}, ${whatIs(ut)}: the bytes of ${bs}_Raw with the processing (`process: $procName`) undone into Storage, and the value parsed from there"),
           a.doc, List(s"Parse does not do this: the procedure does it at every call, and This does not keep the result") ++ there) ++
-          tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
           tag("param", "This", "The value that has the field") ++
+          tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
           tag("param", "Storage", "Where the processed bytes go, from Storage'First, which must be at least 1. It must have room for " +
             (if (isZlib) "the inflated bytes" else if (isCustom) s"the bytes that Decode of ${processPackage(procNames)} delivers" else s"as many bytes as ${bs}_Raw has")) ++
           tag("param", "Result", "The value. Valid if and only if Outcome is Success" +
@@ -2718,7 +2718,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         val dst = "Storage (Storage'First .. Last)"
         val (pcs, args) = callArgs(ut, rcP)
         val parseStmts = List(s"Sub := ${KS}Open (Storage (Storage'First .. Last));") ++ pcs ++
-          List(s"${pkg}Parse (Storage, Sub, ${(args :+ "Result").mkString(", ")});", s"Outcome := ${KS}Status (Sub);")
+          List(s"${pkg}Parse (${(List("Result", "Storage", "Sub") ++ args).mkString(", ")});", s"Outcome := ${KS}Status (Sub);")
         val stmts: List[String] =
           if (isZlib)
             List(s"${zlibKinds}Inflate ($src, Storage, Last, Inflated);", "case Inflated is", s"   when ${zlibKinds}Done =>") ++ ind(parseStmts, 2) ++
@@ -2759,11 +2759,11 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     o.rereads += nm
     o.pub ++= ind(describe(List(s"Field ${q(k)}, ${whatIs(ut)} (the type itself)"), a.doc,
       List("It is not kept in This: Parse has gone over it once, and this procedure parses it again at every call") ++ there) ++
-      tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
       tag("param", "This", "The value that has the field") ++
+      tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
       tag("param", "Result", "The field. Valid if and only if Outcome is Success") ++
       tag("param", "Outcome", "Success, or why the value was not accepted") ++ List(
-      s"procedure $nm (Buffer : ${KT}Bytes; This : T; Result : out T; Outcome : out ${KT}Status_Kind)",
+      s"procedure $nm (This : T; Buffer : ${KT}Bytes; Result : out T; Outcome : out ${KT}Status_Kind)",
       "with",
       s"  Pre  => $pre and then Belongs_To (This, Buffer),",
       s"  Post => Valid (Result) = (Outcome = ${KT}Success) and then Belongs_To (Result, Buffer);", ""))
@@ -2777,7 +2777,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       "  Subprogram_Variant => (Decreases => This.Depth, Decreases => 0);", "")
     o.bodyBefore ++= List(s"$helperSpec is") ++ ind(elScope.decls.toList) ++ List("begin") ++ ind(elemStmts) ++ List(s"end $helper;", "")
     o.bodyAfter ++= List(
-      s"procedure $nm (Buffer : ${KT}Bytes; This : T; Result : out T; Outcome : out ${KT}Status_Kind) is",
+      s"procedure $nm (This : T; Buffer : ${KT}Bytes; Result : out T; Outcome : out ${KT}Status_Kind) is",
       s"   L : ${KS}Stream := This.${bs}_Io;",
       "begin",
       s"   $helper (Buffer, L, This, Result);",
@@ -3205,7 +3205,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         case _ => { opTypes += "Byte_Order"; s"(if This.Order = ${KT}Little_Endian then $le else $be)" }
       }
     }
-    val params = s"Buffer : ${KT}Bytes; This : T; Index : ${KT}Length"
+    val params = s"This : T; Buffer : ${KT}Bytes; Index : ${KT}Length"
     val elemIs = dt match {
       case et: EnumType => s"${whatIs(base0)}, the number of a label of the enumeration ${q(et.enumSpec.get.name.last)}"
       case _ => whatIs(base0)
@@ -3226,10 +3226,10 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         val sfx = if (w.width == 4) "F32" else "F64"
         accessor(o, s"${bs}_Bits", bits, full, None, r, params,
           describe(List(s"$elemHead, $elemIs, as the unsigned integer of its bits, decoded from Buffer"), DocSpec.EMPTY, elemAfter))
-        accessor(o, nm, s"Kaitai.Floats.$sfx", s"$full and then Kaitai.Floats.Is_Finite (${bs}_Bits (Buffer, This, Index))", None,
-          s"Kaitai.Floats.To_$sfx (${bs}_Bits (Buffer, This, Index))", params,
+        accessor(o, nm, s"Kaitai.Floats.$sfx", s"$full and then Kaitai.Floats.Is_Finite (${bs}_Bits (This, Buffer, Index))", None,
+          s"Kaitai.Floats.To_$sfx (${bs}_Bits (This, Buffer, Index))", params,
           describe(List(s"$elemHead, as a float, decoded from Buffer"), doc,
-            elemAfter ++ List(s"Requires that it is neither infinity nor not-a-number: Kaitai.Floats.Is_Finite (${bs}_Bits (Buffer, This, Index))")))
+            elemAfter ++ List(s"Requires that it is neither infinity nor not-a-number: Kaitai.Floats.Is_Finite (${bs}_Bits (This, Buffer, Index))")))
       case other => throw new AdaUnsupported(s"repetition of $other")
     }
     val target = s"This.$nm"
@@ -3340,19 +3340,19 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       if (isSlice) "The element, a slice of Buffer. If it could not be read, Has_Element (Position) is False afterwards"
       else "The element. If it could not be parsed it is not valid, and Has_Element (Position) is False afterwards"
     val nextDoc = render(List(P("Parses the element at Position and moves Position to the next one:"), Gap)) ++
-      List(s"Position := ${bs}_First (V);", "while Has_Element (Position) loop", "   Next (Buffer, V, Position, Element);") .map("--     " + _) ++
+      List(s"Position := ${bs}_First (V);", "while Has_Element (Position) loop", "   Next (V, Buffer, Position, Element);") .map("--     " + _) ++
       (if (isSlice) Nil else List(s"   exit when not $elemValid (Element);").map("--     " + _)) ++
       List("   ...", "end loop;").map("--     " + _) ++
       render(List(Gap, P(
         if (isSlice) "Parse has accepted every element, and an element is read again as long as the buffer has not changed"
         else "Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That is not proven, so check that Element is valid."))) ++
-      tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
       tag("param", "This", "The value that has the repetition") ++
+      tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
       tag("param", "Position", "Where to parse; moved to the next element") ++
       tag("param", "Element", elemTag)
     val getDoc = render(List(P(s"Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going through all elements with this procedure takes time that grows with the square of their number; use Next for that."))) ++
-      tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
       tag("param", "This", "The value that has the repetition") ++
+      tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
       tag("param", "Index", s"The number of the element, less than ${bs}_Count (This)") ++
       tag("param", "Element", if (isSlice) "The element, a slice of Buffer" else "The element. If it could not be parsed it is not valid")
     def one(text: String*): List[String] = render(List(P(sentences(text.toList))))
@@ -3371,12 +3371,12 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       one("True if there is an element at Position") ++ List(
       s"function Has_Element (Position : $cur) return Boolean", "is (Remaining (Position) > 0);", "") ++
       nextDoc ++ List(
-      s"procedure Next (Buffer : ${KT}Bytes; This : T; Position : in out $cur; Element : out $elT)",
+      s"procedure Next (This : T; Buffer : ${KT}Bytes; Position : in out $cur; Element : out $elT)",
       "with", "  Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),",
       "  Post =>", "    Belongs_To (Position, Buffer) and then Remaining (Position) < Remaining (Position'Old)" +
         (if (elBelongs) s"\n    and then ${if (isSlice) KT + "Within" else elPkg + "Belongs_To"} (Element, Buffer);" else ";"), "",
       ) ++ getDoc ++ List(
-      s"procedure Get_$bs (Buffer : ${KT}Bytes; This : T; Index : ${KT}Length; Element : out $elT)",
+      s"procedure Get_$bs (This : T; Buffer : ${KT}Bytes; Index : ${KT}Length; Element : out $elT)",
       s"with Pre => $pre and then Belongs_To (This, Buffer) and then Index < ${bs}_Count (This)" +
         (if (elBelongs) s", Post => ${if (isSlice) KT + "Within" else elPkg + "Belongs_To"} (Element, Buffer);" else ";"), ""
     ))
@@ -3411,7 +3411,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       (if (elBelongs) s" and then ${if (isSlice) KT + "Within" else elPkg + "Belongs_To"} (Element, Buffer)" else "")
     def elemCall(stream: String): String =
       if (needsHelper) s"$helper (Buffer, $stream, ${callThis}Element);"
-      else s"${elemStmts0.head.replace("(Buffer, S,", s"(Buffer, $stream,")}"
+      else s"${elemStmts0.head.replace("(Element, Buffer, S", s"(Element, Buffer, $stream")}"
     if (needsHelper) {
       o.bodyBefore ++= List(s"--  Parse one element of $nm", s"procedure $helper ($helperParams)", "with", s"  Pre  => ${KS}Is_Valid (S, Buffer),") ++
         (if (selfElem) List(s"  Post => $postElem,", "  Subprogram_Variant => (Decreases => This.Depth, Decreases => 0);", "") else List(s"  Post => $postElem;", ""))
@@ -3424,7 +3424,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
     // Next and Get_
     val nextBody = List(
-      s"procedure Next (Buffer : ${KT}Bytes; This : T; Position : in out $cur; Element : out $elT) is"
+      s"procedure Next (This : T; Buffer : ${KT}Bytes; Position : in out $cur; Element : out $elT) is"
     ) ++ (if (usesThis) Nil else List("   pragma Warnings (Off, This);")) ++ List(
       "begin",
       "   " + elemCall("Position.Io"),
@@ -3433,14 +3433,14 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     )
     val within = if (isSlice) s"${KT}Within (Result, Buffer)" else if (elBelongs) s"${elPkg}Belongs_To (Result, Buffer)" else ""
     val getBody = List(
-      s"procedure Get_$bs (Buffer : ${KT}Bytes; This : T; Index : ${KT}Length; Element : out $elT) is",
+      s"procedure Get_$bs (This : T; Buffer : ${KT}Bytes; Index : ${KT}Length; Element : out $elT) is",
       s"   Position : $cur := ${bs}_First (This);",
       s"   Result   : $elT;",
       "begin",
       s"   for I in 0 .. Index loop",
       s"      pragma Loop_Invariant (Belongs_To (Position, Buffer)${if (within.nonEmpty) " and then " + within else ""});",
       "      exit when not Has_Element (Position);",
-      "      Next (Buffer, This, Position, Result);",
+      "      Next (This, Buffer, Position, Result);",
       "   end loop;",
       "   Element := Result;",
       s"end Get_$bs;", ""
@@ -3454,7 +3454,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val parseCall = if (needsHelper) {
       if (usesThis) rc.scope.passesThis = true
       s"$helper (Buffer, S, ${callThis}$el);"
-    } else elemStmts0.head.replace(" Element);", s" $el);")
+    } else elemStmts0.head.replace("(Element, ", s"($el, ")
     val Iv = "I"
     // a slice has no validity to look at; the loop uses the element in its invariant
     val sliceInv = if (isSlice) s" and then ${KT}Within ($el, Buffer)" else ""
@@ -3524,8 +3524,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val ct = v.ifExpr.map(c => guard(path)(tr.translate(c)))
     val (hasGuard, usesBuf) = valueInfo(cs, v)
     val isSlice = v.dataType match { case _: BytesType | _: StrType => true; case _ => false }
-    val params = if (usesBuf) s"Buffer : ${KT}Bytes; This : T" else "This : T"
-    val args = if (usesBuf) "Buffer, This" else "This"
+    val params = if (usesBuf) s"This : T; Buffer : ${KT}Bytes" else "This : T"
+    val args = if (usesBuf) "This, Buffer" else "This"
     val pre0 = if (usesBuf) "Valid (This) and then Belongs_To (This, Buffer)" else "Valid (This)"
     if (usesBuf && !hasBelongs(cs)) throw new AdaUnsupported("value instance that needs the buffer in a type without slices")
     var pre = pre0
@@ -3615,7 +3615,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       case _: BytesType | _: StrType => Some(s"${KT}Within (Result, Buffer)")
       case _ => None
     }
-    val spec = s"procedure $nm (Buffer : ${KT}Bytes; This : T; Result : out $resT; Outcome : out ${KT}Status_Kind)"
+    val spec = s"procedure $nm (This : T; Buffer : ${KT}Bytes; Result : out $resT; Outcome : out ${KT}Status_Kind)"
     o.unread += nm
     val k = idRaw(p.id)
     val instIs = dt match {
@@ -3631,8 +3631,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       (if (rootIo) List("It is read from the whole of Buffer (`io: _root._io`)") else Nil) ++
       (if (p.cond.ifExpr.isDefined) List(s"Requires ${hasNm(bs)}") else Nil)
     o.pub ++= ind(describe(List(s"Instance ${q(k)}, $instIs"), p.doc, instAfter) ++
-      tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
       tag("param", "This", "The value that has the instance") ++
+      tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
       tag("param", "Result", resultTag) ++
       tag("param", "Outcome", "Success, or why the instance could not be parsed"))
     o.pub += s"   $spec"

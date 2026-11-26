@@ -4,7 +4,7 @@ package body Bench_Term
   with SPARK_Mode
 is
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       Kaitai.Streams.Read_Bytes_Term
         (Buffer, S, Term => 0, Include => False, Consume => True, EOS_Error => True, Data => This.S1);

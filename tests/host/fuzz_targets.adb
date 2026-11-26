@@ -424,7 +424,7 @@ package body Fuzz_Targets is
       end Read_Entry;
    begin
       Fields := 0;
-      Showcase.Parse (Input, S, Argument, R);
+      Showcase.Parse (R, Input, S, Argument);
       pragma Assert (Showcase.Valid (R) = OK (S));
       if not Showcase.Valid (R) then
          return;
@@ -448,34 +448,34 @@ package body Fuzz_Targets is
          Position : Showcase.Entries_Cursor := Showcase.Entries_First (R);
       begin
          while Showcase.Has_Element (Position) loop
-            Showcase.Next (Input, R, Position, E);
+            Showcase.Next (R, Input, Position, E);
             Read_Entry;
          end loop;
       end;
       if Showcase.Entries_Count (R) > 0 then
-         Showcase.Get_Entries (Input, R, Showcase.Entries_Count (R) - 1, E);
+         Showcase.Get_Entries (R, Input, Showcase.Entries_Count (R) - 1, E);
          --  What Parse accepted is accepted again
          pragma Assert (Entries.Valid (E));
          Read_Entry;
       end if;
 
       for I in 0 .. Showcase.Points_Count (R) - 1 loop
-         Showcase.Get_Points (Input, R, I, P);
+         Showcase.Get_Points (R, Input, I, P);
          pragma Assert (Points.Valid (P));
          Count (Fields, Points.X (P) = 0);
       end loop;
 
       for I in 0 .. Showcase.Log_Type.Records_Count (Showcase.Log (R)) - 1 loop
-         Showcase.Log_Type.Get_Records (Input, Showcase.Log (R), I, P);
+         Showcase.Log_Type.Get_Records (Showcase.Log (R), Input, I, P);
          pragma Assert (Points.Valid (P));
          Count (Fields, Points.Y (P) = 0);
       end loop;
 
       for I in 0 .. Showcase.Samples_Count (R) - 1 loop
-         Count (Fields, Showcase.Samples (Input, R, I) = 0);
+         Count (Fields, Showcase.Samples (R, Input, I) = 0);
       end loop;
 
-      Showcase.First_Entry (Input, R, E, Outcome);
+      Showcase.First_Entry (R, Input, E, Outcome);
       pragma Assert (Entries.Valid (E) = (Outcome = Success));
       Read_Entry;
    end Run_Showcase;
@@ -506,7 +506,7 @@ package body Fuzz_Targets is
          end if;
          if Levels > 0 then
             for I in 0 .. Length'Min (Nodes.Children_Count (Node), 3) - 1 loop
-               Nodes.Get_Children (Input, Node, I, Child);
+               Nodes.Get_Children (Node, Input, I, Child);
                --  What Parse accepted is accepted again
                pragma Assert (Nodes.Valid (Child));
                Walk (Child, Levels - 1);
@@ -515,22 +515,22 @@ package body Fuzz_Targets is
       end Walk;
    begin
       Fields := 0;
-      Extras.Parse (Input, S, R);
+      Extras.Parse (R, Input, S);
       pragma Assert (Extras.Valid (R) = OK (S));
       if not Extras.Valid (R) then
          return;
       end if;
       Fields := 1;
       Count (Fields, Extras.Key (R) = Extras.Len_Secret (R));
-      Extras.Secret (Input, R, Storage, Last, Outcome);
+      Extras.Secret (R, Input, Storage, Last, Outcome);
       pragma Assert ((Outcome = Success) = (Size (Extras.Secret_Raw (R)) <= Storage'Length));
       Count (Fields, Outcome = Success and then Last >= Storage'First);
-      Extras.Packed (Input, R, Storage, Inner, Outcome);
+      Extras.Packed (R, Input, Storage, Inner, Outcome);
       if Extras.Inner_Type.Valid (Inner) then
          Count (Fields, Extras.Inner_Type.A (Inner) = 0 or else Extras.Inner_Type.B (Inner) = 0);
       end if;
       for I in 0 .. Extras.Items_Count (R) - 1 loop
-         Extras.Get_Items (Input, R, I, Item);
+         Extras.Get_Items (R, Input, I, Item);
          pragma Assert (Items.Valid (Item));
          Count (Fields, Within (Items.Value (Item), Input));
          if Items.Has_Extra (Item) then
@@ -543,7 +543,7 @@ package body Fuzz_Targets is
    --  Parse Input with a parser that is not looked into any further
    generic
       type T is private;
-      with procedure Parse (Buffer : Bytes; S : in out Stream; This : out T);
+      with procedure Parse (This : out T; Buffer : Bytes; S : in out Stream);
       with function Valid (This : T) return Boolean;
    procedure Run_Parse_Only (Input : Bytes; Fields : out Natural);
 
@@ -551,7 +551,7 @@ package body Fuzz_Targets is
       S : Stream := Open (Input);
       R : T;
    begin
-      Parse (Input, S, R);
+      Parse (R, Input, S);
       pragma Assert (Valid (R) = OK (S));
       Fields := (if Valid (R) then 1 else 0);
    end Run_Parse_Only;
@@ -593,7 +593,7 @@ package body Fuzz_Targets is
       S : Stream := Open (Input);
       R : Params_Def.T;
    begin
-      Params_Def.Parse (Input, S, U32 (Argument mod 64), Argument mod 2 = 0, R);
+      Params_Def.Parse (R, Input, S, U32 (Argument mod 64), Argument mod 2 = 0);
       pragma Assert (Params_Def.Valid (R) = OK (S));
       Fields := (if Params_Def.Valid (R) then 1 else 0);
    end Run_Params_Def;
@@ -609,14 +609,14 @@ package body Fuzz_Targets is
       W      : Kaitai.Writers.Writer;
    begin
       Fields := 0;
-      Write_Model.Parse (Input, S, Argument, R);
+      Write_Model.Parse (R, Input, S, Argument);
       pragma Assert (Write_Model.Valid (R) = OK (S));
       if not Write_Model.Valid (R) then
          return;
       end if;
       Fields := 1;
       W := Kaitai.Writers.Open (Output);
-      Write_Model.Write (Input, R, Output, W);
+      Write_Model.Write (R, Input, Output, W);
       pragma Assert (Kaitai.Writers.OK (W));
       pragma Assert (Kaitai.Writers.Pos (W) = Pos (S));
       pragma Assert (Output (1 .. Pos (S)) = Input (Input'First .. Input'First + Pos (S) - 1));
@@ -627,7 +627,7 @@ package body Fuzz_Targets is
       R : Imports0.T;
    begin
       Fields := 0;
-      Imports0.Parse (Input, S, R);
+      Imports0.Parse (R, Input, S);
       pragma Assert (Imports0.Valid (R) = OK (S));
       if not Imports0.Valid (R) then
          return;
@@ -648,7 +648,7 @@ package body Fuzz_Targets is
       B : Blocks.T;
    begin
       Fields := 0;
-      Expr_Sizeof_Type_0.Parse (Input, S, R);
+      Expr_Sizeof_Type_0.Parse (R, Input, S);
       pragma Assert (Expr_Sizeof_Type_0.Valid (R) = OK (S));
       if Expr_Sizeof_Type_0.Valid (R) then
          Fields := 1;
@@ -657,7 +657,7 @@ package body Fuzz_Targets is
 
       --  The type that the instance measures is not part of the parsed one, so it is parsed on its own
       S := Open (Input);
-      Blocks.Parse (Input, S, B);
+      Blocks.Parse (B, Input, S);
       pragma Assert (Blocks.Valid (B) = OK (S));
       if Blocks.Valid (B) then
          Count (Fields);
@@ -671,7 +671,7 @@ package body Fuzz_Targets is
       R : Expr_Sizeof_Value_Sized.T;
    begin
       Fields := 0;
-      Expr_Sizeof_Value_Sized.Parse (Input, S, R);
+      Expr_Sizeof_Value_Sized.Parse (R, Input, S);
       pragma Assert (Expr_Sizeof_Value_Sized.Valid (R) = OK (S));
       if Expr_Sizeof_Value_Sized.Valid (R) then
          Fields := 1;
@@ -692,7 +692,7 @@ package body Fuzz_Targets is
       Position : Subscripts.Records_Cursor;
    begin
       Fields := 0;
-      Subscripts.Parse (Input, S, R);
+      Subscripts.Parse (R, Input, S);
       pragma Assert (Subscripts.Valid (R) = OK (S));
       if not Subscripts.Valid (R) then
          return;
@@ -702,31 +702,31 @@ package body Fuzz_Targets is
       Count (Fields, Within (Subscripts.Raw (R), Input));
 
       for I in 0 .. Subscripts.Items_Count (R) - 1 loop
-         Count (Fields, Subscripts.Items (Input, R, I) = 0);
+         Count (Fields, Subscripts.Items (R, Input, I) = 0);
       end loop;
 
       Position := Subscripts.Records_First (R);
       while Subscripts.Has_Element (Position) loop
-         Subscripts.Next (Input, R, Position, Element);
+         Subscripts.Next (R, Input, Position, Element);
          Count (Fields, Within (Element, Input));
       end loop;
       for I in 0 .. Subscripts.Records_Count (R) - 1 loop
-         Subscripts.Get_Records (Input, R, I, Element);
+         Subscripts.Get_Records (R, Input, I, Element);
          Count (Fields, Within (Element, Input));
       end loop;
 
       --  The instances that index are defined only where the index is in range
-      if Subscripts.Has_First_Item (Input, R) then
-         Count (Fields, Subscripts.First_Item (Input, R) = 0);
+      if Subscripts.Has_First_Item (R, Input) then
+         Count (Fields, Subscripts.First_Item (R, Input) = 0);
       end if;
-      if Subscripts.Has_Chosen_Item (Input, R) then
-         Count (Fields, Subscripts.Chosen_Item (Input, R) = 0);
+      if Subscripts.Has_Chosen_Item (R, Input) then
+         Count (Fields, Subscripts.Chosen_Item (R, Input) = 0);
       end if;
-      if Subscripts.Has_Raw_Mid (Input, R) then
-         Count (Fields, Subscripts.Raw_Mid (Input, R) = 0);
+      if Subscripts.Has_Raw_Mid (R, Input) then
+         Count (Fields, Subscripts.Raw_Mid (R, Input) = 0);
       end if;
-      if Subscripts.Has_Chosen_Raw (Input, R) then
-         Count (Fields, Subscripts.Chosen_Raw (Input, R) = 0);
+      if Subscripts.Has_Chosen_Raw (R, Input) then
+         Count (Fields, Subscripts.Chosen_Raw (R, Input) = 0);
       end if;
    end Run_Subscripts;
 
@@ -735,14 +735,14 @@ package body Fuzz_Targets is
       R : Valid_Fail_Repeat_Eq_Int.T;
    begin
       Fields := 0;
-      Valid_Fail_Repeat_Eq_Int.Parse (Input, S, R);
+      Valid_Fail_Repeat_Eq_Int.Parse (R, Input, S);
       pragma Assert (Valid_Fail_Repeat_Eq_Int.Valid (R) = OK (S));
       if not Valid_Fail_Repeat_Eq_Int.Valid (R) then
          return;
       end if;
       Fields := 1;
       for I in 0 .. Valid_Fail_Repeat_Eq_Int.Foo_Count (R) - 1 loop
-         Count (Fields, Valid_Fail_Repeat_Eq_Int.Foo (Input, R, I) = 16#1234_5678#);
+         Count (Fields, Valid_Fail_Repeat_Eq_Int.Foo (R, Input, I) = 16#1234_5678#);
       end loop;
    end Run_Valid_Fail_Repeat_Eq_Int;
 
@@ -801,9 +801,9 @@ package body Fuzz_Targets is
    --  asserted against.
    generic
       type T is private;
-      with procedure Parse (Buffer : Bytes; S : in out Stream; This : out T);
+      with procedure Parse (This : out T; Buffer : Bytes; S : in out Stream);
       with function Valid (This : T) return Boolean;
-      with procedure Write (Buffer : Bytes; This : T; Target : in out Bytes; W : in out Kaitai.Writers.Writer);
+      with procedure Write (This : T; Buffer : Bytes; Target : in out Bytes; W : in out Kaitai.Writers.Writer);
       with procedure Read_All (Buffer : Bytes; This : T; Fields : in out Natural);
       Fixed_Size : Boolean;
    procedure Run_Write_Target (Input : Bytes; Fields : out Natural);
@@ -815,7 +815,7 @@ package body Fuzz_Targets is
       W      : Kaitai.Writers.Writer;
    begin
       Fields := 0;
-      Parse (Input, S, R);
+      Parse (R, Input, S);
       pragma Assert (Valid (R) = OK (S));
       if not Valid (R) then
          return;
@@ -823,7 +823,7 @@ package body Fuzz_Targets is
       Fields := 1;
       Read_All (Input, R, Fields);
       W := Kaitai.Writers.Open (Output);
-      Write (Input, R, Output, W);
+      Write (R, Input, Output, W);
       if Fixed_Size then
          pragma Assert (Kaitai.Writers.OK (W));
          pragma Assert (Kaitai.Writers.Pos (W) = Pos (S));
@@ -836,7 +836,7 @@ package body Fuzz_Targets is
          Again   : Stream := Open (Written);
          Second  : T;
       begin
-         Parse (Written, Again, Second);
+         Parse (Second, Written, Again);
          pragma Assert (Valid (Second) = OK (Again));
          pragma Assert (Valid (Second));
          Read_All (Written, Second, Fields);
@@ -888,16 +888,16 @@ package body Fuzz_Targets is
       R : Str_Literal_Encodings.T;
    begin
       Fields := 0;
-      Str_Literal_Encodings.Parse (Input, S, R);
+      Str_Literal_Encodings.Parse (R, Input, S);
       pragma Assert (Str_Literal_Encodings.Valid (R) = OK (S));
       if Str_Literal_Encodings.Valid (R) then
          Fields := 1;
-         Count (Fields, Str_Literal_Encodings.Latin1_Is_Pound (Input, R));
-         Count (Fields, Str_Literal_Encodings.Utf8_Is_Pound (Input, R));
-         Count (Fields, Str_Literal_Encodings.Utf16le_Is_Pound_Euro (Input, R));
-         Count (Fields, Str_Literal_Encodings.Utf16be_Is_Grin (Input, R));
-         Count (Fields, Str_Literal_Encodings.Utf16be_Is_Not_Grin (Input, R));
-         Count (Fields, Str_Literal_Encodings.Ascii_Has_Newline (Input, R));
+         Count (Fields, Str_Literal_Encodings.Latin1_Is_Pound (R, Input));
+         Count (Fields, Str_Literal_Encodings.Utf8_Is_Pound (R, Input));
+         Count (Fields, Str_Literal_Encodings.Utf16le_Is_Pound_Euro (R, Input));
+         Count (Fields, Str_Literal_Encodings.Utf16be_Is_Grin (R, Input));
+         Count (Fields, Str_Literal_Encodings.Utf16be_Is_Not_Grin (R, Input));
+         Count (Fields, Str_Literal_Encodings.Ascii_Has_Newline (R, Input));
          Count (Fields, Str_Literal_Encodings.Grin_Length (R) = 1);
       end if;
    end Run_Str_Literal_Encodings;
@@ -907,7 +907,7 @@ package body Fuzz_Targets is
       R : Expr_To_I_Trailing.T;
    begin
       Fields := 0;
-      Expr_To_I_Trailing.Parse (Input, S, R);
+      Expr_To_I_Trailing.Parse (R, Input, S);
       pragma Assert (Expr_To_I_Trailing.Valid (R) = OK (S));
       if Expr_To_I_Trailing.Valid (R) then
          Fields := 1;
@@ -925,14 +925,14 @@ package body Fuzz_Targets is
       R : Str_Ordering.T;
    begin
       Fields := 0;
-      Str_Ordering.Parse (Input, S, R);
+      Str_Ordering.Parse (R, Input, S);
       pragma Assert (Str_Ordering.Valid (R) = OK (S));
       if Str_Ordering.Valid (R) then
          Fields := 1;
-         Count (Fields, Str_Ordering.A_Lt_B (Input, R));
-         Count (Fields, Str_Ordering.A_Le_B (Input, R));
-         Count (Fields, Str_Ordering.A_Gt_Pound (Input, R));
-         Count (Fields, Str_Ordering.Pound_Ge_B (Input, R));
+         Count (Fields, Str_Ordering.A_Lt_B (R, Input));
+         Count (Fields, Str_Ordering.A_Le_B (R, Input));
+         Count (Fields, Str_Ordering.A_Gt_Pound (R, Input));
+         Count (Fields, Str_Ordering.Pound_Ge_B (R, Input));
          Count (Fields, Str_Ordering.Literals (R));
       end if;
    end Run_Str_Ordering;
@@ -954,23 +954,23 @@ package body Fuzz_Targets is
       Outcome : Status_Kind;
    begin
       Fields := 0;
-      Foreign.Parse (Input, S, R);
+      Foreign.Parse (R, Input, S);
       pragma Assert (Foreign.Valid (R) = OK (S));
       if not Foreign.Valid (R) then
          return;
       end if;
       Fields := 1;
       Count (Fields, Timestamp.Seconds (Foreign.Stamp (R)) = 0);
-      Foreign.Text (Input, R, Storage, Last, Outcome);
+      Foreign.Text (R, Input, Storage, Last, Outcome);
       pragma Assert ((Outcome = Success) = (Size (Foreign.Text_Raw (R)) <= Storage'Length));
       Count (Fields, Outcome = Success and then Last >= Storage'First);
-      Foreign.Frame (Input, R, Storage, Frame, Outcome);
+      Foreign.Frame (R, Input, Storage, Frame, Outcome);
       pragma Assert (Foreign.Frame_Type.Valid (Frame) = (Outcome = Success));
       if Foreign.Frame_Type.Valid (Frame) then
          Count (Fields, Foreign.Frame_Type.A (Frame) = 0 or else Foreign.Frame_Type.B (Frame) = 0);
       end if;
       for I in 0 .. Foreign.Stamps_Count (R) - 1 loop
-         Foreign.Get_Stamps (Input, R, I, Element);
+         Foreign.Get_Stamps (R, Input, I, Element);
          pragma Assert (Timestamp.Valid (Element));
          Count (Fields, Timestamp.Seconds (Element) = 0);
       end loop;

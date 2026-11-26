@@ -15,7 +15,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Expr_1.T;
    --     ...
-   --     Expr_1.Parse (Buffer, S, V);
+   --     Expr_1.Parse (V, Buffer, S);
    --     if Expr_1.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -49,10 +49,10 @@ is
    --
    --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -76,7 +76,7 @@ is
 
    --  Instance `str1_len`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Buffer is the
    --  buffer that This was parsed from.
-   function Str1_Len (Buffer : Kaitai.Types.Bytes; This : T) return Kaitai.Types.S64
+   function Str1_Len (This : T; Buffer : Kaitai.Types.Bytes) return Kaitai.Types.S64
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
 private
@@ -102,7 +102,7 @@ private
    function Len_Of_1_Mod (This : T) return Kaitai.Types.S64
    is (Kaitai.Types.S64 (This.Len_Of_1) - 2);
 
-   function Str1_Len (Buffer : Kaitai.Types.Bytes; This : T) return Kaitai.Types.S64
+   function Str1_Len (This : T; Buffer : Kaitai.Types.Bytes) return Kaitai.Types.S64
    is (Kaitai.Types.S64 (Kaitai.Strings.Character_Count (Buffer, This.Str1, Kaitai.Strings.US_ASCII)));
 
 end Expr_1;

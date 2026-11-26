@@ -15,7 +15,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Valid_Fail_Repeat_Eq_Int.T;
    --     ...
-   --     Valid_Fail_Repeat_Eq_Int.Parse (Buffer, S, V);
+   --     Valid_Fail_Repeat_Eq_Int.Parse (V, Buffer, S);
    --     if Valid_Fail_Repeat_Eq_Int.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -51,10 +51,10 @@ is
    --
    --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -69,7 +69,7 @@ is
 
    --  Element Index of the repeated field `foo`, counted from 0, an unsigned integer of 4 bytes, big endian, decoded
    --  from Buffer. Buffer is the buffer that This was parsed from. Requires Index < Foo_Count (This).
-   function Foo (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U32
+   function Foo (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U32
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Foo_Count (This);
 
 private
@@ -88,7 +88,7 @@ private
    function Foo_Count (This : T) return Kaitai.Types.Length
    is (Kaitai.Types.Size (This.Foo) / 4);
 
-   function Foo (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U32
+   function Foo (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U32
    is (Kaitai.Decoding.U32_BE (Buffer, This.Foo.First + Index * 4));
 
 end Valid_Fail_Repeat_Eq_Int;

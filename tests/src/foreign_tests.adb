@@ -37,7 +37,7 @@ package body Foreign_Tests is
       E : Timestamp.T;
    begin
       Group ("Foreign opaque type");
-      Foreign.Parse (Data, S, R);
+      Foreign.Parse (R, Data, S);
       Check (OK (S) and then Is_EOF (S), "parsed to the end");
       if not Foreign.Valid (R) then
          Check (False, "valid");
@@ -47,7 +47,7 @@ package body Foreign_Tests is
         (Timestamp.Seconds (Foreign.Stamp (R)) = 256 and then Timestamp.Ticks_Per_Second (Foreign.Stamp (R)) = 100,
          "an opaque type read by the package that is written by hand, with an argument");
       Check (Foreign.Stamps_Count (R) = 2, "a repetition of it");
-      Foreign.Get_Stamps (Data, R, 1, E);
+      Foreign.Get_Stamps (R, Data, 1, E);
       Check
         (Timestamp.Valid (E) and then Timestamp.Seconds (E) = 20 and then Timestamp.Ticks_Per_Second (E) = 6,
          "an element, with an argument that is an expression");
@@ -62,25 +62,25 @@ package body Foreign_Tests is
       Frame   : Foreign.Frame_Type.T;
    begin
       Group ("Foreign custom process");
-      Foreign.Parse (Data, S, R);
+      Foreign.Parse (R, Data, S);
       if not Foreign.Valid (R) then
          Check (False, "valid");
          return;
       end if;
       Check (Foreign.Text_Raw (R) = (First => 7, Last => 9), "the bytes as they are in the input");
-      Foreign.Text (Data, R, Target, Last, Outcome);
+      Foreign.Text (R, Data, Target, Last, Outcome);
       Check (Outcome = Success and then Last = 13, "decoded into the array of the caller");
       Check (Target (11 .. 13) = (16#61#, 16#62#, 16#63#), "with the arguments of the description");
       Check (Target (14) = 16#EE#, "and nothing written behind it");
-      Foreign.Text (Data, R, Target (11 .. 12), Last, Outcome);
+      Foreign.Text (R, Data, Target (11 .. 12), Last, Outcome);
       Check (Outcome = Capacity_Exceeded and then Last = 10, "an array that is too small");
 
-      Foreign.Frame (Data, R, Target, Frame, Outcome);
+      Foreign.Frame (R, Data, Target, Frame, Outcome);
       Check (Outcome = Success and then Foreign.Frame_Type.Valid (Frame), "a value parsed from decoded bytes");
       if Foreign.Frame_Type.Valid (Frame) then
          Check (Foreign.Frame_Type.A (Frame) = 16#0012# and then Foreign.Frame_Type.B (Frame) = 16#34#, "its fields");
       end if;
-      Foreign.Frame (Data, R, Target (11 .. 12), Frame, Outcome);
+      Foreign.Frame (R, Data, Target (11 .. 12), Frame, Outcome);
       Check (Outcome = Capacity_Exceeded and then not Foreign.Frame_Type.Valid (Frame), "storage that is too small");
    end Test_Process;
 
@@ -97,9 +97,9 @@ package body Foreign_Tests is
       --  A frame of one byte, which Unwrap does not accept
       Short (10) := 1;
       S := Open (Short);
-      Foreign.Parse (Short, S, R);
+      Foreign.Parse (R, Short, S);
       if Foreign.Valid (R) then
-         Foreign.Frame (Short, R, Target, Frame, Outcome);
+         Foreign.Frame (R, Short, Target, Frame, Outcome);
          Check (Outcome = Illegal_Sequence and then not Foreign.Frame_Type.Valid (Frame), "the status of the package");
       else
          Check (Status (S) = End_Of_Stream, "or the data end");
@@ -109,9 +109,9 @@ package body Foreign_Tests is
       Short := Data;
       Short (10) := 2;
       S := Open (Short);
-      Foreign.Parse (Short, S, R);
+      Foreign.Parse (R, Short, S);
       if Foreign.Valid (R) then
-         Foreign.Frame (Short, R, Target, Frame, Outcome);
+         Foreign.Frame (R, Short, Target, Frame, Outcome);
          Check (Outcome = End_Of_Stream and then not Foreign.Frame_Type.Valid (Frame), "the status of the value");
       else
          Check (Status (S) = End_Of_Stream, "or the data end");
@@ -119,7 +119,7 @@ package body Foreign_Tests is
 
       --  The data end inside the opaque type
       S := Open (Data (1 .. 3));
-      Foreign.Parse (Data (1 .. 3), S, R);
+      Foreign.Parse (R, Data (1 .. 3), S);
       Check (not Foreign.Valid (R) and then Status (S) = End_Of_Stream, "the opaque type fails the stream");
    end Test_Failures;
 

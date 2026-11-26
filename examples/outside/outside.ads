@@ -18,7 +18,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Outside.T;
    --     ...
-   --     Outside.Parse (Buffer, S, V);
+   --     Outside.Parse (V, Buffer, S);
    --     if Outside.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -46,10 +46,10 @@ is
       --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
       --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-      --  @param This The result. Valid if and only if S has not failed
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
         Post =>
@@ -106,6 +106,7 @@ is
       --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
       --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
       --  @param Key_Length The value of `key.length`: the caller computes it, from the arguments that it gives for the
@@ -114,14 +115,13 @@ is
       --  parameters of the type and from what it has itself, and passes it
       --  @param Hdr_Height The value of `hdr.height`: the caller computes it, from the arguments that it gives for the
       --  parameters of the type and from what it has itself, and passes it
-      --  @param This The result. Valid if and only if S has not failed
       procedure Parse
-        (Buffer     : Kaitai.Types.Bytes;
+        (This       : out T;
+         Buffer     : Kaitai.Types.Bytes;
          S          : in out Kaitai.Streams.Stream;
          Key_Length : Kaitai.Types.S64;
          Hdr_Width  : Kaitai.Types.U8;
-         Hdr_Height : Kaitai.Types.U8;
-         This       : out T)
+         Hdr_Height : Kaitai.Types.U8)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
         Post =>
@@ -185,13 +185,13 @@ is
       --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
       --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
       --  @param Parent_Name_Expr The value of `_parent.name == "foo"`: the caller computes it, from the arguments that
       --  it gives for the parameters of the type and from what it has itself, and passes it
-      --  @param This The result. Valid if and only if S has not failed
       procedure Parse
-        (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Parent_Name_Expr : Boolean; This : out T)
+        (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Parent_Name_Expr : Boolean)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
         Post =>
@@ -250,10 +250,10 @@ is
    --
    --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>

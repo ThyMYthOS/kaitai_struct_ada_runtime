@@ -71,7 +71,7 @@ package body Showcase_Tests is
       R : Showcase.T;
    begin
       Group ("Showcase fields");
-      Showcase.Parse (Data, S, 3, R);
+      Showcase.Parse (R, Data, S, 3);
       Check (OK (S) and then Is_EOF (S), "parsed to the end");
       if not Showcase.Valid (R) then
          Check (False, "valid");
@@ -86,7 +86,7 @@ package body Showcase_Tests is
       Check (Showcase.Len_Log (R) = 8, "integer after a repetition");
       Check (Showcase.Samples_Count (R) = 3, "elements of a fixed size: count");
       Check
-        (Showcase.Samples (Data, R, 0) = 16 and then Showcase.Samples (Data, R, 2) = 48,
+        (Showcase.Samples (R, Data, 0) = 16 and then Showcase.Samples (R, Data, 2) = 48,
          "elements of a fixed size: by index");
       Check (Showcase.Has_Total (R) and then Showcase.Total (R) = 13, "instance with a value");
    end Test_Fields;
@@ -101,14 +101,14 @@ package body Showcase_Tests is
       Outcome  : Status_Kind;
    begin
       Group ("Showcase repetitions");
-      Showcase.Parse (Data, S, 3, R);
+      Showcase.Parse (R, Data, S, 3);
       if not Showcase.Valid (R) then
          Check (False, "valid");
          return;
       end if;
 
       Check (Showcase.Entries_Count (R) = 2, "count");
-      Showcase.Get_Entries (Data, R, 0, E);
+      Showcase.Get_Entries (R, Data, 0, E);
       if Entries.Valid (E) and then Entries.Body_Case (E) = Entries.Body_Is_Point then
          Check (Entries.Code (E) = 1 and then Entries.Flags (E) = 1, "first element: fields and parameter");
          Check
@@ -118,7 +118,7 @@ package body Showcase_Tests is
       else
          Check (False, "first element is a point");
       end if;
-      Showcase.Get_Entries (Data, R, 1, E);
+      Showcase.Get_Entries (R, Data, 1, E);
       if Entries.Valid (E) and then Entries.Body_Case (E) = Entries.Body_Is_Text then
          Check
            (Entries.Text_Type.Value (Entries.Body_As_Text (E)) = (First => 18, Last => 19),
@@ -132,23 +132,23 @@ package body Showcase_Tests is
       while Showcase.Has_Element (Position) loop
          pragma Loop_Variant (Decreases => Showcase.Remaining (Position));
          pragma Loop_Invariant (Showcase.Belongs_To (Position, Data));
-         Showcase.Next (Data, R, Position, E);
+         Showcase.Next (R, Data, Position, E);
          exit when not Entries.Valid (E);
          Seen := Seen + 1;
       end loop;
       Check (Seen = 2, "the cursor delivers every element once");
 
       Check (Showcase.Points_Count (R) = 2, "up to a condition: count includes the last element");
-      Showcase.Get_Points (Data, R, 0, P);
+      Showcase.Get_Points (R, Data, 0, P);
       Check (Points.Valid (P) and then Points.X (P) = 5 and then Points.Y (P) = 6, "up to a condition: first");
-      Showcase.Get_Points (Data, R, 1, P);
+      Showcase.Get_Points (R, Data, 1, P);
       Check (Points.Valid (P) and then Points.X (P) = 0 and then Points.Y (P) = 7, "up to a condition: last");
 
       Check (Showcase.Log_Type.Records_Count (Showcase.Log (R)) = 2, "up to the end of a substream: count");
-      Showcase.Log_Type.Get_Records (Data, Showcase.Log (R), 1, P);
+      Showcase.Log_Type.Get_Records (Showcase.Log (R), Data, 1, P);
       Check (Points.Valid (P) and then Points.X (P) = 3 and then Points.Y (P) = 4, "up to the end: last");
 
-      Showcase.First_Entry (Data, R, E, Outcome);
+      Showcase.First_Entry (R, Data, E, Outcome);
       Check (Outcome = Success and then Entries.Valid (E), "instance with a position");
       if Entries.Valid (E) and then Entries.Body_Case (E) = Entries.Body_Is_Point then
          Check (Points.Y (Entries.Body_As_Point (E)) = -2, "instance: parsed from the position");
@@ -171,7 +171,7 @@ package body Showcase_Tests is
       --  and a valid result only where a sample ends after that
       for Last in 0 .. Data'Last - 1 loop
          S := Open (Data (1 .. Last));
-         Showcase.Parse (Data (1 .. Last), S, 3, R);
+         Showcase.Parse (R, Data (1 .. Last), S, 3);
          if Showcase.Valid (R) /= (Last >= Samples_At and then (Last - Samples_At) mod 2 = 0) then
             Bad := Bad + 1;
          end if;
@@ -183,13 +183,13 @@ package body Showcase_Tests is
 
       Other (1) := 16#54#;
       S := Open (Other);
-      Showcase.Parse (Other, S, 3, R);
+      Showcase.Parse (R, Other, S, 3);
       Check (Status (S) = Validation_Not_Equal and then not Showcase.Valid (R), "wrong contents");
       Other := Data;
 
       Other (8) := 2;
       S := Open (Other);
-      Showcase.Parse (Other, S, 3, R);
+      Showcase.Parse (R, Other, S, 3);
       Check (Status (S) = End_Of_Stream, "a negative size is a failure");
       Other := Data;
 
@@ -197,21 +197,21 @@ package body Showcase_Tests is
       Other (1 .. 9) := Minimal (1 .. 9);
       Other (10 .. 13) := (5, 0, 6, 0);
       S := Open (Other (1 .. 13));
-      Showcase.Parse (Other (1 .. 13), S, 3, R);
+      Showcase.Parse (R, Other (1 .. 13), S, 3);
       Check (Status (S) = End_Of_Stream, "input ends in a repetition up to a condition");
       Other := Data;
 
       --  kind small, no flags, an empty name, an entry that no case covers,
       --  one point, an empty log and one sample
       S := Open (Minimal);
-      Showcase.Parse (Minimal, S, 3, R);
+      Showcase.Parse (R, Minimal, S, 3);
       if Showcase.Valid (R) then
          Check (not Showcase.Has_Tail_Len (R), "field with a condition that does not hold");
          Check (Is_Empty (Showcase.Header_Type.Name (Showcase.Header (R))), "empty byte array");
          Check (Showcase.Points_Count (R) = 1, "a repetition that ends with its first element");
          Check (Showcase.Log_Type.Records_Count (Showcase.Log (R)) = 0, "a repetition without elements");
          Check (Showcase.Samples_Count (R) = 1, "one sample");
-         Showcase.Get_Entries (Minimal, R, 0, E);
+         Showcase.Get_Entries (R, Minimal, 0, E);
          Check
            (Entries.Valid (E) and then Entries.Body_Case (E) = Entries.Body_Is_None and then not Entries.Has_Extra (E),
             "a value that no case of the switch covers");
@@ -222,7 +222,7 @@ package body Showcase_Tests is
       Other (1 .. 16) := Minimal;
       Other (3) := 77;
       S := Open (Other (1 .. 16));
-      Showcase.Parse (Other (1 .. 16), S, 3, R);
+      Showcase.Parse (R, Other (1 .. 16), S, 3);
       Check
         (Showcase.Valid (R) and then not Showcase.Is_Kind_Enum (S64 (Showcase.Kind_Value (R))),
          "a value the enumeration does not name is kept");

@@ -15,7 +15,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Bits_Byte_Aligned.T;
    --     ...
-   --     Bits_Byte_Aligned.Parse (Buffer, S, V);
+   --     Bits_Byte_Aligned.Parse (V, Buffer, S);
    --     if Bits_Byte_Aligned.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -30,7 +30,7 @@ is
    --  Write, which the compiler generates because of --read-write, puts a valid value back into bytes:
    --
    --     W : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
-   --     Bits_Byte_Aligned.Write (Buffer, V, Target, W);
+   --     Bits_Byte_Aligned.Write (V, Buffer, Target, W);
    --     if Kaitai.Writers.OK (W) then
    --        --  Kaitai.Writers.Written (W) is the part of Target that holds the bytes
    --     else
@@ -58,10 +58,10 @@ is
       --  S must be at a byte boundary (Kaitai.Streams.Bits_Left (S) = 0) unless it has failed. That holds for a stream
       --  that was just opened and after a read of whole bytes, such as an integer or a byte array.
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-      --  @param This The result. Valid if and only if S has not failed
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
       with
         Pre  =>
           Kaitai.Streams.Is_Valid (S, Buffer) and then (if Kaitai.Streams.OK (S) then Kaitai.Streams.Bits_Left (S) = 0),
@@ -135,10 +135,10 @@ is
    --  S must be at a byte boundary (Kaitai.Streams.Bits_Left (S) = 0) unless it has failed. That holds for a stream
    --  that was just opened and after a read of whole bytes, such as an integer or a byte array.
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  =>
        Kaitai.Streams.Is_Valid (S, Buffer) and then (if Kaitai.Streams.OK (S) then Kaitai.Streams.Bits_Left (S) = 0),
@@ -210,13 +210,13 @@ is
    --  bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as the
    --  padding byte, and instances with a position are not written.
    --
-   --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
    --  @param This The value to write. It must be valid
+   --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
    --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
    --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes
    --  written, or it has failed
    procedure Write
-     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+     (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
    with
      Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Kaitai.Writers.Is_Valid (W, Target),
      Post => Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Old, W);

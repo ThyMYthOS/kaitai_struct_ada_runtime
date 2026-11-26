@@ -74,10 +74,10 @@ package body Write_Model_Tests is
       Target := (others => 16#EE#);
       Outcome := End_Of_Stream;
       Written := 0;
-      Write_Model.Parse (Input, S, 3, R);
+      Write_Model.Parse (R, Input, S, 3);
       if Write_Model.Valid (R) then
          W := Kaitai.Writers.Open (Target (101 .. 100 + Room));
-         Write_Model.Write (Input, R, Target (101 .. 100 + Room), W);
+         Write_Model.Write (R, Input, Target (101 .. 100 + Room), W);
          Outcome := Kaitai.Writers.Status (W);
          Written := Kaitai.Writers.Pos (W);
       end if;

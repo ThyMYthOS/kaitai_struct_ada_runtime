@@ -6,7 +6,7 @@ is
 
    package body Header_Obj_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_U2le (Buffer, S, This.Qty);
          Kaitai.Streams.Read_S2le (Buffer, S, This.Limit);
@@ -16,7 +16,7 @@ is
 
    end Header_Obj_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Start : Kaitai.Streams.Stream;
       Done  : Boolean;
       Value : Kaitai.Types.S16;
@@ -41,13 +41,13 @@ is
    end Parse;
 
    procedure Header
-     (Buffer : Kaitai.Types.Bytes; This : T; Result : out Header_Obj_Type.T; Outcome : out Kaitai.Types.Status_Kind)
+     (This : T; Buffer : Kaitai.Types.Bytes; Result : out Header_Obj_Type.T; Outcome : out Kaitai.Types.Status_Kind)
    is
       L : Kaitai.Streams.Stream := This.Io;
       pragma Warnings (Off, This);
    begin
       Kaitai.Streams.Seek (L, Kaitai.Types.To_Size (Kaitai.Types.S64 (Kaitai.Streams.Size (L)) - 6));
-      Header_Obj_Type.Parse (Buffer, L, Result);
+      Header_Obj_Type.Parse (Result, Buffer, L);
       Outcome := Kaitai.Streams.Status (L);
    end Header;
 

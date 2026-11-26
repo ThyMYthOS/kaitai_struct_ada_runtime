@@ -6,7 +6,7 @@ package body Term_Strz
   with SPARK_Mode
 is
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       Kaitai.Streams.Read_Bytes_Term
         (Buffer, S, Term => 124, Include => False, Consume => True, EOS_Error => True, Data => This.S1);
@@ -27,7 +27,7 @@ is
    end Parse;
 
    procedure Write
-     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+     (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
    begin
       Kaitai.Writers.Write_Bytes_Term (Target, W, Buffer (This.S1.First .. This.S1.Last), 124);
       Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.S2.First .. This.S2.Last));

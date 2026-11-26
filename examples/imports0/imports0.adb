@@ -4,10 +4,10 @@ package body Imports0
   with SPARK_Mode
 is
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       Kaitai.Streams.Read_U1 (Buffer, S, This.Two);
-      Hello_World.Parse (Buffer, S, This.Hw);
+      Hello_World.Parse (This.Hw, Buffer, S);
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

@@ -15,7 +15,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Subscripts.T;
    --     ...
-   --     Subscripts.Parse (Buffer, S, V);
+   --     Subscripts.Parse (V, Buffer, S);
    --     if Subscripts.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -53,10 +53,10 @@ is
    --  Not kept in This, but read again when asked for (Parse has gone over them once and checked them): Records (see
    --  Records_First).
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -79,7 +79,7 @@ is
 
    --  Element Index of the repeated field `items`, counted from 0, an unsigned integer of 2 bytes, little endian,
    --  decoded from Buffer. Buffer is the buffer that This was parsed from. Requires Index < Items_Count (This).
-   function Items (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U16
+   function Items (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U16
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Items_Count (This);
 
    --  Field `raw`, bytes, as the slice of the buffer that holds them
@@ -112,18 +112,18 @@ is
    --
    --     Position := Records_First (V);
    --     while Has_Element (Position) loop
-   --        Next (Buffer, V, Position, Element);
+   --        Next (V, Buffer, Position, Element);
    --        ...
    --     end loop;
    --
    --  Parse has accepted every element, and an element is read again as long as the buffer has not changed
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Position Where to parse; moved to the next element
    --  @param Element The element, a slice of Buffer. If it could not be read, Has_Element (Position) is False
    --  afterwards
    procedure Next
-     (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Records_Cursor; Element : out Kaitai.Types.Slice)
+     (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Records_Cursor; Element : out Kaitai.Types.Slice)
    with
      Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
      Post =>
@@ -134,12 +134,12 @@ is
    --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going
    --  through all elements with this procedure takes time that grows with the square of their number; use Next for
    --  that.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Index The number of the element, less than Records_Count (This)
    --  @param Element The element, a slice of Buffer
    procedure Get_Records
-     (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Kaitai.Types.Slice)
+     (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Kaitai.Types.Slice)
    with
      Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Index < Records_Count (This),
      Post => Kaitai.Types.Within (Element, Buffer);
@@ -147,46 +147,46 @@ is
    --  True if the instance `chosen_item` has a value. Its expression is not defined if a field that it uses is not
    --  there, an operation in it overflows or divides by zero, or an index is out of range. Buffer is the buffer that
    --  This was parsed from.
-   function Has_Chosen_Item (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Has_Chosen_Item (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
    --  Instance `chosen_item`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Buffer is the
    --  buffer that This was parsed from. Requires Has_Chosen_Item.
-   function Chosen_Item (Buffer : Kaitai.Types.Bytes; This : T) return Kaitai.Types.S64
-   with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Has_Chosen_Item (Buffer, This);
+   function Chosen_Item (This : T; Buffer : Kaitai.Types.Bytes) return Kaitai.Types.S64
+   with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Has_Chosen_Item (This, Buffer);
 
    --  True if the instance `chosen_raw` has a value. Its expression is not defined if a field that it uses is not
    --  there, an operation in it overflows or divides by zero, or an index is out of range. Buffer is the buffer that
    --  This was parsed from.
-   function Has_Chosen_Raw (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Has_Chosen_Raw (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
    --  Instance `chosen_raw`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Buffer is the
    --  buffer that This was parsed from. Requires Has_Chosen_Raw.
-   function Chosen_Raw (Buffer : Kaitai.Types.Bytes; This : T) return Kaitai.Types.S64
-   with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Has_Chosen_Raw (Buffer, This);
+   function Chosen_Raw (This : T; Buffer : Kaitai.Types.Bytes) return Kaitai.Types.S64
+   with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Has_Chosen_Raw (This, Buffer);
 
    --  True if the instance `first_item` has a value. Its expression is not defined if a field that it uses is not
    --  there, an operation in it overflows or divides by zero, or an index is out of range. Buffer is the buffer that
    --  This was parsed from.
-   function Has_First_Item (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Has_First_Item (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
    --  Instance `first_item`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Buffer is the
    --  buffer that This was parsed from. Requires Has_First_Item.
-   function First_Item (Buffer : Kaitai.Types.Bytes; This : T) return Kaitai.Types.S64
-   with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Has_First_Item (Buffer, This);
+   function First_Item (This : T; Buffer : Kaitai.Types.Bytes) return Kaitai.Types.S64
+   with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Has_First_Item (This, Buffer);
 
    --  True if the instance `raw_mid` has a value. Its expression is not defined if a field that it uses is not there,
    --  an operation in it overflows or divides by zero, or an index is out of range. Buffer is the buffer that This was
    --  parsed from.
-   function Has_Raw_Mid (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Has_Raw_Mid (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
    --  Instance `raw_mid`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Buffer is the buffer
    --  that This was parsed from. Requires Has_Raw_Mid.
-   function Raw_Mid (Buffer : Kaitai.Types.Bytes; This : T) return Kaitai.Types.S64
-   with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Has_Raw_Mid (Buffer, This);
+   function Raw_Mid (This : T; Buffer : Kaitai.Types.Bytes) return Kaitai.Types.S64
+   with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Has_Raw_Mid (This, Buffer);
 
 private
 
@@ -222,7 +222,7 @@ private
    function Items_Count (This : T) return Kaitai.Types.Length
    is (Kaitai.Types.Size (This.Items) / 2);
 
-   function Items (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U16
+   function Items (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U16
    is (Kaitai.Decoding.U16_LE (Buffer, This.Items.First + Index * 2));
 
    function Raw (This : T) return Kaitai.Types.Slice
@@ -240,29 +240,29 @@ private
    function Remaining (Position : Records_Cursor) return Kaitai.Types.Length
    is (Position.Left);
 
-   function Has_Chosen_Item (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Has_Chosen_Item (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    is (Kaitai.Types.S64 (This.Pick) < Kaitai.Types.S64 (Kaitai.Types.Size (This.Items) / 2));
 
-   function Chosen_Item (Buffer : Kaitai.Types.Bytes; This : T) return Kaitai.Types.S64
+   function Chosen_Item (This : T; Buffer : Kaitai.Types.Bytes) return Kaitai.Types.S64
    is (Kaitai.Types.S64
          (Kaitai.Decoding.U16_LE (Buffer, This.Items.First + Kaitai.Types.Length (Kaitai.Types.S64 (This.Pick)) * 2)));
 
-   function Has_Chosen_Raw (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Has_Chosen_Raw (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    is (Kaitai.Types.S64 (This.Pick) < Kaitai.Types.S64 (Kaitai.Types.Size (This.Raw)));
 
-   function Chosen_Raw (Buffer : Kaitai.Types.Bytes; This : T) return Kaitai.Types.S64
+   function Chosen_Raw (This : T; Buffer : Kaitai.Types.Bytes) return Kaitai.Types.S64
    is (Kaitai.Types.S64 (Buffer (This.Raw.First + Kaitai.Types.Length (Kaitai.Types.S64 (This.Pick)))));
 
-   function Has_First_Item (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Has_First_Item (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    is (0 < Kaitai.Types.S64 (Kaitai.Types.Size (This.Items) / 2));
 
-   function First_Item (Buffer : Kaitai.Types.Bytes; This : T) return Kaitai.Types.S64
+   function First_Item (This : T; Buffer : Kaitai.Types.Bytes) return Kaitai.Types.S64
    is (Kaitai.Types.S64 (Kaitai.Decoding.U16_LE (Buffer, This.Items.First + Kaitai.Types.Length (0) * 2)));
 
-   function Has_Raw_Mid (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Has_Raw_Mid (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    is (1 < Kaitai.Types.S64 (Kaitai.Types.Size (This.Raw)));
 
-   function Raw_Mid (Buffer : Kaitai.Types.Bytes; This : T) return Kaitai.Types.S64
+   function Raw_Mid (This : T; Buffer : Kaitai.Types.Bytes) return Kaitai.Types.S64
    is (Kaitai.Types.S64 (Buffer (This.Raw.First + Kaitai.Types.Length (1))));
 
 end Subscripts;

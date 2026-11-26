@@ -14,7 +14,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Instance_Std.T;
    --     ...
-   --     Instance_Std.Parse (Buffer, S, V);
+   --     Instance_Std.Parse (V, Buffer, S);
    --     if Instance_Std.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -49,10 +49,10 @@ is
    --
    --  Not looked at here at all, so that an error in them shows only when they are asked for: Header.
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -63,12 +63,12 @@ is
 
    --  Instance `header`, a string in ASCII, as a slice of the buffer. It has a position of its own in the data (`pos`),
    --  which Parse does not read: this procedure parses it at every call, and This does not keep it.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the instance
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Result The instance. It is meaningful only if Outcome is Success
    --  @param Outcome Success, or why the instance could not be parsed
    procedure Header
-     (Buffer : Kaitai.Types.Bytes; This : T; Result : out Kaitai.Types.Slice; Outcome : out Kaitai.Types.Status_Kind)
+     (This : T; Buffer : Kaitai.Types.Bytes; Result : out Kaitai.Types.Slice; Outcome : out Kaitai.Types.Status_Kind)
    with Pre => Valid (This) and then Belongs_To (This, Buffer), Post => Kaitai.Types.Within (Result, Buffer);
 
 private

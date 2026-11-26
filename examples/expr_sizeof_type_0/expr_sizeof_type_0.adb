@@ -6,7 +6,7 @@ is
 
    package body Block_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_U1 (Buffer, S, This.A);
          Kaitai.Streams.Read_U4le (Buffer, S, This.B);
@@ -16,7 +16,7 @@ is
 
    end Block_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       pragma Unmodified (S);
    begin
       This.Is_Valid := Kaitai.Streams.OK (S);

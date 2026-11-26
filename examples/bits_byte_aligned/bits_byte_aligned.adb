@@ -6,7 +6,7 @@ is
 
    package body Foo_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Align_To_Byte (S);
          Kaitai.Streams.Read_Bits_Int_Be (Buffer, S, 19, This.Inner);
@@ -21,7 +21,7 @@ is
 
    end Foo_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Sub : Kaitai.Streams.Stream;
       Bit : Kaitai.Types.U64;
    begin
@@ -34,7 +34,7 @@ is
       Kaitai.Streams.Read_Bytes (S, 1, This.Byte_2);
       Kaitai.Streams.Read_Bits_Int_Be (Buffer, S, 14, This.Four);
       Kaitai.Streams.Substream (Buffer, S, 3, Sub);
-      Foo_Type.Parse (Buffer, Sub, This.Byte_3);
+      Foo_Type.Parse (This.Byte_3, Buffer, Sub);
       Kaitai.Streams.Join (S, Sub);
       Kaitai.Streams.Read_Bits_Int_Be (Buffer, S, 8, This.Full_Byte);
       Kaitai.Streams.Read_U1 (Buffer, S, This.Byte_4);
@@ -46,7 +46,7 @@ is
    end Parse;
 
    procedure Write
-     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+     (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
    is
       Sub : Kaitai.Writers.Writer;
    begin

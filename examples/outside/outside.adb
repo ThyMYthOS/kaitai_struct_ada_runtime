@@ -9,7 +9,7 @@ is
 
    package body Header_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_U1 (Buffer, S, This.Width);
          Kaitai.Streams.Read_U1 (Buffer, S, This.Height);
@@ -21,12 +21,12 @@ is
    package body Item_Type is
 
       procedure Parse
-        (Buffer     : Kaitai.Types.Bytes;
+        (This       : out T;
+         Buffer     : Kaitai.Types.Bytes;
          S          : in out Kaitai.Streams.Stream;
          Key_Length : Kaitai.Types.S64;
          Hdr_Width  : Kaitai.Types.U8;
-         Hdr_Height : Kaitai.Types.U8;
-         This       : out T) is
+         Hdr_Height : Kaitai.Types.U8) is
       begin
          This.Key_Length := Key_Length;
          This.Hdr_Width := Hdr_Width;
@@ -45,7 +45,7 @@ is
    package body Note_Type is
 
       procedure Parse
-        (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Parent_Name_Expr : Boolean; This : out T) is
+        (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Parent_Name_Expr : Boolean) is
       begin
          This.Parent_Name_Expr := Parent_Name_Expr;
          Kaitai.Streams.Read_Bytes (S, 2, This.Text);
@@ -54,7 +54,7 @@ is
 
    end Note_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Arg   : Kaitai.Types.U8;
       Arg_2 : Kaitai.Types.U8;
    begin
@@ -62,7 +62,7 @@ is
       if not Kaitai.Strings.Is_Valid (Buffer, This.Name, Kaitai.Strings.US_ASCII) then
          Kaitai.Streams.Fail (S, Kaitai.Types.Illegal_Sequence);
       end if;
-      Header_Type.Parse (Buffer, S, This.Head);
+      Header_Type.Parse (This.Head, Buffer, S);
       if Header_Type.Valid (This.Head) then
          Arg := Header_Type.Width (This.Head);
       else
@@ -76,13 +76,13 @@ is
          Arg_2 := 0;
       end if;
       Item_Type.Parse
-        (Buffer,
+        (This.Item,
+         Buffer,
          S,
          Kaitai.Types.S64 (Kaitai.Strings.Character_Count (Buffer, This.Name, Kaitai.Strings.US_ASCII)),
          Arg,
-         Arg_2,
-         This.Item);
-      Note_Type.Parse (Buffer, S, Kaitai.Strings.Equal_Literal (Buffer, This.Name, "foo"), This.Note);
+         Arg_2);
+      Note_Type.Parse (This.Note, Buffer, S, Kaitai.Strings.Equal_Literal (Buffer, This.Name, "foo"));
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

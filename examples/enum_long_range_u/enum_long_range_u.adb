@@ -4,7 +4,7 @@ package body Enum_Long_Range_U
   with SPARK_Mode
 is
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       Kaitai.Streams.Read_U8be (Buffer, S, This.F1);
       Kaitai.Streams.Read_U8be (Buffer, S, This.F2);

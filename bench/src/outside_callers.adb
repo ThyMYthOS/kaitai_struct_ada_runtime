@@ -161,7 +161,7 @@ is
       P : Bench_Puser_V3.T;
    begin
       Found := 0;
-      Bench_Puser_V3.Parse (Buffer, S, P);
+      Bench_Puser_V3.Parse (P, Buffer, S);
       if Kaitai.Streams.OK (S) and then Bench_Puser_V3.Valid (P) then
          declare
             Position : Bench_Puser_V3.Items_Cursor := Bench_Puser_V3.Items_First (P);

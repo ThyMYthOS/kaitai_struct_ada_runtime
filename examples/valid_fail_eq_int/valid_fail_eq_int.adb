@@ -4,7 +4,7 @@ package body Valid_Fail_Eq_Int
   with SPARK_Mode
 is
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       Kaitai.Streams.Read_U1 (Buffer, S, This.Foo);
       if Kaitai.Types.S64 (This.Foo) /= 123 then

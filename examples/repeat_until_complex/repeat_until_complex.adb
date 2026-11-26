@@ -6,7 +6,7 @@ is
 
    package body Type_U1_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_U1 (Buffer, S, This.Count);
          Kaitai.Streams.Read_Elements (S, Kaitai.Types.To_Count (Kaitai.Types.S64 (This.Count)), 1, This.Values);
@@ -17,7 +17,7 @@ is
 
    package body Type_U2_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_U2le (Buffer, S, This.Count);
          Kaitai.Streams.Read_Elements (S, Kaitai.Types.To_Count (Kaitai.Types.S64 (This.Count)), 2, This.Values);
@@ -26,7 +26,7 @@ is
 
    end Type_U2_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element   : Type_U1_Type.T;
       Done      : Boolean;
       Element_2 : Type_U2_Type.T;
@@ -39,7 +39,7 @@ is
       This.First_Count := 0;
       Done := False;
       for I in 1 .. Kaitai.Streams.Remaining (S) + 1 loop
-         Type_U1_Type.Parse (Buffer, S, Element);
+         Type_U1_Type.Parse (Element, Buffer, S);
          exit when not Type_U1_Type.Valid (Element);
          This.First_Count := I;
          Done := Kaitai.Types.S64 (Type_U1_Type.Count (Element)) = 0;
@@ -55,7 +55,7 @@ is
       This.Second_Count := 0;
       Done_2 := False;
       for I in 1 .. Kaitai.Streams.Remaining (S) + 1 loop
-         Type_U2_Type.Parse (Buffer, S, Element_2);
+         Type_U2_Type.Parse (Element_2, Buffer, S);
          exit when not Type_U2_Type.Valid (Element_2);
          This.Second_Count := I;
          Done_2 := Kaitai.Types.S64 (Type_U2_Type.Count (Element_2)) = 0;
@@ -87,16 +87,16 @@ is
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out First_Cursor; Element : out Type_U1_Type.T)
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out First_Cursor; Element : out Type_U1_Type.T)
    is
       pragma Warnings (Off, This);
    begin
-      Type_U1_Type.Parse (Buffer, Position.Io, Element);
+      Type_U1_Type.Parse (Element, Buffer, Position.Io);
       Position.Left := (if Type_U1_Type.Valid (Element) then Position.Left - 1 else 0);
    end Next;
 
    procedure Get_First
-     (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Type_U1_Type.T)
+     (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Type_U1_Type.T)
    is
       Position : First_Cursor := First_First (This);
       Result   : Type_U1_Type.T;
@@ -104,21 +104,21 @@ is
       for I in 0 .. Index loop
          pragma Loop_Invariant (Belongs_To (Position, Buffer) and then Type_U1_Type.Belongs_To (Result, Buffer));
          exit when not Has_Element (Position);
-         Next (Buffer, This, Position, Result);
+         Next (This, Buffer, Position, Result);
       end loop;
       Element := Result;
    end Get_First;
 
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Second_Cursor; Element : out Type_U2_Type.T)
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Second_Cursor; Element : out Type_U2_Type.T)
    is
       pragma Warnings (Off, This);
    begin
-      Type_U2_Type.Parse (Buffer, Position.Io, Element);
+      Type_U2_Type.Parse (Element, Buffer, Position.Io);
       Position.Left := (if Type_U2_Type.Valid (Element) then Position.Left - 1 else 0);
    end Next;
 
    procedure Get_Second
-     (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Type_U2_Type.T)
+     (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Type_U2_Type.T)
    is
       Position : Second_Cursor := Second_First (This);
       Result   : Type_U2_Type.T;
@@ -126,7 +126,7 @@ is
       for I in 0 .. Index loop
          pragma Loop_Invariant (Belongs_To (Position, Buffer) and then Type_U2_Type.Belongs_To (Result, Buffer));
          exit when not Has_Element (Position);
-         Next (Buffer, This, Position, Result);
+         Next (This, Buffer, Position, Result);
       end loop;
       Element := Result;
    end Get_Second;

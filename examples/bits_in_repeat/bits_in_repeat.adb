@@ -6,7 +6,7 @@ is
 
    package body Nib_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_Bits_Int_Be (Buffer, S, 4, This.Lo);
          This.Is_Valid := Kaitai.Streams.OK (S);
@@ -19,7 +19,7 @@ is
 
    end Nib_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Nib_Type.T;
       Before  : Kaitai.Streams.Stream;
    begin
@@ -29,7 +29,7 @@ is
       This.Items_Count := 3;
       for I in 1 .. This.Items_Count loop
          Before := S;
-         Nib_Type.Parse (Buffer, S, Element);
+         Nib_Type.Parse (Element, Buffer, S);
          exit when not Nib_Type.Valid (Element);
          --  An element that read nothing: so will all that follow
          exit when
@@ -41,27 +41,27 @@ is
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Items_Cursor; Element : out Nib_Type.T) is
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Items_Cursor; Element : out Nib_Type.T) is
       pragma Warnings (Off, This);
    begin
-      Nib_Type.Parse (Buffer, Position.Io, Element);
+      Nib_Type.Parse (Element, Buffer, Position.Io);
       Position.Left := (if Nib_Type.Valid (Element) then Position.Left - 1 else 0);
    end Next;
 
-   procedure Get_Items (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Nib_Type.T) is
+   procedure Get_Items (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Nib_Type.T) is
       Position : Items_Cursor := Items_First (This);
       Result   : Nib_Type.T;
    begin
       for I in 0 .. Index loop
          pragma Loop_Invariant (Belongs_To (Position, Buffer));
          exit when not Has_Element (Position);
-         Next (Buffer, This, Position, Result);
+         Next (This, Buffer, Position, Result);
       end loop;
       Element := Result;
    end Get_Items;
 
    procedure Write
-     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+     (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
    begin
       Kaitai.Writers.Align_To_Byte (W);
       Kaitai.Writers.Write_Bits_Int_Be (Target, W, 4, This.A);
@@ -79,7 +79,7 @@ is
             pragma Loop_Variant (Decreases => Remaining (Position));
             Read_At := Position.Io;
             Write_At := W;
-            Next (Buffer, This, Position, Element);
+            Next (This, Buffer, Position, Element);
             if Nib_Type.Valid (Element) then
                Nib_Type.Write (Element, Target, W);
             else

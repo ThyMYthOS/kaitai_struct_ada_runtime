@@ -4,7 +4,7 @@ package body Expr_To_I_Trailing
   with SPARK_Mode
 is
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       pragma Unmodified (S);
    begin
       This.Is_Valid := Kaitai.Streams.OK (S);

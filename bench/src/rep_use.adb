@@ -16,7 +16,7 @@ is
          This := (others => <>);
          Read_U4le (Buffer, S, This.Idx);
          if S64 (This.Idx) < S64 (Bench_Rep.Items_Count (Head)) then
-            Bench_Rep.Get_Items (Buffer, Head, Length (This.Idx), Element);
+            Bench_Rep.Get_Items (Head, Buffer, Length (This.Idx), Element);
             if Bench_Rep.Item_Type.Valid (Element) then
                Read_Bytes (S, To_Size (S64 (Bench_Rep.Item_Type.Len (Element))), This.Tag);
             else
@@ -34,7 +34,7 @@ is
          This := (others => <>);
          Read_U4le (Buffer, S, This.Idx);
          if S64 (This.Idx) < S64 (Bench_Rep_Fixed.Items_Count (Head)) then
-            Read_Bytes (S, To_Size (S64 (Bench_Rep_Fixed.Items (Buffer, Head, Length (This.Idx)))), This.Tag);
+            Read_Bytes (S, To_Size (S64 (Bench_Rep_Fixed.Items (Head, Buffer, Length (This.Idx)))), This.Tag);
          else
             Fail (S, Arithmetic_Error);
          end if;
@@ -60,7 +60,7 @@ is
       begin
          This := (others => <>);
          if Count > 0 then
-            Bench_Rep.Get_Items (Buffer, Head, Count - 1, Element);
+            Bench_Rep.Get_Items (Head, Buffer, Count - 1, Element);
             if Bench_Rep.Item_Type.Valid (Element) then
                Read_Bytes (S, To_Size (S64 (Bench_Rep.Item_Type.Len (Element))), This.Tail);
             else
@@ -91,7 +91,7 @@ is
          Read_U4le (Buffer, S, Count);
          This.Items_Count := To_Count (S64 (Count));
          for I in 1 .. This.Items_Count loop
-            Bench_Rep.Item_Type.Parse (Buffer, S, Element);
+            Bench_Rep.Item_Type.Parse (Element, Buffer, S);
             exit when not Bench_Rep.Item_Type.Valid (Element);
             This.Items_Last := Element;
             This.Has_Last := True;
@@ -127,7 +127,7 @@ is
          This := (others => <>);
          if Index > 0 then
             if Index - 1 < Bench_Rep.Items_Count (Head) then
-               Bench_Rep.Get_Items (Buffer, Head, Index - 1, Element);
+               Bench_Rep.Get_Items (Head, Buffer, Index - 1, Element);
                if Bench_Rep.Item_Type.Valid (Element) then
                   Read_Bytes (S, To_Size (S64 (Bench_Rep.Item_Type.Len (Element))), This.Buf);
                else

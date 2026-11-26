@@ -17,7 +17,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Write_Model.T;
    --     ...
-   --     Write_Model.Parse (Buffer, S, Scale, V);
+   --     Write_Model.Parse (V, Buffer, S, Scale);
    --     if Write_Model.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -32,7 +32,7 @@ is
    --  Write, which the compiler generates because of --read-write, puts a valid value back into bytes:
    --
    --     W : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
-   --     Write_Model.Write (Buffer, V, Target, W);
+   --     Write_Model.Write (V, Buffer, Target, W);
    --     if Kaitai.Writers.OK (W) then
    --        --  Kaitai.Writers.Written (W) is the part of Target that holds the bytes
    --     else
@@ -85,10 +85,10 @@ is
          --  is the reason and This is not valid. If S had failed before the call, nothing is read and This is not
          --  valid.
          --
+         --  @param This The result. Valid if and only if S has not failed
          --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
          --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-         --  @param This The result. Valid if and only if S has not failed
-         procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+         procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
          with
            Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
            Post =>
@@ -168,10 +168,10 @@ is
          --  is the reason and This is not valid. If S had failed before the call, nothing is read and This is not
          --  valid.
          --
+         --  @param This The result. Valid if and only if S has not failed
          --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
          --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-         --  @param This The result. Valid if and only if S has not failed
-         procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+         procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
          with
            Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
            Post =>
@@ -199,13 +199,13 @@ is
          --  skipped bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte,
          --  padding as the padding byte, and instances with a position are not written.
          --
-         --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
          --  @param This The value to write. It must be valid
+         --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
          --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
          --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the
          --  bytes written, or it has failed
          procedure Write
-           (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+           (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
          with
            Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Kaitai.Writers.Is_Valid (W, Target),
            Post => Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Old, W);
@@ -247,12 +247,12 @@ is
       --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
       --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
       --  @param Flags Parameter `flags` of the type
-      --  @param This The result. Valid if and only if S has not failed
       procedure Parse
-        (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Flags : Kaitai.Types.U8; This : out T)
+        (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Flags : Kaitai.Types.U8)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
         Post =>
@@ -312,13 +312,13 @@ is
       --  bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as
       --  the padding byte, and instances with a position are not written.
       --
-      --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
       --  @param This The value to write. It must be valid
+      --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
       --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
       --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes
       --  written, or it has failed
       procedure Write
-        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+        (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
       with
         Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Kaitai.Writers.Is_Valid (W, Target),
         Post => Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Old, W);
@@ -404,10 +404,10 @@ is
       --  content or a `valid` of the description does not hold), S has failed afterwards, Kaitai.Streams.Status (S) is
       --  the reason and This is not valid. If S had failed before the call, nothing is read and This is not valid.
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-      --  @param This The result. Valid if and only if S has not failed
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
         Post =>
@@ -446,13 +446,13 @@ is
       --  bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as
       --  the padding byte, and instances with a position are not written.
       --
-      --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
       --  @param This The value to write. It must be valid
+      --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
       --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
       --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes
       --  written, or it has failed
       procedure Write
-        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+        (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
       with
         Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Kaitai.Writers.Is_Valid (W, Target),
         Post => Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Old, W);
@@ -512,10 +512,10 @@ is
       --  Not kept in This, but read again when asked for (Parse has gone over them once and checked them): Records (see
       --  Records_First).
       --
+      --  @param This The result. Valid if and only if S has not failed
       --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
       --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-      --  @param This The result. Valid if and only if S has not failed
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
       with
         Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
         Post =>
@@ -550,20 +550,20 @@ is
       --
       --     Position := Records_First (V);
       --     while Has_Element (Position) loop
-      --        Next (Buffer, V, Position, Element);
+      --        Next (V, Buffer, Position, Element);
       --        exit when not Entry_Type.Point_Type.Valid (Element);
       --        ...
       --     end loop;
       --
       --  Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That
       --  is not proven, so check that Element is valid.
-      --  @param Buffer The buffer that This was parsed from, unchanged
       --  @param This The value that has the repetition
+      --  @param Buffer The buffer that This was parsed from, unchanged
       --  @param Position Where to parse; moved to the next element
       --  @param Element The element. If it could not be parsed it is not valid, and Has_Element (Position) is False
       --  afterwards
       procedure Next
-        (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Records_Cursor; Element : out Entry_Type.Point_Type.T)
+        (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Records_Cursor; Element : out Entry_Type.Point_Type.T)
       with
         Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
         Post => Belongs_To (Position, Buffer) and then Remaining (Position) < Remaining (Position'Old);
@@ -571,12 +571,12 @@ is
       --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so
       --  going through all elements with this procedure takes time that grows with the square of their number; use Next
       --  for that.
-      --  @param Buffer The buffer that This was parsed from, unchanged
       --  @param This The value that has the repetition
+      --  @param Buffer The buffer that This was parsed from, unchanged
       --  @param Index The number of the element, less than Records_Count (This)
       --  @param Element The element. If it could not be parsed it is not valid
       procedure Get_Records
-        (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Entry_Type.Point_Type.T)
+        (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Entry_Type.Point_Type.T)
       with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Records_Count (This);
 
       --  Writes This to Target, at the position of W, and leaves W behind what it wrote.
@@ -592,13 +592,13 @@ is
       --  bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as
       --  the padding byte, and instances with a position are not written.
       --
-      --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
       --  @param This The value to write. It must be valid
+      --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
       --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
       --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes
       --  written, or it has failed
       procedure Write
-        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+        (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
       with
         Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Kaitai.Writers.Is_Valid (W, Target),
         Post => Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Old, W);
@@ -660,12 +660,12 @@ is
    --  Entries_First), Points (see Points_First). Not looked at here at all, so that an error in them shows only when
    --  they are asked for: First_Entry.
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
    --  @param Scale Parameter `scale` of the type
-   --  @param This The result. Valid if and only if S has not failed
    procedure Parse
-     (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Scale : Kaitai.Types.U16; This : out T)
+     (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Scale : Kaitai.Types.U16)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -721,19 +721,19 @@ is
    --
    --     Position := Entries_First (V);
    --     while Has_Element (Position) loop
-   --        Next (Buffer, V, Position, Element);
+   --        Next (V, Buffer, Position, Element);
    --        exit when not Entry_Type.Valid (Element);
    --        ...
    --     end loop;
    --
    --  Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That is
    --  not proven, so check that Element is valid.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Position Where to parse; moved to the next element
    --  @param Element The element. If it could not be parsed it is not valid, and Has_Element (Position) is False
    --  afterwards
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Entries_Cursor; Element : out Entry_Type.T)
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Entries_Cursor; Element : out Entry_Type.T)
    with
      Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
      Post =>
@@ -744,12 +744,12 @@ is
    --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going
    --  through all elements with this procedure takes time that grows with the square of their number; use Next for
    --  that.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Index The number of the element, less than Entries_Count (This)
    --  @param Element The element. If it could not be parsed it is not valid
    procedure Get_Entries
-     (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Entry_Type.T)
+     (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Entry_Type.T)
    with
      Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Index < Entries_Count (This),
      Post => Entry_Type.Belongs_To (Element, Buffer);
@@ -788,20 +788,20 @@ is
    --
    --     Position := Points_First (V);
    --     while Has_Element (Position) loop
-   --        Next (Buffer, V, Position, Element);
+   --        Next (V, Buffer, Position, Element);
    --        exit when not Entry_Type.Point_Type.Valid (Element);
    --        ...
    --     end loop;
    --
    --  Parse has accepted every element, and an element is accepted again as long as the buffer has not changed. That is
    --  not proven, so check that Element is valid.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Position Where to parse; moved to the next element
    --  @param Element The element. If it could not be parsed it is not valid, and Has_Element (Position) is False
    --  afterwards
    procedure Next
-     (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Points_Cursor; Element : out Entry_Type.Point_Type.T)
+     (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Points_Cursor; Element : out Entry_Type.Point_Type.T)
    with
      Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
      Post => Belongs_To (Position, Buffer) and then Remaining (Position) < Remaining (Position'Old);
@@ -809,12 +809,12 @@ is
    --  Parses the element with the number Index, counted from 0. The elements before it are parsed on the way, so going
    --  through all elements with this procedure takes time that grows with the square of their number; use Next for
    --  that.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the repetition
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Index The number of the element, less than Points_Count (This)
    --  @param Element The element. If it could not be parsed it is not valid
    procedure Get_Points
-     (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Entry_Type.Point_Type.T)
+     (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Entry_Type.Point_Type.T)
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Points_Count (This);
 
    --  Field `len_log`, an unsigned integer of 1 byte
@@ -831,17 +831,17 @@ is
 
    --  Element Index of the repeated field `samples`, counted from 0, an unsigned integer of 2 bytes, little endian,
    --  decoded from Buffer. Buffer is the buffer that This was parsed from. Requires Index < Samples_Count (This).
-   function Samples (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U16
+   function Samples (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U16
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Samples_Count (This);
 
    --  Instance `first_entry`, an `entry`. It has a position of its own in the data (`pos`), which Parse does not read:
    --  this procedure parses it at every call, and This does not keep it.
-   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param This The value that has the instance
+   --  @param Buffer The buffer that This was parsed from, unchanged
    --  @param Result The instance. Valid if and only if Outcome is Success
    --  @param Outcome Success, or why the instance could not be parsed
    procedure First_Entry
-     (Buffer : Kaitai.Types.Bytes; This : T; Result : out Entry_Type.T; Outcome : out Kaitai.Types.Status_Kind)
+     (This : T; Buffer : Kaitai.Types.Bytes; Result : out Entry_Type.T; Outcome : out Kaitai.Types.Status_Kind)
    with
      Pre  => Valid (This) and then Belongs_To (This, Buffer),
      Post =>
@@ -869,13 +869,13 @@ is
    --  bits are written as zeros, bytes after a terminator in a field with a size as the terminator byte, padding as the
    --  padding byte, and instances with a position are not written.
    --
-   --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
    --  @param This The value to write. It must be valid
+   --  @param Buffer The buffer that This was parsed from, unchanged. What This refers to is written from it
    --  @param Target Where the bytes go. W must be a writer over it (Kaitai.Writers.Is_Valid (W, Target))
    --  @param W Where to write in Target, for example Kaitai.Writers.Open (Target). Afterwards it is behind the bytes
    --  written, or it has failed
    procedure Write
-     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+     (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
    with
      Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Kaitai.Writers.Is_Valid (W, Target),
      Post => Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Old, W);
@@ -978,7 +978,7 @@ private
    function Samples_Count (This : T) return Kaitai.Types.Length
    is (Kaitai.Types.Size (This.Samples) / 2);
 
-   function Samples (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U16
+   function Samples (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U16
    is (Kaitai.Decoding.U16_LE (Buffer, This.Samples.First + Index * 2));
 
    function Has_Total (This : T) return Boolean

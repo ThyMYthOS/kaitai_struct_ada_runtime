@@ -6,7 +6,7 @@ package body Str_Encodings
   with SPARK_Mode
 is
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       Kaitai.Streams.Read_U2le (Buffer, S, This.Len_Of_1);
       Kaitai.Streams.Read_Bytes (S, Kaitai.Types.To_Size (Kaitai.Types.S64 (This.Len_Of_1)), This.Str1);

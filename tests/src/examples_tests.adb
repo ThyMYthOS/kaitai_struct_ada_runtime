@@ -62,13 +62,13 @@ package body Examples_Tests is
       None : constant Bytes (1 .. 0) := (others => 0);
    begin
       Group ("examples hello_world");
-      Hello_World.Parse (Sample_Fixed_Struct, S, This);
+      Hello_World.Parse (This, Sample_Fixed_Struct, S);
       Check (Hello_World.Valid (This) and then OK (S), "parses");
       Check (Hello_World.One (This) = 16#50#, "one");
       Check (Pos (S) = 1, "one byte consumed");
 
       S := Open (None);
-      Hello_World.Parse (None, S, This);
+      Hello_World.Parse (This, None, S);
       Check (not Hello_World.Valid (This) and then Status (S) = End_Of_Stream, "an empty file is rejected");
    end Test_Hello_World;
 
@@ -81,9 +81,9 @@ package body Examples_Tests is
       Bad     : Bytes := Sample_Fixed_Struct;
    begin
       Group ("examples fixed_struct");
-      Parse (Sample_Fixed_Struct, S, This);
+      Parse (This, Sample_Fixed_Struct, S);
       Check (Valid (This) and then Pos (S) = 0, "parses; the type has no fields in sequence");
-      Hdr (Sample_Fixed_Struct, This, H, Outcome);
+      Hdr (This, Sample_Fixed_Struct, H, Outcome);
       Check (Outcome = Success and then Header_Type.Valid (H), "instance hdr parses");
       if Header_Type.Valid (H) then
          Check (Header_Type.Uint8 (H) = 255, "hdr.uint8");
@@ -107,21 +107,21 @@ package body Examples_Tests is
          Check (Header_Type.Sint32be (H) = -66, "hdr.sint32be");
          Check (Header_Type.Sint64be (H) = -66, "hdr.sint64be");
       end if;
-      Hdr (Sample_Fixed_Struct, This, H, Outcome);
+      Hdr (This, Sample_Fixed_Struct, H, Outcome);
       Check (Outcome = Success, "the instance can be asked for again");
 
       --  A file whose second magic is wrong
       Bad (9) := 16#51#;
       S := Open (Bad);
-      Parse (Bad, S, This);
-      Hdr (Bad, This, H, Outcome);
+      Parse (This, Bad, S);
+      Hdr (This, Bad, H, Outcome);
       Check (Outcome = Validation_Not_Equal and then not Header_Type.Valid (H), "wrong contents are rejected");
 
       --  Every truncated file
       for Last in 0 .. Sample_Fixed_Struct'Last - 1 loop
          S := Open (Sample_Fixed_Struct (1 .. Last));
-         Parse (Sample_Fixed_Struct (1 .. Last), S, This);
-         Hdr (Sample_Fixed_Struct (1 .. Last), This, H, Outcome);
+         Parse (This, Sample_Fixed_Struct (1 .. Last), S);
+         Hdr (This, Sample_Fixed_Struct (1 .. Last), H, Outcome);
          if Outcome /= End_Of_Stream or else Header_Type.Valid (H) then
             Check (False, "a truncated file runs out of bytes");
          end if;
@@ -135,7 +135,7 @@ package body Examples_Tests is
       This : Bits_Simple.T;
    begin
       Group ("examples bits_simple");
-      Parse (Sample_Fixed_Struct, S, This);
+      Parse (This, Sample_Fixed_Struct, S);
       Check (Valid (This) and then Pos (S) = 28, "parses 28 bytes");
       if Valid (This) then
          Check (Byte_1 (This) = 16#50#, "byte_1");
@@ -155,7 +155,7 @@ package body Examples_Tests is
       end if;
 
       S := Open (Sample_Fixed_Struct (1 .. 27));
-      Parse (Sample_Fixed_Struct (1 .. 27), S, This);
+      Parse (This, Sample_Fixed_Struct (1 .. 27), S);
       Check (not Valid (This) and then Status (S) = End_Of_Stream, "a file one byte short is rejected");
    end Test_Bits_Simple;
 
@@ -171,7 +171,7 @@ package body Examples_Tests is
       W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
    begin
       Group ("examples bits_in_types");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Pos (S) = 2, "parses two bytes");
       if Valid (This) then
          Check (A (This) = 16#A#, "a");
@@ -182,7 +182,7 @@ package body Examples_Tests is
       end if;
 
       S := Open (Data (1 .. 1));
-      Parse (Data (1 .. 1), S, This);
+      Parse (This, Data (1 .. 1), S);
       Check (not Valid (This) and then Status (S) = End_Of_Stream, "a file one byte short is rejected");
    end Test_Bits_In_Types;
 
@@ -197,17 +197,17 @@ package body Examples_Tests is
       W       : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
    begin
       Group ("examples bits_in_repeat");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Pos (S) = 3, "parses three bytes");
       if Valid (This) then
          Check (A (This) = 16#A#, "a");
          Check (Items_Count (This) = 3, "three items");
          for I in Expect'Range loop
-            Get_Items (Data, This, I, Element);
+            Get_Items (This, Data, I, Element);
             Check (Nib_Type.Valid (Element) and then Nib_Type.Lo (Element) = Expect (I), "item");
          end loop;
          Check (D (This) = 16#EF#, "d");
-         Write (Data, This, Target, W);
+         Write (This, Data, Target, W);
          Check
            (Kaitai.Writers.OK (W)
             and then Size (Kaitai.Writers.Written (W)) = 3
@@ -225,7 +225,7 @@ package body Examples_Tests is
       W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
    begin
       Group ("examples bits_after_bytes");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Pos (S) = 4, "parses four bytes");
       if Valid (This) then
          Check (Tag (This) = 16#11#, "tag");
@@ -251,7 +251,7 @@ package body Examples_Tests is
       W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
    begin
       Group ("examples bits_first_type");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Pos (S) = 3, "parses three bytes");
       if Valid (This) then
          Check
@@ -281,7 +281,7 @@ package body Examples_Tests is
       end Text;
    begin
       Group ("examples term_strz");
-      Parse (Sample_Term_Strz, S, This);
+      Parse (This, Sample_Term_Strz, S);
       Check (Valid (This), "parses");
       if Valid (This) then
          Check (Text (S1 (This)) = "foo", "s1");
@@ -291,7 +291,7 @@ package body Examples_Tests is
       Check (Is_EOF (S), "the whole file is consumed");
 
       S := Open (Sample_Term_Strz (1 .. 11));
-      Parse (Sample_Term_Strz (1 .. 11), S, This);
+      Parse (This, Sample_Term_Strz (1 .. 11), S);
       Check (not Valid (This) and then Status (S) = End_Of_Stream, "a missing terminator is rejected");
    end Test_Term_Strz;
 
@@ -315,15 +315,15 @@ package body Examples_Tests is
       Bad      : Natural := 0;
    begin
       Group ("examples repeat_n_struct");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Is_EOF (S), "parses to the end");
       if Valid (This) then
          Check (Qty (This) = 2 and then Chunks_Count (This) = 2, "count");
-         Get_Chunks (Data, This, 0, C);
+         Get_Chunks (This, Data, 0, C);
          Check
            (Chunk_Type.Valid (C) and then Chunk_Type.Offset (C) = 16#10# and then Chunk_Type.Len (C) = 16#2078#,
             "chunks[0]");
-         Get_Chunks (Data, This, 1, C);
+         Get_Chunks (This, Data, 1, C);
          Check
            (Chunk_Type.Valid (C) and then Chunk_Type.Offset (C) = 16#2088# and then Chunk_Type.Len (C) = 16#F#,
             "chunks[1]");
@@ -331,7 +331,7 @@ package body Examples_Tests is
          while Has_Element (Position) loop
             pragma Loop_Variant (Decreases => Remaining (Position));
             pragma Loop_Invariant (Belongs_To (Position, Data));
-            Next (Data, This, Position, C);
+            Next (This, Data, Position, C);
             exit when not Chunk_Type.Valid (C);
             Seen := Seen + 1;
          end loop;
@@ -339,7 +339,7 @@ package body Examples_Tests is
       end if;
       for Last in 0 .. Data'Last - 1 loop
          S := Open (Data (1 .. Last));
-         Parse (Data (1 .. Last), S, This);
+         Parse (This, Data (1 .. Last), S);
          if Valid (This) then
             Bad := Bad + 1;
          end if;
@@ -359,29 +359,29 @@ package body Examples_Tests is
       E     : Item_Type.T;
    begin
       Group ("examples repeat_n_empty");
-      Parse (Many, S, This);
+      Parse (This, Many, S);
       Check (Valid (This) and then Is_EOF (S), "a hundred million empty elements parse at once");
       if Valid (This) then
          Check (Qty (This) = 100_000_000 and then Items_Count (This) = 100_000_000, "the count is what the data say");
          Check (Tail (This) = 16#7F#, "the field after the repetition");
-         Get_Items (Many, This, 0, E);
+         Get_Items (This, Many, 0, E);
          Check (Item_Type.Valid (E) and then Is_Empty (Item_Type.Content (E)), "items[0] is empty");
-         Get_Items (Many, This, 2, E);
+         Get_Items (This, Many, 2, E);
          Check (Item_Type.Valid (E) and then Is_Empty (Item_Type.Content (E)), "items[2] is empty");
       end if;
 
       S := Open (Three);
-      Parse (Three, S, This);
+      Parse (This, Three, S);
       Check (Valid (This) and then Is_EOF (S), "three elements of one byte");
       if Valid (This) then
          Check (Items_Count (This) = 3 and then Tail (This) = 16#7F#, "count and the field after");
-         Get_Items (Three, This, 0, E);
+         Get_Items (This, Three, 0, E);
          Check
            (Item_Type.Valid (E)
             and then Size (Item_Type.Content (E)) = 1
             and then Three (Item_Type.Content (E).First) = 16#61#,
             "items[0]");
-         Get_Items (Three, This, 2, E);
+         Get_Items (This, Three, 2, E);
          Check
            (Item_Type.Valid (E)
             and then Size (Item_Type.Content (E)) = 1
@@ -391,7 +391,7 @@ package body Examples_Tests is
 
       --  the count says three, the data hold two
       S := Open (Three (1 .. 7));
-      Parse (Three (1 .. 7), S, This);
+      Parse (This, Three (1 .. 7), S);
       Check (not Valid (This) and then Status (S) = End_Of_Stream, "too few elements");
    end Test_Repeat_N_Empty;
 
@@ -402,19 +402,19 @@ package body Examples_Tests is
       This : Repeat_Eos_U4.T;
    begin
       Group ("examples repeat_eos_u4");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Is_EOF (S), "parses to the end");
       if Valid (This) then
          Check (Numbers_Count (This) = 4, "count");
          Check
-           (Numbers (Data, This, 0) = 0
-            and then Numbers (Data, This, 1) = 16#42#
-            and then Numbers (Data, This, 2) = 16#42#
-            and then Numbers (Data, This, 3) = 16#815#,
+           (Numbers (This, Data, 0) = 0
+            and then Numbers (This, Data, 1) = 16#42#
+            and then Numbers (This, Data, 2) = 16#42#
+            and then Numbers (This, Data, 3) = 16#815#,
             "elements");
       end if;
       S := Open (Data (1 .. 15));
-      Parse (Data (1 .. 15), S, This);
+      Parse (This, Data (1 .. 15), S);
       Check (not Valid (This) and then Status (S) = End_Of_Stream, "an incomplete element is rejected");
    end Test_Repeat_Eos_U4;
 
@@ -427,36 +427,36 @@ package body Examples_Tests is
       U2   : Type_U2_Type.T;
    begin
       Group ("examples repeat_until_complex");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Is_EOF (S), "parses to the end");
       if Valid (This) then
          Check (First_Count (This) = 3, "first: count includes the last element");
-         Get_First (Data, This, 0, U1);
+         Get_First (This, Data, 0, U1);
          Check
            (Type_U1_Type.Valid (U1)
             and then Type_U1_Type.Count (U1) = 4
             and then Type_U1_Type.Values_Count (U1) = 4
-            and then Type_U1_Type.Values (Data, U1, 0) = 1
-            and then Type_U1_Type.Values (Data, U1, 3) = 4,
+            and then Type_U1_Type.Values (U1, Data, 0) = 1
+            and then Type_U1_Type.Values (U1, Data, 3) = 4,
             "first[0]");
-         Get_First (Data, This, 1, U1);
+         Get_First (This, Data, 1, U1);
          Check (Type_U1_Type.Valid (U1) and then Type_U1_Type.Count (U1) = 2, "first[1]");
-         Get_First (Data, This, 2, U1);
+         Get_First (This, Data, 2, U1);
          Check (Type_U1_Type.Valid (U1) and then Type_U1_Type.Count (U1) = 0, "first[2] ends it");
          Check (Second_Count (This) = 4, "second: count");
-         Get_Second (Data, This, 0, U2);
+         Get_Second (This, Data, 0, U2);
          Check
-           (Type_U2_Type.Valid (U2) and then Type_U2_Type.Count (U2) = 6 and then Type_U2_Type.Values (Data, U2, 5) = 6,
+           (Type_U2_Type.Valid (U2) and then Type_U2_Type.Count (U2) = 6 and then Type_U2_Type.Values (U2, Data, 5) = 6,
             "second[0]");
-         Get_Second (Data, This, 3, U2);
+         Get_Second (This, Data, 3, U2);
          Check (Type_U2_Type.Valid (U2) and then Type_U2_Type.Count (U2) = 0, "second[3] ends it");
          Check (Third_Count (This) = 7, "third: count, a repetition of integers up to a condition");
          Check
-           (Third (Data, This, 0) = 102 and then Third (Data, This, 5) = 114 and then Third (Data, This, 6) = 0,
+           (Third (This, Data, 0) = 102 and then Third (This, Data, 5) = 114 and then Third (This, Data, 6) = 0,
             "third: elements");
       end if;
       S := Open (Data (1 .. 49));
-      Parse (Data (1 .. 49), S, This);
+      Parse (This, Data (1 .. 49), S);
       Check (not Valid (This) and then Status (S) = End_Of_Stream, "input that ends before the condition holds");
    end Test_Repeat_Until_Complex;
 
@@ -471,30 +471,30 @@ package body Examples_Tests is
       Seen     : Natural := 0;
    begin
       Group ("examples switch_manual_int");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Is_EOF (S), "parses to the end");
       if Valid (This) then
          Check (Opcodes_Count (This) = 4, "count");
-         Get_Opcodes (Data, This, 0, O);
+         Get_Opcodes (This, Data, 0, O);
          Check
            (Opcode_Type.Valid (O)
             and then Opcode_Type.Code (O) = 83
             and then Opcode_Type.Body_Case (O) = Opcode_Type.Body_Is_Strval
             and then Text (Data, Opcode_Type.Strval_Type.Value (Opcode_Type.Body_As_Strval (O))) = "foobar",
             "opcodes[0] is a string");
-         Get_Opcodes (Data, This, 1, O);
+         Get_Opcodes (This, Data, 1, O);
          Check
            (Opcode_Type.Valid (O)
             and then Opcode_Type.Body_Case (O) = Opcode_Type.Body_Is_Intval
             and then Opcode_Type.Intval_Type.Value (Opcode_Type.Body_As_Intval (O)) = 16#42#,
             "opcodes[1] is an integer");
-         Get_Opcodes (Data, This, 2, O);
+         Get_Opcodes (This, Data, 2, O);
          Check
            (Opcode_Type.Valid (O)
             and then Opcode_Type.Body_Case (O) = Opcode_Type.Body_Is_Intval
             and then Opcode_Type.Intval_Type.Value (Opcode_Type.Body_As_Intval (O)) = 16#37#,
             "opcodes[2]");
-         Get_Opcodes (Data, This, 3, O);
+         Get_Opcodes (This, Data, 3, O);
          Check
            (Opcode_Type.Valid (O)
             and then Opcode_Type.Body_Case (O) = Opcode_Type.Body_Is_Strval
@@ -504,7 +504,7 @@ package body Examples_Tests is
          while Has_Element (Position) loop
             pragma Loop_Variant (Decreases => Remaining (Position));
             pragma Loop_Invariant (Belongs_To (Position, Data));
-            Next (Data, This, Position, O);
+            Next (This, Data, Position, O);
             exit when not Opcode_Type.Valid (O);
             Seen := Seen + 1;
          end loop;
@@ -519,7 +519,7 @@ package body Examples_Tests is
       This : Enum_0.T;
    begin
       Group ("examples enum_0");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This), "parses");
       if Valid (This) then
          Check (Pet_1_Value (This) = 7 and then Pet_1 (This) = Animal_Cat, "pet_1");
@@ -535,7 +535,7 @@ package body Examples_Tests is
       This : If_Struct.T;
    begin
       Group ("examples if_struct");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Is_EOF (S), "parses to the end");
       if Valid (This) then
          Check (Operation_Type.Opcode (Op1 (This)) = 16#53#, "op1.opcode");
@@ -565,22 +565,22 @@ package body Examples_Tests is
       Bad  : Bytes := Data;
    begin
       Group ("examples expr_1");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Pos (S) = 10, "parses");
       if Valid (This) then
          Check (Len_Of_1 (This) = 10, "len_of_1");
          Check (Len_Of_1_Mod (This) = 8, "instance with a value");
          Check (Text (Data, Str1 (This)) = "Some ASC", "size from an instance");
-         Check (Str1_Len (Data, This) = 8, "length of a string");
+         Check (Str1_Len (This, Data) = 8, "length of a string");
       end if;
       Bad (1) := 1;
       Bad (2) := 0;
       S := Open (Bad);
-      Parse (Bad, S, This);
+      Parse (This, Bad, S);
       Check (not Valid (This) and then Status (S) = End_Of_Stream, "a negative size fails");
       Bad (1) := 2;
       S := Open (Bad);
-      Parse (Bad, S, This);
+      Parse (This, Bad, S);
       Check (Valid (This) and then Len_Of_1_Mod (This) = 0, "an empty string");
    end Test_Expr_1;
 
@@ -592,7 +592,7 @@ package body Examples_Tests is
       This : Params_Def.T;
    begin
       Group ("examples params_def");
-      Parse (Data, S, 3, True, This);
+      Parse (This, Data, S, 3, True);
       Check (Valid (This) and then Is_EOF (S), "parses with a trailer");
       if Valid (This) then
          Check (Len (This) = 3 and then Has_Trailer_Field (This), "the parameters are kept");
@@ -600,13 +600,13 @@ package body Examples_Tests is
          Check (Has_Trailer (This) and then Trailer (This) = 16#58#, "field with a condition on a parameter");
       end if;
       S := Open (Data);
-      Parse (Data, S, 3, False, This);
+      Parse (This, Data, S, 3, False);
       Check (Valid (This) and then not Has_Trailer (This) and then Pos (S) = 3, "parses without a trailer");
       S := Open (Data);
-      Parse (Data, S, 5, False, This);
+      Parse (This, Data, S, 5, False);
       Check (not Valid (This) and then Status (S) = End_Of_Stream, "a size beyond the input fails");
       S := Open (Bad);
-      Parse (Bad, S, 3, True, This);
+      Parse (This, Bad, S, 3, True);
       Check (not Valid (This) and then Status (S) = Illegal_Sequence, "the string is checked as UTF-8");
    end Test_Params_Def;
 
@@ -620,7 +620,7 @@ package body Examples_Tests is
       This  : Outside.T;
    begin
       Group ("examples outside");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Is_EOF (S), "parses");
       if Valid (This) then
          Check (Size (Item_Type.Body_Field (Item (This))) = 3, "size from the length of a string of the parent");
@@ -629,14 +629,14 @@ package body Examples_Tests is
       end if;
       Other (1) := 16#62#;
       S := Open (Other);
-      Parse (Other, S, This);
+      Parse (This, Other, S);
       if Valid (This) then
          Check (not Note_Type.From_Foo (Note (This)), "the string of the parent is not foo");
       else
          Check (False, "parses another name");
       end if;
       S := Open (Short);
-      Parse (Short, S, This);
+      Parse (This, Short, S);
       Check (not Valid (This) and then Status (S) = End_Of_Stream, "a size from the header beyond the input fails");
    end Test_Outside;
 
@@ -649,13 +649,13 @@ package body Examples_Tests is
       Outcome : Status_Kind;
    begin
       Group ("examples instance_std");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Pos (S) = 0, "parses; the type has no fields in sequence");
-      Header (Data, This, Result, Outcome);
+      Header (This, Data, Result, Outcome);
       Check (Outcome = Success and then Text (Data, Result) = "HELLO", "instance with a position and a size");
       S := Open (Data (1 .. 5));
-      Parse (Data (1 .. 5), S, This);
-      Header (Data (1 .. 5), This, Result, Outcome);
+      Parse (This, Data (1 .. 5), S);
+      Header (This, Data (1 .. 5), Result, Outcome);
       Check (Outcome = End_Of_Stream and then Is_Empty (Result), "the instance runs out of bytes");
    end Test_Instance_Std;
 
@@ -668,10 +668,10 @@ package body Examples_Tests is
       Outcome : Status_Kind;
    begin
       Group ("examples position_abs");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Index_Offset (This) = 16#20#, "parses");
       if Valid (This) then
-         Position_Abs.Index (Data, This, Index_V, Outcome);
+         Position_Abs.Index (This, Data, Index_V, Outcome);
          Check
            (Outcome = Success
             and then Index_Obj_Type.Valid (Index_V)
@@ -679,9 +679,9 @@ package body Examples_Tests is
             "instance at an absolute position");
       end if;
       S := Open (Data (1 .. 20));
-      Parse (Data (1 .. 20), S, This);
+      Parse (This, Data (1 .. 20), S);
       if Valid (This) then
-         Position_Abs.Index (Data (1 .. 20), This, Index_V, Outcome);
+         Position_Abs.Index (This, Data (1 .. 20), Index_V, Outcome);
          Check
            (Outcome = End_Of_Stream and then not Index_Obj_Type.Valid (Index_V), "a position beyond the input fails");
       else
@@ -696,11 +696,11 @@ package body Examples_Tests is
       This : Valid_Fail_Eq_Int.T;
    begin
       Group ("examples valid_fail_eq_int");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (not Valid (This) and then Status (S) = Validation_Not_Equal, "0x50 is not 123");
       Data (1) := 123;
       S := Open (Data);
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Foo (This) = 123, "123 is accepted");
    end Test_Valid_Fail_Eq_Int;
 
@@ -715,7 +715,7 @@ package body Examples_Tests is
       Good     : Natural := 0;
    begin
       Group ("examples default_endian_expr_is_le");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Is_EOF (S), "parses to the end");
       if Valid (This) then
          Check (Docs_Count (This) = 3, "count");
@@ -723,7 +723,7 @@ package body Examples_Tests is
          while Has_Element (Position) loop
             pragma Loop_Variant (Decreases => Remaining (Position));
             pragma Loop_Invariant (Belongs_To (Position, Data));
-            Next (Data, This, Position, D);
+            Next (This, Data, Position, D);
             exit when not Doc_Type.Valid (D);
             Seen := Seen + 1;
             declare
@@ -748,7 +748,7 @@ package body Examples_Tests is
       This : Str_Encodings.T;
    begin
       Group ("examples str_encodings");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Is_EOF (S), "parses to the end");
       if Valid (This) then
          Check (Text (Data, Str1 (This)) = "Some ASCII", "ASCII");
@@ -758,12 +758,12 @@ package body Examples_Tests is
       end if;
       Data (3) := 16#80#;
       S := Open (Data);
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (not Valid (This) and then Status (S) = Illegal_Sequence, "a byte above 127 is not ASCII");
       Data := Sample_Data.Str_Encodings;
       Data (16) := 16#FF#;
       S := Open (Data);
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (not Valid (This) and then Status (S) = Illegal_Sequence, "0xFF is not UTF-8");
    end Test_Str_Encodings;
 
@@ -774,7 +774,7 @@ package body Examples_Tests is
       This : Bits_Enum.T;
    begin
       Group ("examples bits_enum");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Pos (S) = 2, "parses");
       if Valid (This) then
          Check (One_Value (This) = 5 and then One (This) = Animal_Platypus, "one");
@@ -790,7 +790,7 @@ package body Examples_Tests is
       This : Bits_Byte_Aligned.T;
    begin
       Group ("examples bits_byte_aligned");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This), "parses");
       if Valid (This) then
          Check (One (This) = 2#010100# and then Byte_1 (This) = 16#41#, "one, byte_1");
@@ -812,7 +812,7 @@ package body Examples_Tests is
       This : Bytes_Pad_Term_Equal.T;
    begin
       Group ("examples bytes_pad_term_equal");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Is_EOF (S), "parses");
       if Valid (This) then
          Check (Text (Data, S1 (This)) = "str1", "padding that is the terminator is not stripped first");
@@ -828,7 +828,7 @@ package body Examples_Tests is
       This : Expr_Sizeof_Type_0.T;
    begin
       Group ("examples expr_sizeof_type_0");
-      Parse (Sample_Fixed_Struct, S, This);
+      Parse (This, Sample_Fixed_Struct, S);
       Check (Valid (This), "parses");
       if Valid (This) then
          Check (Sizeof_Block (This) = 7, "the size of a type is in bytes");
@@ -841,7 +841,7 @@ package body Examples_Tests is
       This : Expr_Sizeof_Value_Sized.T;
    begin
       Group ("examples expr_sizeof_value_sized");
-      Parse (Sample_Fixed_Struct, S, This);
+      Parse (This, Sample_Fixed_Struct, S);
       Check (Valid (This), "parses");
       if Valid (This) then
          Check (Self_Sizeof (This) = 12 + 2, "_sizeof is the size of the type, with the size of the field it is in");
@@ -859,7 +859,7 @@ package body Examples_Tests is
       This : Term_Struct.T;
    begin
       Group ("examples term_struct");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Is_EOF (S), "parses");
       if Valid (This) then
          Check (Text (Data, Bytes_Wrapper_Type.Value (S1 (This))) = "foo", "s1");
@@ -868,7 +868,7 @@ package body Examples_Tests is
       end if;
 
       S := Open (Data (1 .. 11));
-      Parse (Data (1 .. 11), S, This);
+      Parse (This, Data (1 .. 11), S);
       Check (not Valid (This) and then Status (S) = End_Of_Stream, "a missing terminator is rejected");
    end Test_Term_Struct;
 
@@ -878,7 +878,7 @@ package body Examples_Tests is
       This : Imports0.T;
    begin
       Group ("examples imports0");
-      Parse (Sample_Fixed_Struct, S, This);
+      Parse (This, Sample_Fixed_Struct, S);
       Check (Valid (This) and then Pos (S) = 2, "parses");
       if Valid (This) then
          Check (Two (This) = 16#50#, "two");
@@ -897,7 +897,7 @@ package body Examples_Tests is
       W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
    begin
       Group ("examples write bits_enum");
-      Bits_Enum.Parse (Data, S, This);
+      Bits_Enum.Parse (This, Data, S);
       if Bits_Enum.Valid (This) then
          Bits_Enum.Write (This, Target, W);
          Check (Kaitai.Writers.OK (W) and then Size (Kaitai.Writers.Written (W)) = 2, "two bytes are written");
@@ -920,9 +920,9 @@ package body Examples_Tests is
       W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
    begin
       Group ("examples write bits_byte_aligned");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       if Valid (This) then
-         Write (Data, This, Target, W);
+         Write (This, Data, Target, W);
          Check (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = Pos (S), "as many bytes as were read");
          --  Bits that no field reads (the description skips some) are written as zero, so the bytes are not
          --  the same; what is written reads back as the same values
@@ -930,7 +930,7 @@ package body Examples_Tests is
             Last : constant Length := Kaitai.Writers.Pos (W);
             S2   : Stream := Open (Target (1 .. Last));
          begin
-            Parse (Target (1 .. Last), S2, Again);
+            Parse (Again, Target (1 .. Last), S2);
             Check (Valid (Again), "the output parses");
             if Valid (Again) then
                Check
@@ -963,9 +963,9 @@ package body Examples_Tests is
       W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
    begin
       Group ("examples write term_struct");
-      Term_Struct.Parse (Data, S, This);
+      Term_Struct.Parse (This, Data, S);
       if Term_Struct.Valid (This) then
-         Term_Struct.Write (Data, This, Target, W);
+         Term_Struct.Write (This, Data, Target, W);
          --  The terminator of s1 is written, that of s2 is not consumed and left to s3, which includes it
          Check
            (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = 12 and then Target (1 .. 12) = Data,
@@ -983,14 +983,14 @@ package body Examples_Tests is
       W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
    begin
       Group ("examples write term_strz");
-      Term_Strz.Parse (Data, S, This);
+      Term_Strz.Parse (This, Data, S);
       if Term_Strz.Valid (This) then
-         Term_Strz.Write (Data, This, Target, W);
+         Term_Strz.Write (This, Data, Target, W);
          Check
            (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = 12 and then Target (1 .. 12) = Data,
             "the same bytes");
          W := Kaitai.Writers.Open (Target (1 .. 11));
-         Term_Strz.Write (Data, This, Target (1 .. 11), W);
+         Term_Strz.Write (This, Data, Target (1 .. 11), W);
          Check (Kaitai.Writers.Status (W) = Capacity_Exceeded, "a target that is too small");
       else
          Check (False, "parses");
@@ -1005,9 +1005,9 @@ package body Examples_Tests is
       W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
    begin
       Group ("examples write bytes_pad_term_equal");
-      Bytes_Pad_Term_Equal.Parse (Data, S, This);
+      Bytes_Pad_Term_Equal.Parse (This, Data, S);
       if Bytes_Pad_Term_Equal.Valid (This) then
-         Bytes_Pad_Term_Equal.Write (Data, This, Target, W);
+         Bytes_Pad_Term_Equal.Write (This, Data, Target, W);
          Check (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = 80, "four fields of 20 bytes");
          Check (Target (1 .. 40) = Data (1 .. 40), "padding that is the terminator, or is not");
          --  s3 ends at its terminator; what the input has behind it is not kept, and is written as padding
@@ -1028,9 +1028,9 @@ package body Examples_Tests is
       W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
    begin
       Group ("examples write default_endian_expr_is_le");
-      Default_Endian_Expr_Is_Le.Parse (Data, S, This);
+      Default_Endian_Expr_Is_Le.Parse (This, Data, S);
       if Default_Endian_Expr_Is_Le.Valid (This) and then Data'Length <= 64 then
-         Default_Endian_Expr_Is_Le.Write (Data, This, Target, W);
+         Default_Endian_Expr_Is_Le.Write (This, Data, Target, W);
          Check (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = Data'Length, "all bytes are written");
          Check (Target (1 .. Data'Length) = Data, "with the byte order that was calculated");
       else
@@ -1049,9 +1049,9 @@ package body Examples_Tests is
       W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
    begin
       Group ("examples write term_strz4");
-      Term_Strz4.Parse (Data, S, This);
+      Term_Strz4.Parse (This, Data, S);
       if Term_Strz4.Valid (This) then
-         Term_Strz4.Write (Data, This, Target, W);
+         Term_Strz4.Write (This, Data, Target, W);
          Check
            (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = 11,
             "written, without a terminator that was not there");
@@ -1059,7 +1059,7 @@ package body Examples_Tests is
          declare
             S2 : Stream := Open (Target (1 .. 11));
          begin
-            Term_Strz4.Parse (Target (1 .. 11), S2, Again);
+            Term_Strz4.Parse (Again, Target (1 .. 11), S2);
             Check
               (Term_Strz4.Valid (Again)
                and then Text (Target, Term_Strz4.S1_Type_Type.Value (Term_Strz4.S1 (Again))) = "foo"
@@ -1083,9 +1083,9 @@ package body Examples_Tests is
       W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
    begin
       Group ("examples write bytes_pad_term");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       if Valid (This) then
-         Write (Data, This, Target, W);
+         Write (This, Data, Target, W);
          Check (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = 80, "four fields of 20 bytes");
          Check (Target (1 .. 20) = Data (1 .. 20), "padding");
          Check
@@ -1096,7 +1096,7 @@ package body Examples_Tests is
          declare
             S2 : Stream := Open (Target);
          begin
-            Parse (Target, S2, Again);
+            Parse (Again, Target, S2);
             Check
               (Valid (Again)
                and then Text (Target, Str_Pad (Again)) = Text (Data, Str_Pad (This))
@@ -1121,9 +1121,9 @@ package body Examples_Tests is
       W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
    begin
       Group ("examples write str_eos_pad_term");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       if Valid (This) then
-         Write (Data, This, Target, W);
+         Write (This, Data, Target, W);
          Check (Kaitai.Writers.OK (W) and then Kaitai.Writers.Pos (W) = 80, "four fields of 20 bytes");
          Check (Target (1 .. 20) = Data (1 .. 20), "padding up to the end of the substream");
          Check (Target (21 .. 28) = Data (21 .. 28), "terminator; the rest is not what was there, and is zero");
@@ -1132,7 +1132,7 @@ package body Examples_Tests is
          declare
             S2 : Stream := Open (Target);
          begin
-            Parse (Target, S2, Again);
+            Parse (Again, Target, S2);
             Check
               (Valid (Again)
                and then Text (Target, Str_Pad_Type_Type.Value (Str_Pad (Again))) = "str1"
@@ -1152,14 +1152,14 @@ package body Examples_Tests is
       This : Valid_Fail_Repeat_Eq_Int.T;
    begin
       Group ("examples valid_fail_repeat_eq_int");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Foo_Count (This) = 2, "every element is as required");
       Data (6) := 0;
       S := Open (Data);
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (not Valid (This) and then Status (S) = Validation_Not_Equal, "a wrong element is found");
       S := Open (Sample_Fixed_Struct);
-      Parse (Sample_Fixed_Struct, S, This);
+      Parse (This, Sample_Fixed_Struct, S);
       Check (not Valid (This) and then Status (S) = Validation_Not_Equal, "so is one in the sample");
    end Test_Valid_Fail_Repeat_Eq_Int;
 
@@ -1170,21 +1170,21 @@ package body Examples_Tests is
       This : Subscripts.T;
    begin
       Group ("examples subscripts");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Is_EOF (S), "parses; records end at the first that starts with 0");
       if Valid (This) then
-         Check (Has_First_Item (Data, This) and then First_Item (Data, This) = 16#1234#, "items[0]");
-         Check (Has_Chosen_Item (Data, This) and then Chosen_Item (Data, This) = 16#5678#, "items[pick]");
-         Check (Has_Raw_Mid (Data, This) and then Raw_Mid (Data, This) = 20, "raw[1]");
-         Check (Has_Chosen_Raw (Data, This) and then Chosen_Raw (Data, This) = 20, "raw[pick]");
+         Check (Has_First_Item (This, Data) and then First_Item (This, Data) = 16#1234#, "items[0]");
+         Check (Has_Chosen_Item (This, Data) and then Chosen_Item (This, Data) = 16#5678#, "items[pick]");
+         Check (Has_Raw_Mid (This, Data) and then Raw_Mid (This, Data) = 20, "raw[1]");
+         Check (Has_Chosen_Raw (This, Data) and then Chosen_Raw (This, Data) = 20, "raw[pick]");
       end if;
       declare
          Bad : Bytes := Data;
       begin
          Bad (2) := 2;
          S := Open (Bad);
-         Parse (Bad, S, This);
-         Check (Valid (This) and then not Has_Chosen_Item (Bad, This), "an index past the end is not defined");
+         Parse (This, Bad, S);
+         Check (Valid (This) and then not Has_Chosen_Item (This, Bad), "an index past the end is not defined");
       end;
    end Test_Subscripts;
 
@@ -1199,23 +1199,23 @@ package body Examples_Tests is
       Seen     : Natural := 0;
    begin
       Group ("examples switch_bytearray");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Is_EOF (S), "parses to the end");
       if Valid (This) then
          Check (Opcodes_Count (This) = 4, "count");
-         Get_Opcodes (Data, This, 0, O);
+         Get_Opcodes (This, Data, 0, O);
          Check
            (Opcode_Type.Valid (O)
             and then Opcode_Type.Body_Case (O) = Opcode_Type.Body_Is_Strval
             and then Text (Data, Opcode_Type.Strval_Type.Value (Opcode_Type.Body_As_Strval (O))) = "foobar",
             "a case that is the byte array [83] is a string");
-         Get_Opcodes (Data, This, 1, O);
+         Get_Opcodes (This, Data, 1, O);
          Check
            (Opcode_Type.Valid (O)
             and then Opcode_Type.Body_Case (O) = Opcode_Type.Body_Is_Intval
             and then Opcode_Type.Intval_Type.Value (Opcode_Type.Body_As_Intval (O)) = 16#42#,
             "[73] is an integer");
-         Get_Opcodes (Data, This, 3, O);
+         Get_Opcodes (This, Data, 3, O);
          Check
            (Opcode_Type.Valid (O)
             and then Opcode_Type.Body_Case (O) = Opcode_Type.Body_Is_Strval
@@ -1223,7 +1223,7 @@ package body Examples_Tests is
             "opcodes[3] is an empty string");
          Position := Opcodes_First (This);
          while Has_Element (Position) loop
-            Next (Data, This, Position, O);
+            Next (This, Data, Position, O);
             exit when not Opcode_Type.Valid (O);
             Seen := Seen + 1;
          end loop;
@@ -1235,9 +1235,9 @@ package body Examples_Tests is
          Other : constant Bytes := (16#41#, 16#01#, 16#02#);
       begin
          S := Open (Other);
-         Parse (Other, S, This);
+         Parse (This, Other, S);
          Check (Valid (This) and then Opcodes_Count (This) = 3, "parses a code that no case names, which has no body");
-         Get_Opcodes (Other, This, 0, O);
+         Get_Opcodes (This, Other, 0, O);
          Check
            (Opcode_Type.Valid (O) and then Opcode_Type.Body_Case (O) = Opcode_Type.Body_Is_None, "none of the cases");
       end;
@@ -1250,7 +1250,7 @@ package body Examples_Tests is
       This : Switch_Else_Only.T;
    begin
       Group ("examples switch_else_only");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This), "parses");
       if Valid (This) then
          Check (Opcode (This) = 16#53#, "opcode");
@@ -1269,12 +1269,12 @@ package body Examples_Tests is
       This : Valid_Switch.T;
    begin
       Group ("examples valid_switch");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check
         (Valid (This) and then A (This) = 16#50# and then B (This) = 16#4341#, "the value of the switch is checked");
       Data (3) := 16#44#;
       S := Open (Data);
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check
         (not Valid (This) and then Status (S) = Validation_Not_Equal, "another value of the switch is not accepted");
    end Test_Valid_Switch;
@@ -1286,18 +1286,18 @@ package body Examples_Tests is
       This : Str_Literals_Latin1.T;
    begin
       Group ("examples str_literals_latin1");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This), "parses");
       if Valid (This) then
          Check
-           (Parsed_Eq_Literal (Data, This), "a literal that is not ASCII is compared in the encoding of the string");
+           (Parsed_Eq_Literal (This, Data), "a literal that is not ASCII is compared in the encoding of the string");
       end if;
       declare
          Other : constant Bytes := (2, 0, 16#C2#, 16#A4#);
       begin
          S := Open (Other);
-         Parse (Other, S, This);
-         Check (Valid (This) and then not Parsed_Eq_Literal (Other, This), "another character is not equal");
+         Parse (This, Other, S);
+         Check (Valid (This) and then not Parsed_Eq_Literal (This, Other), "another character is not equal");
       end;
    end Test_Str_Literals_Latin1;
 
@@ -1309,15 +1309,15 @@ package body Examples_Tests is
       This : Str_Literal_Encodings.T;
    begin
       Group ("examples str_literal_encodings");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Is_EOF (S), "parses");
       if Valid (This) then
-         Check (Latin1_Is_Pound (Data, This), "ISO-8859-1: one byte");
-         Check (Utf8_Is_Pound (Data, This), "UTF-8: two bytes");
-         Check (Utf16le_Is_Pound_Euro (Data, This), "UTF-16LE: two units, low byte first");
-         Check (Utf16be_Is_Grin (Data, This), "UTF-16BE: a surrogate pair");
-         Check (not Utf16be_Is_Not_Grin (Data, This), "!= is the opposite");
-         Check (Ascii_Has_Newline (Data, This), "a control character in ASCII");
+         Check (Latin1_Is_Pound (This, Data), "ISO-8859-1: one byte");
+         Check (Utf8_Is_Pound (This, Data), "UTF-8: two bytes");
+         Check (Utf16le_Is_Pound_Euro (This, Data), "UTF-16LE: two units, low byte first");
+         Check (Utf16be_Is_Grin (This, Data), "UTF-16BE: a surrogate pair");
+         Check (not Utf16be_Is_Not_Grin (This, Data), "!= is the opposite");
+         Check (Ascii_Has_Newline (This, Data), "a control character in ASCII");
          Check (Grin_Length (This) = 1, "the length of a literal counts characters");
       end if;
 
@@ -1325,13 +1325,13 @@ package body Examples_Tests is
       Data (1) := 16#A4#;
       Data (9) := 16#3E#;
       S := Open (Data);
-      Parse (Data, S, This);
-      Check (Valid (This) and then not Latin1_Is_Pound (Data, This), "another character");
-      Check (not Utf16be_Is_Grin (Data, This) and then Utf16be_Is_Not_Grin (Data, This), "another surrogate pair");
-      Check (Utf8_Is_Pound (Data, This), "the others are unchanged");
+      Parse (This, Data, S);
+      Check (Valid (This) and then not Latin1_Is_Pound (This, Data), "another character");
+      Check (not Utf16be_Is_Grin (This, Data) and then Utf16be_Is_Not_Grin (This, Data), "another surrogate pair");
+      Check (Utf8_Is_Pound (This, Data), "the others are unchanged");
       Data (14) := 16#62#;
       S := Open (Data);
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (not Valid (This) and then Status (S) = Validation_Not_Equal, "valid with a literal in UTF-16LE");
    end Test_Str_Literal_Encodings;
 
@@ -1341,7 +1341,7 @@ package body Examples_Tests is
       This : Expr_To_I_Trailing.T;
    begin
       Group ("examples expr_to_i_trailing");
-      Parse (Sample_Term_Strz, S, This);
+      Parse (This, Sample_Term_Strz, S);
       Check (Valid (This), "parses");
       if Valid (This) then
          Check (not Has_To_I_R10 (This), "letters after the figures are a conversion error in base 10");
@@ -1357,19 +1357,19 @@ package body Examples_Tests is
       This : Valid_Fail_Range_Str.T;
    begin
       Group ("examples valid_fail_range_str");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (not Valid (This) and then Status (S) = Validation_Greater_Than, "PA is above P1");
       Data (2) := Character'Pos ('1');
       S := Open (Data);
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This), "P1 is the upper end of the range");
       Data (2) := 0;
       S := Open (Data);
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This), "P and a byte 0 is above P and below P1");
       Data (1) := Character'Pos ('O');
       S := Open (Data);
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (not Valid (This) and then Status (S) = Validation_Less_Than, "O is below P");
    end Test_Valid_Fail_Range_Str;
 
@@ -1380,29 +1380,29 @@ package body Examples_Tests is
       This : Str_Ordering.T;
    begin
       Group ("examples str_ordering");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This), "parses");
       if Valid (This) then
-         Check (not A_Lt_B (Data, This) and then A_Le_B (Data, This), "equal strings");
-         Check (not A_Gt_Pound (Data, This) and then Pound_Ge_B (Data, This), "equal to the literal");
+         Check (not A_Lt_B (This, Data) and then A_Le_B (This, Data), "equal strings");
+         Check (not A_Gt_Pound (This, Data) and then Pound_Ge_B (This, Data), "equal to the literal");
          Check (Literals (This), "two literals");
       end if;
       Data (4) := 16#A4#;
       S := Open (Data);
-      Parse (Data, S, This);
-      Check (Valid (This) and then A_Lt_B (Data, This) and then A_Le_B (Data, This), "the second byte decides");
-      Check (not Pound_Ge_B (Data, This), "the literal is below the string");
+      Parse (This, Data, S);
+      Check (Valid (This) and then A_Lt_B (This, Data) and then A_Le_B (This, Data), "the second byte decides");
+      Check (not Pound_Ge_B (This, Data), "the literal is below the string");
       Data (1) := 16#61#;
       Data (2) := 16#62#;
       S := Open (Data);
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check
-        (Valid (This) and then A_Lt_B (Data, This) and then not A_Gt_Pound (Data, This), "ab is below the pound sign");
+        (Valid (This) and then A_Lt_B (This, Data) and then not A_Gt_Pound (This, Data), "ab is below the pound sign");
       Data (1) := 16#C3#;
       Data (2) := 16#80#;
       S := Open (Data);
-      Parse (Data, S, This);
-      Check (Valid (This) and then A_Gt_Pound (Data, This), "a larger character");
+      Parse (This, Data, S);
+      Check (Valid (This) and then A_Gt_Pound (This, Data), "a larger character");
    end Test_Str_Ordering;
 
    procedure Test_Valid_Long is
@@ -1412,19 +1412,19 @@ package body Examples_Tests is
       This : Valid_Long.T;
    begin
       Group ("examples valid_long");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This), "the largest value of u8 is valid, as 18446744073709551615 in U64");
       if Valid (This) then
          Check (Uint64 (This) = U64'Last and then Sint64 (This) = -1, "uint64 and sint64");
       end if;
       Data (32) := 16#FE#;
       S := Open (Data);
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (not Valid (This) and then Status (S) = Validation_Not_Equal, "a value of u8 that is not the largest");
       Data := Sample_Data.Fixed_Struct;
       Data (33) := 16#FE#;
       S := Open (Data);
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (not Valid (This), "a letter of the next string");
    end Test_Valid_Long;
 
@@ -1434,7 +1434,7 @@ package body Examples_Tests is
       This : Yaml_Ints.T;
    begin
       Group ("examples yaml_ints");
-      Parse (Sample_Fixed_Struct, S, This);
+      Parse (This, Sample_Fixed_Struct, S);
       Check (Valid (This), "parses");
       if Valid (This) then
          Check (Test_U4_Dec (This) = 16#FFFF_FFFF# and then Test_U4_Hex (This) = 16#FFFF_FFFF#, "32 bits");
@@ -1483,7 +1483,7 @@ package body Examples_Tests is
       This : Enum_Long_Range_U.T;
    begin
       Group ("examples enum_long_range_u");
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then Is_EOF (S), "parses");
       if Valid (This) then
          Check (F1 (This) = Constants_Zero, "0");
@@ -1494,7 +1494,7 @@ package body Examples_Tests is
       end if;
       Data (32) := 16#FE#;
       S := Open (Data);
-      Parse (Data, S, This);
+      Parse (This, Data, S);
       Check (Valid (This) and then not Is_Constants_Enum (F4_Value (This)), "another value has no label");
    end Test_Enum_Long_Range_U;
 

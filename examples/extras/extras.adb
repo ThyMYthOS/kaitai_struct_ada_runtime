@@ -8,7 +8,7 @@ is
 
    package body Inner_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_U2be (Buffer, S, This.A);
          Kaitai.Streams.Read_U1 (Buffer, S, This.B);
@@ -20,11 +20,11 @@ is
    package body Item_Type is
 
       procedure Parse
-        (Buffer            : Kaitai.Types.Bytes;
+        (This              : out T;
+         Buffer            : Kaitai.Types.Bytes;
          S                 : in out Kaitai.Streams.Stream;
          Parent_Len_Secret : Kaitai.Types.U8;
-         Root_Key          : Kaitai.Types.U8;
-         This              : out T) is
+         Root_Key          : Kaitai.Types.U8) is
       begin
          This := (others => <>);
          This.Parent_Len_Secret := Parent_Len_Secret;
@@ -57,7 +57,7 @@ is
         (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : T; Element : out T) is
       begin
          if This.Depth > 0 then
-            Parse (Buffer, S, This.Root_Key, This.Depth - 1, Element);
+            Parse (Element, Buffer, S, This.Root_Key, This.Depth - 1);
          else
             Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
             Element := (others => <>);
@@ -65,11 +65,11 @@ is
       end Parse_Children_Element;
 
       procedure Parse
-        (Buffer   : Kaitai.Types.Bytes;
+        (This     : out T;
+         Buffer   : Kaitai.Types.Bytes;
          S        : in out Kaitai.Streams.Stream;
          Root_Key : Kaitai.Types.U8;
-         Depth    : Natural;
-         This     : out T)
+         Depth    : Natural)
       is
          Element : T;
       begin
@@ -93,27 +93,27 @@ is
          This.Is_Valid := Kaitai.Streams.OK (S);
       end Parse;
 
-      procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Children_Cursor; Element : out T) is
+      procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Children_Cursor; Element : out T) is
       begin
          Parse_Children_Element (Buffer, Position.Io, This, Element);
          Position.Left := (if Valid (Element) then Position.Left - 1 else 0);
       end Next;
 
-      procedure Get_Children (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out T) is
+      procedure Get_Children (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out T) is
          Position : Children_Cursor := Children_First (This);
          Result   : T;
       begin
          for I in 0 .. Index loop
             pragma Loop_Invariant (Belongs_To (Position, Buffer) and then Belongs_To (Result, Buffer));
             exit when not Has_Element (Position);
-            Next (Buffer, This, Position, Result);
+            Next (This, Buffer, Position, Result);
          end loop;
          Element := Result;
       end Get_Children;
 
    end Node_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Item_Type.T;
       Before  : Kaitai.Streams.Stream;
    begin
@@ -126,7 +126,7 @@ is
       This.Items_Count := 2;
       for I in 1 .. This.Items_Count loop
          Before := S;
-         Item_Type.Parse (Buffer, S, This.Len_Secret, This.Key, Element);
+         Item_Type.Parse (Element, Buffer, S, This.Len_Secret, This.Key);
          exit when not Item_Type.Valid (Element);
          --  An element that read nothing: so will all that follow
          exit when
@@ -134,13 +134,13 @@ is
            and then Kaitai.Streams.Bits_Left (S) = Kaitai.Streams.Bits_Left (Before);
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
-      Node_Type.Parse (Buffer, S, This.Key, Max_Depth, This.Tree);
+      Node_Type.Parse (This.Tree, Buffer, S, This.Key, Max_Depth);
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 
    procedure Secret
-     (Buffer  : Kaitai.Types.Bytes;
-      This    : T;
+     (This    : T;
+      Buffer  : Kaitai.Types.Bytes;
       Target  : in out Kaitai.Types.Bytes;
       Last    : out Kaitai.Types.Length;
       Outcome : out Kaitai.Types.Status_Kind) is
@@ -160,8 +160,8 @@ is
    end Secret;
 
    procedure Packed
-     (Buffer  : Kaitai.Types.Bytes;
-      This    : T;
+     (This    : T;
+      Buffer  : Kaitai.Types.Bytes;
       Storage : in out Kaitai.Types.Bytes;
       Result  : out Inner_Type.T;
       Outcome : out Kaitai.Types.Status_Kind)
@@ -180,18 +180,18 @@ is
               (Buffer (This.Packed.First .. This.Packed.Last), 3, Storage (Storage'First .. Last));
          end if;
          Sub := Kaitai.Streams.Open (Storage (Storage'First .. Last));
-         Inner_Type.Parse (Storage, Sub, Result);
+         Inner_Type.Parse (Result, Storage, Sub);
          Outcome := Kaitai.Streams.Status (Sub);
       end if;
    end Packed;
 
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Items_Cursor; Element : out Item_Type.T) is
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Items_Cursor; Element : out Item_Type.T) is
    begin
-      Item_Type.Parse (Buffer, Position.Io, This.Len_Secret, This.Key, Element);
+      Item_Type.Parse (Element, Buffer, Position.Io, This.Len_Secret, This.Key);
       Position.Left := (if Item_Type.Valid (Element) then Position.Left - 1 else 0);
    end Next;
 
-   procedure Get_Items (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Item_Type.T)
+   procedure Get_Items (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Item_Type.T)
    is
       Position : Items_Cursor := Items_First (This);
       Result   : Item_Type.T;
@@ -199,7 +199,7 @@ is
       for I in 0 .. Index loop
          pragma Loop_Invariant (Belongs_To (Position, Buffer) and then Item_Type.Belongs_To (Result, Buffer));
          exit when not Has_Element (Position);
-         Next (Buffer, This, Position, Result);
+         Next (This, Buffer, Position, Result);
       end loop;
       Element := Result;
    end Get_Items;

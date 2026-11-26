@@ -4,7 +4,7 @@ package body Bits_Simple
   with SPARK_Mode
 is
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Bit : Kaitai.Types.U64;
    begin
       Kaitai.Streams.Align_To_Byte (S);

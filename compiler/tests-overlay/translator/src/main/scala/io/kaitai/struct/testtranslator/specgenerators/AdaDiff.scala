@@ -234,7 +234,7 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
               val l = nm("L")
               val o = nm("Outcome")
               blk(List(s"$l : $pkg.T;", s"$o : ${KT}Status_Kind;"), List(
-                s"$pkg.$mname ($buf, $obj, $l, $o);",
+                s"$pkg.$mname ($obj, $buf, $l, $o);",
                 s"if $o /= ${KT}Success then",
                 s"   Fail (\"outcome \" & ${KT}Status_Kind'Image ($o) & \" \" & $path);",
                 "else") ++ ind(adaLeaf(ut, l, buf, path)) ++ List("end if;"))
@@ -246,7 +246,7 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
         else body
       case v: ValueInstanceSpec =>
         val usesBuf = cc.valueInstanceUsesBuffer(cs, v)
-        val args = if (usesBuf) s"$buf, $obj" else obj
+        val args = if (usesBuf) s"$obj, $buf" else obj
         val code = v.dataType match {
           case _: EnumType => s"$pkg.${bs}_Value ($args)"
           case _ => s"$pkg.$mname ($args)"
@@ -270,7 +270,7 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
         val l = nm("L")
         val o = nm("Outcome")
         val leaf = blk(List(s"$l : ${storedAda(p.dataType)};", s"$o : ${KT}Status_Kind;"), List(
-          s"$pkg.$mname ($buf, $obj, $l, $o);",
+          s"$pkg.$mname ($obj, $buf, $l, $o);",
           s"if $o /= ${KT}Success then",
           s"   Fail (\"outcome \" & ${KT}Status_Kind'Image ($o) & \" \" & $path);",
           "else") ++ ind(adaLeaf(p.dataType, l, buf, path)) ++ List("end if;"))
@@ -293,8 +293,8 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
     val loop: List[String] = AdaTranslator.fixedElement(dt) match {
       case Some(_) =>
         val code = dt match {
-          case FloatMultiType(_, _) => s"$pkg.${bs}_Bits ($buf, $obj, $ix)"
-          case _ => s"$pkg.$mname ($buf, $obj, $ix)"
+          case FloatMultiType(_, _) => s"$pkg.${bs}_Bits ($obj, $buf, $ix)"
+          case _ => s"$pkg.$mname ($obj, $buf, $ix)"
         }
         val leafDt = dt match { case et: EnumType => et.basedOn; case other => other }
         List(s"for $i in 1 .. $pkg.${bs}_Count ($obj) loop") ++ ind(
@@ -307,7 +307,7 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
           s"   Fail (\"cursor \" & $path);",
           "else",
           s"   while $pkg.Has_Element ($pos) and then not Failed loop") ++ ind(List(
-            s"$pkg.Next ($buf, $obj, $pos, $e);") ++ adaLeaf(dt, e, buf, elemPath) ++ List(s"$i := $i + 1;"), 2) ++ List(
+            s"$pkg.Next ($obj, $buf, $pos, $e);") ++ adaLeaf(dt, e, buf, elemPath) ++ List(s"$i := $i + 1;"), 2) ++ List(
           "   end loop;",
           s"   if not Failed and then $i /= $pkg.${bs}_Count ($obj) then",
           s"      Fail (\"count \" & $path);",
@@ -357,7 +357,7 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
         val last = nm("Last")
         val sl = nm("Item")
         blk(decls ++ List(s"$last : ${KT}Length;"), List(
-          s"$pkg.$mname ($buf, $obj, $work.all, $last, $o);",
+          s"$pkg.$mname ($obj, $buf, $work.all, $last, $o);",
           s"if $o /= ${KT}Success then") ++ ind(fail) ++ List(
           "else",
           s"   Put_Hex ($path, $work.all, (First => $work.all'First, Last => $last));",
@@ -367,7 +367,7 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
         val l = nm("L")
         val cs2 = ut.classSpec.get
         blk(decls ++ List(s"$l : ${pkgOf(cs2)}.T;"), List(
-          s"$pkg.$mname ($buf, $obj, $work.all, $l, $o);",
+          s"$pkg.$mname ($obj, $buf, $work.all, $l, $o);",
           s"if $o /= ${KT}Success then") ++ ind(fail) ++ List("else") ++
           ind(adaLeaf(ut, l, s"$work.all", path)) ++ List("end if;", s"Free ($work);"))
       case other => skip(s"process on $other")
@@ -469,7 +469,7 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
     val topPkg = pkgOf(top)
     val recursiveTop = top.seq.exists(a => containsSelf(a.dataType)) ||
       top.instances.values.exists { case pi: ParseInstanceSpec => containsSelf(pi.dataType); case _ => false }
-    val parseArgs = if (recursiveTop) s"$topPkg.Max_Depth, " else ""
+    val parseArgs = if (recursiveTop) s", $topPkg.Max_Depth" else ""
 
     val sb = new StringBuilder
     def p(s: String): Unit = sb.append(s).append("\n")
@@ -632,7 +632,7 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
     p("               S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer.all);")
     p(s"               R : $topPkg.T;")
     p("            begin")
-    p(s"               $topPkg.Parse (Buffer.all, S, ${parseArgs}R);")
+    p(s"               $topPkg.Parse (R, Buffer.all, S$parseArgs);")
     p(s"               if not $topPkg.Valid (R) then")
     p("                  Fail (\"parse \" & Kaitai.Types.Status_Kind'Image (Kaitai.Streams.Status (S)));")
     p("               else")

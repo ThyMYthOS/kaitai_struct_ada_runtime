@@ -8,7 +8,7 @@ is
 
    Magic1_Expected : constant Kaitai.Types.Bytes := (16#50#, 16#41#, 16#43#, 16#4B#, 16#2D#, 16#31#);
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       Kaitai.Streams.Read_Contents (Buffer, S, Magic1_Expected);
       Kaitai.Streams.Read_U1 (Buffer, S, This.Uint8);

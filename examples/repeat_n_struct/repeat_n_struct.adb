@@ -6,7 +6,7 @@ is
 
    package body Chunk_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_U4le (Buffer, S, This.Offset);
          Kaitai.Streams.Read_U4le (Buffer, S, This.Len);
@@ -15,29 +15,29 @@ is
 
    end Chunk_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Chunk_Type.T;
    begin
       Kaitai.Streams.Read_U4le (Buffer, S, This.Qty);
       This.Chunks_Io := S;
       This.Chunks_Count := Kaitai.Types.To_Count (Kaitai.Types.S64 (This.Qty));
       for I in 1 .. This.Chunks_Count loop
-         Chunk_Type.Parse (Buffer, S, Element);
+         Chunk_Type.Parse (Element, Buffer, S);
          exit when not Chunk_Type.Valid (Element);
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Chunks_Cursor; Element : out Chunk_Type.T)
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Chunks_Cursor; Element : out Chunk_Type.T)
    is
       pragma Warnings (Off, This);
    begin
-      Chunk_Type.Parse (Buffer, Position.Io, Element);
+      Chunk_Type.Parse (Element, Buffer, Position.Io);
       Position.Left := (if Chunk_Type.Valid (Element) then Position.Left - 1 else 0);
    end Next;
 
-   procedure Get_Chunks (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Chunk_Type.T)
+   procedure Get_Chunks (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Chunk_Type.T)
    is
       Position : Chunks_Cursor := Chunks_First (This);
       Result   : Chunk_Type.T;
@@ -45,7 +45,7 @@ is
       for I in 0 .. Index loop
          pragma Loop_Invariant (Belongs_To (Position, Buffer));
          exit when not Has_Element (Position);
-         Next (Buffer, This, Position, Result);
+         Next (This, Buffer, Position, Result);
       end loop;
       Element := Result;
    end Get_Chunks;

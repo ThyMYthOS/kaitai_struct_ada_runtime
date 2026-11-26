@@ -62,26 +62,26 @@ package body Extras_Tests is
       Inner   : Extras.Inner_Type.T;
    begin
       Group ("Extras processing");
-      Extras.Parse (Data, S, R);
+      Extras.Parse (R, Data, S);
       Check (OK (S) and then Is_EOF (S), "parsed to the end");
       if not Extras.Valid (R) then
          Check (False, "valid");
          return;
       end if;
       Check (Extras.Secret_Raw (R) = (First => 3, Last => 4), "the bytes as they are in the input");
-      Extras.Secret (Data, R, Target, Last, Outcome);
+      Extras.Secret (R, Data, Target, Last, Outcome);
       Check (Outcome = Success and then Last = 42, "processed into the array of the caller");
       Check (Target (41 .. 42) = (16#61#, 16#62#), "with the key taken from a field");
       Check (Target (43) = 16#EE#, "and nothing written behind it");
-      Extras.Secret (Data, R, Target (41 .. 41), Last, Outcome);
+      Extras.Secret (R, Data, Target (41 .. 41), Last, Outcome);
       Check (Outcome = Capacity_Exceeded and then Last = 40, "an array that is too small");
 
-      Extras.Packed (Data, R, Target, Inner, Outcome);
+      Extras.Packed (R, Data, Target, Inner, Outcome);
       Check (Outcome = Success and then Extras.Inner_Type.Valid (Inner), "a value parsed from processed bytes");
       if Extras.Inner_Type.Valid (Inner) then
          Check (Extras.Inner_Type.A (Inner) = 16#1234# and then Extras.Inner_Type.B (Inner) = 16#56#, "its fields");
       end if;
-      Extras.Packed (Data, R, Target (41 .. 42), Inner, Outcome);
+      Extras.Packed (R, Data, Target (41 .. 42), Inner, Outcome);
       Check (Outcome = Capacity_Exceeded and then not Extras.Inner_Type.Valid (Inner), "storage that is too small");
    end Test_Processing;
 
@@ -92,13 +92,13 @@ package body Extras_Tests is
       Other : Bytes := Data;
    begin
       Group ("Extras references to parent and root");
-      Extras.Parse (Data, S, R);
+      Extras.Parse (R, Data, S);
       if not Extras.Valid (R) then
          Check (False, "valid");
          return;
       end if;
       Check (Extras.Items_Count (R) = 2, "count");
-      Extras.Get_Items (Data, R, 1, Item);
+      Extras.Get_Items (R, Data, 1, Item);
       if Items.Valid (Item) then
          Check (Items.Value (Item) = (First => 12, Last => 13), "a size taken from the parent");
          Check (Items.Has_Extra (Item) and then Items.Extra (Item) = 16#0B#, "a condition on a field of the root");
@@ -110,9 +110,9 @@ package body Extras_Tests is
       --  bytes too many for the tree to end where the input ends
       Other (1) := 1;
       S := Open (Other);
-      Extras.Parse (Other, S, R);
+      Extras.Parse (R, Other, S);
       if Extras.Valid (R) then
-         Extras.Get_Items (Other, R, 0, Item);
+         Extras.Get_Items (R, Other, 0, Item);
          Check (Items.Valid (Item) and then not Items.Has_Extra (Item), "the condition does not hold");
          Check (not Is_EOF (S), "and the rest is read differently");
       else
@@ -128,19 +128,19 @@ package body Extras_Tests is
       Length : Kaitai.Types.Length;
    begin
       Group ("Extras a type that contains itself");
-      Extras.Parse (Data, S, R);
+      Extras.Parse (R, Data, S);
       if not Extras.Valid (R) then
          Check (False, "valid");
          return;
       end if;
       Check (Nodes.Tag (Extras.Tree (R)) = 1 and then Nodes.Children_Count (Extras.Tree (R)) = 2, "the root");
       Check (Nodes.Has_Weight (Extras.Tree (R)) and then Nodes.Weight (Extras.Tree (R)) = 16#0C#, "field after");
-      Nodes.Get_Children (Data, Extras.Tree (R), 0, Child);
+      Nodes.Get_Children (Extras.Tree (R), Data, 0, Child);
       Check (Nodes.Valid (Child) and then Nodes.Tag (Child) = 2 and then Nodes.Weight (Child) = 7, "first child");
-      Nodes.Get_Children (Data, Extras.Tree (R), 1, Child);
+      Nodes.Get_Children (Extras.Tree (R), Data, 1, Child);
       if Nodes.Valid (Child) and then Nodes.Belongs_To (Child, Data) and then Nodes.Children_Count (Child) = 1 then
          Check (Nodes.Tag (Child) = 3 and then Nodes.Weight (Child) = 9, "second child");
-         Nodes.Get_Children (Data, Child, 0, Grand);
+         Nodes.Get_Children (Child, Data, 0, Grand);
          Check (Nodes.Valid (Grand) and then Nodes.Tag (Grand) = 4 and then Nodes.Weight (Grand) = 8, "its child");
       else
          Check (False, "second child has a child");
@@ -148,11 +148,11 @@ package body Extras_Tests is
 
       Length := Chain (Extras.Max_Depth);
       S := Open (Deep (1 .. Length));
-      Extras.Parse (Deep (1 .. Length), S, R);
+      Extras.Parse (R, Deep (1 .. Length), S);
       Check (OK (S) and then Extras.Valid (R) and then Is_EOF (S), "nested as deep as is allowed");
       Length := Chain (Extras.Max_Depth + 1);
       S := Open (Deep (1 .. Length));
-      Extras.Parse (Deep (1 .. Length), S, R);
+      Extras.Parse (R, Deep (1 .. Length), S);
       Check (Status (S) = Limit_Exceeded and then not Extras.Valid (R), "nested one level deeper");
    end Test_Recursion;
 
@@ -164,7 +164,7 @@ package body Extras_Tests is
       Group ("Extras variations");
       for Last in 0 .. Data'Last - 1 loop
          S := Open (Data (1 .. Last));
-         Extras.Parse (Data (1 .. Last), S, R);
+         Extras.Parse (R, Data (1 .. Last), S);
          if Extras.Valid (R) or else Status (S) /= End_Of_Stream then
             Bad := Bad + 1;
          end if;

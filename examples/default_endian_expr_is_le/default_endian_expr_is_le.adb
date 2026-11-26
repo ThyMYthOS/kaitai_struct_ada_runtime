@@ -11,10 +11,10 @@ is
       package body Main_Obj_Type is
 
          procedure Parse
-           (Buffer : Kaitai.Types.Bytes;
+           (This   : out T;
+            Buffer : Kaitai.Types.Bytes;
             S      : in out Kaitai.Streams.Stream;
-            Order  : Kaitai.Types.Byte_Order;
-            This   : out T) is
+            Order  : Kaitai.Types.Byte_Order) is
          begin
             This.Order := Order;
             Kaitai.Streams.Read_U4 (Buffer, S, Order, This.Some_Int);
@@ -32,7 +32,7 @@ is
 
       end Main_Obj_Type;
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
          Order : Kaitai.Types.Byte_Order;
       begin
          Kaitai.Streams.Read_Bytes (S, 2, This.Indicator);
@@ -41,12 +41,12 @@ is
          else
             Order := Kaitai.Types.Big_Endian;
          end if;
-         Doc_Type.Main_Obj_Type.Parse (Buffer, S, Order, This.Main);
+         Doc_Type.Main_Obj_Type.Parse (This.Main, Buffer, S, Order);
          This.Is_Valid := Kaitai.Streams.OK (S);
       end Parse;
 
       procedure Write
-        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+        (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
       begin
          Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.Indicator.First .. This.Indicator.Last));
          Doc_Type.Main_Obj_Type.Write (This.Main, Target, W);
@@ -54,14 +54,14 @@ is
 
    end Doc_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Doc_Type.T;
    begin
       This.Docs_Io := S;
       This.Docs_Count := 0;
       for I in 1 .. Kaitai.Streams.Remaining (S) loop
          exit when Kaitai.Streams.Is_EOF (S);
-         Doc_Type.Parse (Buffer, S, Element);
+         Doc_Type.Parse (Element, Buffer, S);
          exit when not Doc_Type.Valid (Element);
          This.Docs_Count := I;
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
@@ -72,27 +72,27 @@ is
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Docs_Cursor; Element : out Doc_Type.T) is
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Docs_Cursor; Element : out Doc_Type.T) is
       pragma Warnings (Off, This);
    begin
-      Doc_Type.Parse (Buffer, Position.Io, Element);
+      Doc_Type.Parse (Element, Buffer, Position.Io);
       Position.Left := (if Doc_Type.Valid (Element) then Position.Left - 1 else 0);
    end Next;
 
-   procedure Get_Docs (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Doc_Type.T) is
+   procedure Get_Docs (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Doc_Type.T) is
       Position : Docs_Cursor := Docs_First (This);
       Result   : Doc_Type.T;
    begin
       for I in 0 .. Index loop
          pragma Loop_Invariant (Belongs_To (Position, Buffer) and then Doc_Type.Belongs_To (Result, Buffer));
          exit when not Has_Element (Position);
-         Next (Buffer, This, Position, Result);
+         Next (This, Buffer, Position, Result);
       end loop;
       Element := Result;
    end Get_Docs;
 
    procedure Write
-     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+     (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
    begin
       declare
          Position : Docs_Cursor := Docs_First (This);
@@ -104,9 +104,9 @@ is
               Loop_Invariant
                 (Kaitai.Writers.Is_Valid (W, Target) and then Kaitai.Writers.Same_Window (W'Loop_Entry, W));
             pragma Loop_Variant (Decreases => Remaining (Position));
-            Next (Buffer, This, Position, Element);
+            Next (This, Buffer, Position, Element);
             if Doc_Type.Valid (Element) then
-               Doc_Type.Write (Buffer, Element, Target, W);
+               Doc_Type.Write (Element, Buffer, Target, W);
             else
                --  The buffer is not what was parsed
                Kaitai.Writers.Fail (W, Kaitai.Types.Validation_Expr);

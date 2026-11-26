@@ -8,7 +8,7 @@ is
 
    package body S1_Type_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_Bytes_Term
            (Buffer, S, Term => 124, Include => False, Consume => True, EOS_Error => False, Data => This.Value);
@@ -19,7 +19,7 @@ is
       end Parse;
 
       procedure Write
-        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+        (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
       begin
          Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.Value.First .. This.Value.Last));
          if Kaitai.Writers.Remaining (W) > 0 then
@@ -31,7 +31,7 @@ is
 
    package body S2_Type_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_Bytes_Term
            (Buffer, S, Term => 124, Include => False, Consume => False, EOS_Error => False, Data => This.Value);
@@ -42,7 +42,7 @@ is
       end Parse;
 
       procedure Write
-        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+        (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
       begin
          Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.Value.First .. This.Value.Last));
       end Write;
@@ -51,7 +51,7 @@ is
 
    package body S3_Type_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_Bytes_Term
            (Buffer, S, Term => 64, Include => True, Consume => True, EOS_Error => False, Data => This.Value);
@@ -62,49 +62,49 @@ is
       end Parse;
 
       procedure Write
-        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+        (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
       begin
          Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.Value.First .. This.Value.Last));
       end Write;
 
    end S3_Type_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Sub   : Kaitai.Streams.Stream;
       Sub_2 : Kaitai.Streams.Stream;
       Sub_3 : Kaitai.Streams.Stream;
    begin
       Kaitai.Streams.Substream (Buffer, S, 3, Sub);
-      S1_Type_Type.Parse (Buffer, Sub, This.S1);
+      S1_Type_Type.Parse (This.S1, Buffer, Sub);
       Kaitai.Streams.Join (S, Sub);
       Kaitai.Streams.Read_U1 (Buffer, S, This.Skip_Term1);
       Kaitai.Streams.Substream (Buffer, S, 3, Sub_2);
-      S2_Type_Type.Parse (Buffer, Sub_2, This.S2);
+      S2_Type_Type.Parse (This.S2, Buffer, Sub_2);
       Kaitai.Streams.Join (S, Sub_2);
       Kaitai.Streams.Read_U1 (Buffer, S, This.Skip_Term2);
       Kaitai.Streams.Substream (Buffer, S, 3, Sub_3);
-      S3_Type_Type.Parse (Buffer, Sub_3, This.S3);
+      S3_Type_Type.Parse (This.S3, Buffer, Sub_3);
       Kaitai.Streams.Join (S, Sub_3);
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 
    procedure Write
-     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+     (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
    is
       Sub   : Kaitai.Writers.Writer;
       Sub_2 : Kaitai.Writers.Writer;
       Sub_3 : Kaitai.Writers.Writer;
    begin
       Kaitai.Writers.Subwriter (Target, W, 3, Sub);
-      S1_Type_Type.Write (Buffer, This.S1, Target, Sub);
+      S1_Type_Type.Write (This.S1, Buffer, Target, Sub);
       Kaitai.Writers.Join (W, Sub);
       Kaitai.Writers.Write_U1 (Target, W, This.Skip_Term1);
       Kaitai.Writers.Subwriter (Target, W, 3, Sub_2);
-      S2_Type_Type.Write (Buffer, This.S2, Target, Sub_2);
+      S2_Type_Type.Write (This.S2, Buffer, Target, Sub_2);
       Kaitai.Writers.Join (W, Sub_2);
       Kaitai.Writers.Write_U1 (Target, W, This.Skip_Term2);
       Kaitai.Writers.Subwriter (Target, W, 3, Sub_3);
-      S3_Type_Type.Write (Buffer, This.S3, Target, Sub_3);
+      S3_Type_Type.Write (This.S3, Buffer, Target, Sub_3);
       Kaitai.Writers.Join (W, Sub_3);
    end Write;
 

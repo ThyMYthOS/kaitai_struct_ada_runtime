@@ -7,11 +7,11 @@ package body Params_Def
 is
 
    procedure Parse
-     (Buffer            : Kaitai.Types.Bytes;
+     (This              : out T;
+      Buffer            : Kaitai.Types.Bytes;
       S                 : in out Kaitai.Streams.Stream;
       Len               : Kaitai.Types.U32;
-      Has_Trailer_Field : Boolean;
-      This              : out T) is
+      Has_Trailer_Field : Boolean) is
    begin
       This := (others => <>);
       This.Len := Len;

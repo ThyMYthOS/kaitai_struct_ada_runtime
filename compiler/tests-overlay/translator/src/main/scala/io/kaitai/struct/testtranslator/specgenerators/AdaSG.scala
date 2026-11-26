@@ -209,7 +209,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
             // a field of the type itself is parsed again when asked for
             val l = ctx.name("L")
             val o = ctx.name("Outcome")
-            ctx.step(List(s"$l : ${pkg}.T;", s"$o : ${KT}Status_Kind;"), List(s"$pkg.$nm ($buf, $obj, $l, $o);"))
+            ctx.step(List(s"$l : ${pkg}.T;", s"$o : ${KT}Status_Kind;"), List(s"$pkg.$nm ($obj, $buf, $l, $o);"))
             useType(KT + "Status_Kind")
             ctx.need(s"$o = ${KT}Success")
             ctx.need(s"$pkg.Valid ($l)")
@@ -220,7 +220,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
         scalar(pkg, nm, bs, p.dataType, obj, buf)
       case v: ValueInstanceSpec =>
         val usesBuf = cc.valueInstanceUsesBuffer(cs, v)
-        val args = if (usesBuf) s"$buf, $obj" else obj
+        val args = if (usesBuf) s"$obj, $buf" else obj
         val r = presence(cc.valueInstanceHasGuard(cs, v), args)
         if (r != null) return r
         v.dataType match {
@@ -238,7 +238,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
         val o = ctx.name("Outcome")
         ctx.step(
           List(s"$l : ${storedAda(p.dataType)};", s"$o : ${KT}Status_Kind;"),
-          List(s"$pkg.$nm ($buf, $obj, $l, $o);")
+          List(s"$pkg.$nm ($obj, $buf, $l, $o);")
         )
         useType(KT + "Status_Kind")
         ctx.need(s"$o = ${KT}Success")
@@ -276,12 +276,12 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
         val last = ctx.name("Last")
         val sl = ctx.name("Item")
         ctx.step(decls ++ List(s"$last : ${KT}Length;", s"$sl : ${KT}Slice;"),
-          List(s"$pkg.$nm ($buf, $obj, $work.all, $last, $o);", s"$sl := (First => $work.all'First, Last => $last);"), cleanup)
+          List(s"$pkg.$nm ($obj, $buf, $work.all, $last, $o);", s"$sl := (First => $work.all'First, Last => $last);"), cleanup)
         ctx.need(s"$o = ${KT}Success")
         ABytes(sl, s"$work.all")
       case ut: UserTypeFromBytes =>
         val l = ctx.name("L")
-        ctx.step(decls ++ List(s"$l : ${pkgOf(ut.classSpec.get)}.T;"), List(s"$pkg.$nm ($buf, $obj, $work.all, $l, $o);"), cleanup)
+        ctx.step(decls ++ List(s"$l : ${pkgOf(ut.classSpec.get)}.T;"), List(s"$pkg.$nm ($obj, $buf, $work.all, $l, $o);"), cleanup)
         ctx.need(s"$o = ${KT}Success")
         ctx.need(s"${pkgOf(ut.classSpec.get)}.Valid ($l)")
         AUser(ut.classSpec.get, l, s"$work.all")
@@ -503,13 +503,13 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     AdaTranslator.fixedElement(dt) match {
       case Some(_) =>
         dt match {
-          case FloatMultiType(w, _) => AFloat(s"$pkg.${bs}_Bits ($buf, $obj, $ix)", w.width)
-          case et: EnumType => AInt(s"$pkg.$nm ($buf, $obj, $ix)", adaInt(et.basedOn), et.enumSpec)
-          case _ => AInt(s"$pkg.$nm ($buf, $obj, $ix)", adaInt(dt), None)
+          case FloatMultiType(w, _) => AFloat(s"$pkg.${bs}_Bits ($obj, $buf, $ix)", w.width)
+          case et: EnumType => AInt(s"$pkg.$nm ($obj, $buf, $ix)", adaInt(et.basedOn), et.enumSpec)
+          case _ => AInt(s"$pkg.$nm ($obj, $buf, $ix)", adaInt(dt), None)
         }
       case None =>
         val e = ctx.name("E")
-        ctx.step(List(s"$e : ${storedAda(dt)};"), List(s"$pkg.Get_$bs ($buf, $obj, $ix, $e);"))
+        ctx.step(List(s"$e : ${storedAda(dt)};"), List(s"$pkg.Get_$bs ($obj, $buf, $ix, $e);"))
         val v = valueOf(dt, e, buf)
         v match {
           case AUser(c, code, _) => ctx.need(s"${pkgOf(c)}.Valid ($code)")
@@ -680,7 +680,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
         elts.indices.foreach { k =>
           val e = ctx.name("E")
           decls += s"$e : ${storedAda(arr.a.dataType)};"
-          stmts += s"$pkg.Get_$bs (${arr.buf}, ${arr.obj}, $k, $e);"
+          stmts += s"$pkg.Get_$bs (${arr.obj}, ${arr.buf}, $k, $e);"
           vals += valueOf(arr.a.dataType, e, arr.buf)
         }
         ctx.step(decls.toList, stmts.toList)
@@ -697,9 +697,9 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     val bs = cc.memberBase(arr.a.id)
     val nm = cc.memberName(arr.cs, arr.a.id)
     arr.a.dataType match {
-      case FloatMultiType(w, _) => AFloat(s"$pkg.${bs}_Bits (${arr.buf}, ${arr.obj}, $ix)", w.width)
-      case et: EnumType => AInt(s"$pkg.$nm (${arr.buf}, ${arr.obj}, $ix)", adaInt(et.basedOn), et.enumSpec)
-      case dt => AInt(s"$pkg.$nm (${arr.buf}, ${arr.obj}, $ix)", adaInt(dt), None)
+      case FloatMultiType(w, _) => AFloat(s"$pkg.${bs}_Bits (${arr.obj}, ${arr.buf}, $ix)", w.width)
+      case et: EnumType => AInt(s"$pkg.$nm (${arr.obj}, ${arr.buf}, $ix)", adaInt(et.basedOn), et.enumSpec)
+      case dt => AInt(s"$pkg.$nm (${arr.obj}, ${arr.buf}, $ix)", adaInt(dt), None)
     }
   }
 
@@ -806,7 +806,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
 
   /** Arguments of `Parse` between the stream and the result */
   private def parseArgs: String =
-    topArgs.map(_ + ", ").getOrElse("") + (if (isRecursiveTop) topPkg + ".Max_Depth, " else "")
+    topArgs.map(", " + _).getOrElse("") + (if (isRecursiveTop) ", " + topPkg + ".Max_Depth" else "")
 
   private def isRecursiveTop: Boolean =
     top.seq.exists(a => containsSelf(a.dataType)) ||
@@ -823,8 +823,8 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     usedLibs += "Writers"
     useType(KT + "U8")
     useType(KT + "Bytes")
-    val args = if (cc.hasBelongs(top)) "Buffer.all, R" else "R"
-    val args2 = if (cc.hasBelongs(top)) "Output, R2" else "R2"
+    val args = if (cc.hasBelongs(top)) "R, Buffer.all" else "R"
+    val args2 = if (cc.hasBelongs(top)) "R2, Output" else "R2"
     val body = List(
       "declare",
       "   Capacity : constant Kaitai.Types.Length := 2 * Size + 16;",
@@ -861,7 +861,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
       "               Canonical : Boolean := False;",
       "               Values_Differ : Boolean := False;",
       "            begin",
-      s"               $topPkg.Parse (Output, S2, ${parseArgs}R2);",
+      s"               $topPkg.Parse (R2, Output, S2$parseArgs);",
       s"               if $topPkg.Valid (R2) then",
       s"                  $topPkg.Write ($args2, Target2.all, W2);",
       "                  Canonical := Kaitai.Writers.OK (W2)",
@@ -1064,7 +1064,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     p("      S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer.all);")
     p(s"      R : $topPkg.T;")
     p("   begin")
-    p(s"      $topPkg.Parse (Buffer.all, S, ${parseArgs}R);")
+    p(s"      $topPkg.Parse (R, Buffer.all, S$parseArgs);")
     body.foreach(l => p(l))
     p("   end;")
     p("   Free (Buffer);")

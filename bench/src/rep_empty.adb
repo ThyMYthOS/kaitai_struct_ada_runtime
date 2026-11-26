@@ -17,7 +17,7 @@ is
       This.Items_Count := To_Count (S64 (Count));
       for I in 1 .. This.Items_Count loop
          Before := S;
-         Bench_Rep_Empty.Item_Type.Parse (Buffer, S, This.Flag, Element);
+         Bench_Rep_Empty.Item_Type.Parse (Element, Buffer, S, This.Flag);
          exit when not Bench_Rep_Empty.Item_Type.Valid (Element);
          exit when Pos (S) = Pos (Before) and then Bits_Left (S) = Bits_Left (Before);
          pragma Loop_Invariant (Is_Valid (S, Buffer) and then Advanced (S'Loop_Entry, S));
@@ -35,7 +35,7 @@ is
       for I in 0 .. Index loop
          pragma Loop_Invariant (Is_Valid (L, Buffer));
          Before := L;
-         Bench_Rep_Empty.Item_Type.Parse (Buffer, L, This.Flag, Result);
+         Bench_Rep_Empty.Item_Type.Parse (Result, Buffer, L, This.Flag);
          exit when not Bench_Rep_Empty.Item_Type.Valid (Result);
          exit when Pos (L) = Pos (Before) and then Bits_Left (L) = Bits_Left (Before);
       end loop;

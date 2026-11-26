@@ -22,12 +22,12 @@ is
 
    --  Parses one `timestamp` at the position of S and leaves S behind it. A
    --  rate below 1 is not accepted: S has failed with Arithmetic_Error then.
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it
    --  @param S Where to read. Afterwards it is behind the value, or it has failed
    --  @param Rate The ticks per second, the argument of the description
-   --  @param This The result. Valid if and only if S has not failed
    procedure Parse
-     (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Rate : Kaitai.Types.S64; This : out T)
+     (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Rate : Kaitai.Types.S64)
    with
      Global => null,
      Pre    => Kaitai.Streams.Is_Valid (S, Buffer),

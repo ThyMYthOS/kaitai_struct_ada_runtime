@@ -8,7 +8,7 @@ is
 
    package body Arg_Str_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_U1 (Buffer, S, This.Len);
          Kaitai.Streams.Read_Bytes (S, Kaitai.Types.To_Size (Kaitai.Types.S64 (This.Len)), This.Str);
@@ -22,7 +22,7 @@ is
 
    package body Arg_Tuple_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_U1 (Buffer, S, This.Num1);
          Kaitai.Streams.Read_U1 (Buffer, S, This.Num2);
@@ -33,28 +33,28 @@ is
 
    package body Operation_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          This := (others => <>);
          Kaitai.Streams.Read_U1 (Buffer, S, This.Opcode);
          if Kaitai.Types.S64 (This.Opcode) = 84 then
             This.Has_Arg_Tuple := True;
-            Arg_Tuple_Type.Parse (Buffer, S, This.Arg_Tuple);
+            Arg_Tuple_Type.Parse (This.Arg_Tuple, Buffer, S);
          end if;
          if Kaitai.Types.S64 (This.Opcode) = 83 then
             This.Has_Arg_Str := True;
-            Arg_Str_Type.Parse (Buffer, S, This.Arg_Str);
+            Arg_Str_Type.Parse (This.Arg_Str, Buffer, S);
          end if;
          This.Is_Valid := Kaitai.Streams.OK (S);
       end Parse;
 
    end Operation_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
-      Operation_Type.Parse (Buffer, S, This.Op1);
-      Operation_Type.Parse (Buffer, S, This.Op2);
-      Operation_Type.Parse (Buffer, S, This.Op3);
+      Operation_Type.Parse (This.Op1, Buffer, S);
+      Operation_Type.Parse (This.Op2, Buffer, S);
+      Operation_Type.Parse (This.Op3, Buffer, S);
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

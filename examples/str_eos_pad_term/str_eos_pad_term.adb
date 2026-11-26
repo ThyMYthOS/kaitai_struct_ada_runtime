@@ -9,7 +9,7 @@ is
 
    package body Str_Pad_Type_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_Bytes_Full (S, This.Value);
          This.Value := Kaitai.Byte_Arrays.Strip_Right (Buffer, This.Value, 64);
@@ -20,7 +20,7 @@ is
       end Parse;
 
       procedure Write
-        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+        (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
       begin
          Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.Value.First .. This.Value.Last));
          Kaitai.Writers.Write_Padded (Target, W, (1 .. 0 => 0), Kaitai.Writers.Remaining (W), 64);
@@ -30,7 +30,7 @@ is
 
    package body Str_Term_And_Pad_Type_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_Bytes_Full (S, This.Value);
          This.Value := Kaitai.Byte_Arrays.Strip_Right (Buffer, This.Value, 43);
@@ -42,7 +42,7 @@ is
       end Parse;
 
       procedure Write
-        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+        (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
       begin
          Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.Value.First .. This.Value.Last));
          if Kaitai.Writers.Remaining (W) > 0 then
@@ -55,7 +55,7 @@ is
 
    package body Str_Term_Include_Type_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_Bytes_Full (S, This.Value);
          This.Value := Kaitai.Byte_Arrays.Terminate_At (Buffer, This.Value, 64, True);
@@ -66,7 +66,7 @@ is
       end Parse;
 
       procedure Write
-        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+        (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
       begin
          Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.Value.First .. This.Value.Last));
       end Write;
@@ -75,7 +75,7 @@ is
 
    package body Str_Term_Type_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_Bytes_Full (S, This.Value);
          This.Value := Kaitai.Byte_Arrays.Terminate_At (Buffer, This.Value, 64, False);
@@ -86,7 +86,7 @@ is
       end Parse;
 
       procedure Write
-        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+        (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
       begin
          Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.Value.First .. This.Value.Last));
          if Kaitai.Writers.Remaining (W) > 0 then
@@ -96,29 +96,29 @@ is
 
    end Str_Term_Type_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Sub   : Kaitai.Streams.Stream;
       Sub_2 : Kaitai.Streams.Stream;
       Sub_3 : Kaitai.Streams.Stream;
       Sub_4 : Kaitai.Streams.Stream;
    begin
       Kaitai.Streams.Substream (Buffer, S, 20, Sub);
-      Str_Pad_Type_Type.Parse (Buffer, Sub, This.Str_Pad);
+      Str_Pad_Type_Type.Parse (This.Str_Pad, Buffer, Sub);
       Kaitai.Streams.Join (S, Sub);
       Kaitai.Streams.Substream (Buffer, S, 20, Sub_2);
-      Str_Term_Type_Type.Parse (Buffer, Sub_2, This.Str_Term);
+      Str_Term_Type_Type.Parse (This.Str_Term, Buffer, Sub_2);
       Kaitai.Streams.Join (S, Sub_2);
       Kaitai.Streams.Substream (Buffer, S, 20, Sub_3);
-      Str_Term_And_Pad_Type_Type.Parse (Buffer, Sub_3, This.Str_Term_And_Pad);
+      Str_Term_And_Pad_Type_Type.Parse (This.Str_Term_And_Pad, Buffer, Sub_3);
       Kaitai.Streams.Join (S, Sub_3);
       Kaitai.Streams.Substream (Buffer, S, 20, Sub_4);
-      Str_Term_Include_Type_Type.Parse (Buffer, Sub_4, This.Str_Term_Include);
+      Str_Term_Include_Type_Type.Parse (This.Str_Term_Include, Buffer, Sub_4);
       Kaitai.Streams.Join (S, Sub_4);
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 
    procedure Write
-     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
+     (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer)
    is
       Sub   : Kaitai.Writers.Writer;
       Sub_2 : Kaitai.Writers.Writer;
@@ -126,16 +126,16 @@ is
       Sub_4 : Kaitai.Writers.Writer;
    begin
       Kaitai.Writers.Subwriter (Target, W, 20, Sub);
-      Str_Pad_Type_Type.Write (Buffer, This.Str_Pad, Target, Sub);
+      Str_Pad_Type_Type.Write (This.Str_Pad, Buffer, Target, Sub);
       Kaitai.Writers.Join (W, Sub);
       Kaitai.Writers.Subwriter (Target, W, 20, Sub_2);
-      Str_Term_Type_Type.Write (Buffer, This.Str_Term, Target, Sub_2);
+      Str_Term_Type_Type.Write (This.Str_Term, Buffer, Target, Sub_2);
       Kaitai.Writers.Join (W, Sub_2);
       Kaitai.Writers.Subwriter (Target, W, 20, Sub_3);
-      Str_Term_And_Pad_Type_Type.Write (Buffer, This.Str_Term_And_Pad, Target, Sub_3);
+      Str_Term_And_Pad_Type_Type.Write (This.Str_Term_And_Pad, Buffer, Target, Sub_3);
       Kaitai.Writers.Join (W, Sub_3);
       Kaitai.Writers.Subwriter (Target, W, 20, Sub_4);
-      Str_Term_Include_Type_Type.Write (Buffer, This.Str_Term_Include, Target, Sub_4);
+      Str_Term_Include_Type_Type.Write (This.Str_Term_Include, Buffer, Target, Sub_4);
       Kaitai.Writers.Join (W, Sub_4);
    end Write;
 

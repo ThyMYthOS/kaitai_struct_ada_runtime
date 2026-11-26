@@ -7,7 +7,7 @@ is
    package body Item_Type is
 
       procedure Parse
-        (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Flag : Kaitai.Types.U8; This : out T) is
+        (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Flag : Kaitai.Types.U8) is
       begin
          This := (others => <>);
          This.Flag := Flag;
@@ -20,7 +20,7 @@ is
 
    end Item_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Item_Type.T;
       Before  : Kaitai.Streams.Stream;
    begin
@@ -30,7 +30,7 @@ is
       This.Items_Count := Kaitai.Types.To_Count (Kaitai.Types.S64 (This.Num_Items));
       for I in 1 .. This.Items_Count loop
          Before := S;
-         Item_Type.Parse (Buffer, S, This.Flag, Element);
+         Item_Type.Parse (Element, Buffer, S, This.Flag);
          exit when not Item_Type.Valid (Element);
          --  An element that read nothing: so will all that follow
          exit when
@@ -41,13 +41,13 @@ is
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Items_Cursor; Element : out Item_Type.T) is
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Items_Cursor; Element : out Item_Type.T) is
    begin
-      Item_Type.Parse (Buffer, Position.Io, This.Flag, Element);
+      Item_Type.Parse (Element, Buffer, Position.Io, This.Flag);
       Position.Left := (if Item_Type.Valid (Element) then Position.Left - 1 else 0);
    end Next;
 
-   procedure Get_Items (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Item_Type.T)
+   procedure Get_Items (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Item_Type.T)
    is
       Position : Items_Cursor := Items_First (This);
       Result   : Item_Type.T;
@@ -55,7 +55,7 @@ is
       for I in 0 .. Index loop
          pragma Loop_Invariant (Belongs_To (Position, Buffer));
          exit when not Has_Element (Position);
-         Next (Buffer, This, Position, Result);
+         Next (This, Buffer, Position, Result);
       end loop;
       Element := Result;
    end Get_Items;

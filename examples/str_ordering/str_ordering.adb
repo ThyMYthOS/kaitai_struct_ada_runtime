@@ -6,7 +6,7 @@ package body Str_Ordering
   with SPARK_Mode
 is
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       Kaitai.Streams.Read_Bytes (S, 2, This.A);
       if not Kaitai.Strings.Is_Valid (Buffer, This.A, Kaitai.Strings.UTF_8) then

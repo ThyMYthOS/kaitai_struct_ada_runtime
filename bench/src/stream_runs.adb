@@ -1671,7 +1671,7 @@ package body Stream_Runs is
       Sum  : U64 := 0;
    begin
       while not Kaitai.Streams.Is_EOF (S) loop
-         Bench_Fields4.Parse (Data, S, This);
+         Bench_Fields4.Parse (This, Data, S);
          exit when not Kaitai.Streams.OK (S) or else not Bench_Fields4.Valid (This);
          Sum :=
            Sum
@@ -1689,7 +1689,7 @@ package body Stream_Runs is
       Sum  : U64 := 0;
    begin
       while not Kaitai.Streams.Is_EOF (S) loop
-         Bench_Term.Parse (Data, S, This);
+         Bench_Term.Parse (This, Data, S);
          exit when not Kaitai.Streams.OK (S) or else not Bench_Term.Valid (This);
          Sum :=
            Sum * 31 + U64 (Size (Bench_Term.S1 (This))) + U64 (Size (Bench_Term.S2 (This))) + U64 (Bench_Term.N (This));
@@ -1704,7 +1704,7 @@ package body Stream_Runs is
       Sum  : U64 := 0;
    begin
       while not Kaitai.Streams.Is_EOF (S) loop
-         Parse (Data, S, This);
+         Parse (This, Data, S);
          exit when not Kaitai.Streams.OK (S) or else not Valid (This);
          Sum :=
            Sum

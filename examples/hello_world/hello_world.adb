@@ -4,7 +4,7 @@ package body Hello_World
   with SPARK_Mode
 is
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       Kaitai.Streams.Read_U1 (Buffer, S, This.One);
       This.Is_Valid := Kaitai.Streams.OK (S);

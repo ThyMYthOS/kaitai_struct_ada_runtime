@@ -8,7 +8,7 @@ is
 
    package body Item_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_U1 (Buffer, S, This.Len);
          Kaitai.Streams.Read_Bytes (S, Kaitai.Types.To_Size (Kaitai.Types.S64 (This.Len)), This.Name);
@@ -21,28 +21,28 @@ is
 
    end Item_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Item_Type.T;
    begin
       Kaitai.Streams.Read_U4le (Buffer, S, This.Num_Items);
       This.Items_Io := S;
       This.Items_Count := Kaitai.Types.To_Count (Kaitai.Types.S64 (This.Num_Items));
       for I in 1 .. This.Items_Count loop
-         Item_Type.Parse (Buffer, S, Element);
+         Item_Type.Parse (Element, Buffer, S);
          exit when not Item_Type.Valid (Element);
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 
-   procedure Next (Buffer : Kaitai.Types.Bytes; This : T; Position : in out Items_Cursor; Element : out Item_Type.T) is
+   procedure Next (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Items_Cursor; Element : out Item_Type.T) is
       pragma Warnings (Off, This);
    begin
-      Item_Type.Parse (Buffer, Position.Io, Element);
+      Item_Type.Parse (Element, Buffer, Position.Io);
       Position.Left := (if Item_Type.Valid (Element) then Position.Left - 1 else 0);
    end Next;
 
-   procedure Get_Items (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length; Element : out Item_Type.T)
+   procedure Get_Items (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Item_Type.T)
    is
       Position : Items_Cursor := Items_First (This);
       Result   : Item_Type.T;
@@ -50,7 +50,7 @@ is
       for I in 0 .. Index loop
          pragma Loop_Invariant (Belongs_To (Position, Buffer) and then Item_Type.Belongs_To (Result, Buffer));
          exit when not Has_Element (Position);
-         Next (Buffer, This, Position, Result);
+         Next (This, Buffer, Position, Result);
       end loop;
       Element := Result;
    end Get_Items;

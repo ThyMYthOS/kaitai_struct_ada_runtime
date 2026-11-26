@@ -191,7 +191,7 @@ package body Param_Runs is
       Sum : U64 := 0;
    begin
       while not Is_EOF (S) loop
-         Bench_Puser_V3.Parse (Data, S, P);
+         Bench_Puser_V3.Parse (P, Data, S);
          exit when not OK (S) or else not Bench_Puser_V3.Valid (P);
          Sum := Sum * 31 + U64 (Bench_Puser_V3.Items_Count (P));
          if Phase /= 1 then
@@ -201,7 +201,7 @@ package body Param_Runs is
                Item     : Item_Type.T;
             begin
                while Has_Element (Position) loop
-                  Next (Data, P, Position, Item);
+                  Next (P, Data, Position, Item);
                   exit when not Item_Type.Valid (Item);
                   Sum := Sum * 31 + U64 (Item_Type.X (Item)) + U64 (Item_Type.Y (Item));
                   if Phase = 3 then

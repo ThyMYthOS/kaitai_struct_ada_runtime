@@ -22,7 +22,7 @@ is
       L : Stream := Origin;
    begin
       Seek (L, To_Size (S64 (Size (L)) - 6));
-      Bench_Inst_Until.Header_Obj_Type.Parse (Buffer, L, Result);
+      Bench_Inst_Until.Header_Obj_Type.Parse (Result, Buffer, L);
       Outcome := Status (L);
    end Read_Header;
 

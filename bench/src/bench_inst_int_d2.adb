@@ -31,7 +31,7 @@ is
       This.Chunks_Io := S;
       This.Chunks_Count := To_Count (S64 (This.Num_Chunks));
       for I in 1 .. This.Chunks_Count loop
-         Bench_Inst_Int.Chunk_Type.Parse (Buffer, S, Element);
+         Bench_Inst_Int.Chunk_Type.Parse (Element, Buffer, S);
          exit when not Bench_Inst_Int.Chunk_Type.Valid (Element);
          pragma Loop_Invariant (Is_Valid (S, Buffer) and then Advanced (S'Loop_Entry, S));
       end loop;
@@ -43,7 +43,7 @@ is
    is
       pragma Unreferenced (This);
    begin
-      Bench_Inst_Int.Chunk_Type.Parse (Buffer, Position.Io, Element);
+      Bench_Inst_Int.Chunk_Type.Parse (Element, Buffer, Position.Io);
       Position.Left := (if Bench_Inst_Int.Chunk_Type.Valid (Element) then Position.Left - 1 else 0);
    end Next;
 

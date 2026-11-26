@@ -15,7 +15,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Repeat_Eos_U4.T;
    --     ...
-   --     Repeat_Eos_U4.Parse (Buffer, S, V);
+   --     Repeat_Eos_U4.Parse (V, Buffer, S);
    --     if Repeat_Eos_U4.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -50,10 +50,10 @@ is
    --
    --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -68,7 +68,7 @@ is
 
    --  Element Index of the repeated field `numbers`, counted from 0, an unsigned integer of 4 bytes, little endian,
    --  decoded from Buffer. Buffer is the buffer that This was parsed from. Requires Index < Numbers_Count (This).
-   function Numbers (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U32
+   function Numbers (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U32
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Numbers_Count (This);
 
 private
@@ -87,7 +87,7 @@ private
    function Numbers_Count (This : T) return Kaitai.Types.Length
    is (Kaitai.Types.Size (This.Numbers) / 4);
 
-   function Numbers (Buffer : Kaitai.Types.Bytes; This : T; Index : Kaitai.Types.Length) return Kaitai.Types.U32
+   function Numbers (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length) return Kaitai.Types.U32
    is (Kaitai.Decoding.U32_LE (Buffer, This.Numbers.First + Index * 4));
 
 end Repeat_Eos_U4;

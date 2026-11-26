@@ -6,7 +6,7 @@ is
 
    package body Block_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_U1 (Buffer, S, This.A);
          Kaitai.Streams.Read_U4le (Buffer, S, This.B);
@@ -16,11 +16,11 @@ is
 
    end Block_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Sub : Kaitai.Streams.Stream;
    begin
       Kaitai.Streams.Substream (Buffer, S, 12, Sub);
-      Block_Type.Parse (Buffer, Sub, This.Block1);
+      Block_Type.Parse (This.Block1, Buffer, Sub);
       Kaitai.Streams.Join (S, Sub);
       Kaitai.Streams.Read_U2le (Buffer, S, This.More);
       This.Is_Valid := Kaitai.Streams.OK (S);

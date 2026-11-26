@@ -6,7 +6,7 @@ package body Instance_Std
   with SPARK_Mode
 is
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       pragma Unmodified (S);
    begin
       This.Io := S;
@@ -14,7 +14,7 @@ is
    end Parse;
 
    procedure Header
-     (Buffer : Kaitai.Types.Bytes; This : T; Result : out Kaitai.Types.Slice; Outcome : out Kaitai.Types.Status_Kind)
+     (This : T; Buffer : Kaitai.Types.Bytes; Result : out Kaitai.Types.Slice; Outcome : out Kaitai.Types.Status_Kind)
    is
       L : Kaitai.Streams.Stream := This.Io;
       pragma Warnings (Off, This);

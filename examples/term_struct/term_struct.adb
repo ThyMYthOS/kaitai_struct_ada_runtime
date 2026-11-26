@@ -6,21 +6,21 @@ is
 
    package body Bytes_Wrapper_Type is
 
-      procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+      procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       begin
          Kaitai.Streams.Read_Bytes_Full (S, This.Value);
          This.Is_Valid := Kaitai.Streams.OK (S);
       end Parse;
 
       procedure Write
-        (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+        (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
       begin
          Kaitai.Writers.Write_Bytes (Target, W, Buffer (This.Value.First .. This.Value.Last));
       end Write;
 
    end Bytes_Wrapper_Type;
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Sub    : Kaitai.Streams.Stream;
       Raw    : Kaitai.Types.Slice;
       None   : Bytes_Wrapper_Type.T;
@@ -34,7 +34,7 @@ is
       Kaitai.Streams.Read_Bytes_Term
         (Buffer, S, Term => 124, Include => False, Consume => True, EOS_Error => True, Data => Raw);
       Sub := Kaitai.Streams.Open (Buffer, Raw);
-      Bytes_Wrapper_Type.Parse (Buffer, Sub, This.S1);
+      Bytes_Wrapper_Type.Parse (This.S1, Buffer, Sub);
       Kaitai.Streams.Join (S, Sub);
       if not Kaitai.Streams.OK (S) then
          This.S1 := None;
@@ -42,7 +42,7 @@ is
       Kaitai.Streams.Read_Bytes_Term
         (Buffer, S, Term => 124, Include => False, Consume => False, EOS_Error => True, Data => Raw_2);
       Sub_2 := Kaitai.Streams.Open (Buffer, Raw_2);
-      Bytes_Wrapper_Type.Parse (Buffer, Sub_2, This.S2);
+      Bytes_Wrapper_Type.Parse (This.S2, Buffer, Sub_2);
       Kaitai.Streams.Join (S, Sub_2);
       if not Kaitai.Streams.OK (S) then
          This.S2 := None_2;
@@ -50,7 +50,7 @@ is
       Kaitai.Streams.Read_Bytes_Term
         (Buffer, S, Term => 64, Include => True, Consume => True, EOS_Error => True, Data => Raw_3);
       Sub_3 := Kaitai.Streams.Open (Buffer, Raw_3);
-      Bytes_Wrapper_Type.Parse (Buffer, Sub_3, This.S3);
+      Bytes_Wrapper_Type.Parse (This.S3, Buffer, Sub_3);
       Kaitai.Streams.Join (S, Sub_3);
       if not Kaitai.Streams.OK (S) then
          This.S3 := None_3;
@@ -59,12 +59,12 @@ is
    end Parse;
 
    procedure Write
-     (Buffer : Kaitai.Types.Bytes; This : T; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
+     (This : T; Buffer : Kaitai.Types.Bytes; Target : in out Kaitai.Types.Bytes; W : in out Kaitai.Writers.Writer) is
    begin
-      Bytes_Wrapper_Type.Write (Buffer, This.S1, Target, W);
+      Bytes_Wrapper_Type.Write (This.S1, Buffer, Target, W);
       Kaitai.Writers.Write_U1 (Target, W, 124);
-      Bytes_Wrapper_Type.Write (Buffer, This.S2, Target, W);
-      Bytes_Wrapper_Type.Write (Buffer, This.S3, Target, W);
+      Bytes_Wrapper_Type.Write (This.S2, Buffer, Target, W);
+      Bytes_Wrapper_Type.Write (This.S3, Buffer, Target, W);
    end Write;
 
 end Term_Struct;

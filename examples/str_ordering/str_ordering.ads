@@ -15,7 +15,7 @@ is
    --     S : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
    --     V : Str_Ordering.T;
    --     ...
-   --     Str_Ordering.Parse (Buffer, S, V);
+   --     Str_Ordering.Parse (V, Buffer, S);
    --     if Str_Ordering.Valid (V) then
    --        --  read V with the functions below
    --     else
@@ -50,10 +50,10 @@ is
    --
    --  Bytes that follow the value are not an error. Kaitai.Streams.Is_EOF (S) tells whether everything was read.
    --
+   --  @param This The result. Valid if and only if S has not failed
    --  @param Buffer The data. S must be a stream on it (Kaitai.Streams.Is_Valid (S, Buffer))
    --  @param S Where to read. Afterwards it is at the position behind the value, or it has failed
-   --  @param This The result. Valid if and only if S has not failed
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post =>
@@ -74,17 +74,17 @@ is
 
    --  Instance `a_gt_pound`, a boolean. Computed from the fields at every call. Buffer is the buffer that This was
    --  parsed from.
-   function A_Gt_Pound (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function A_Gt_Pound (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
    --  Instance `a_le_b`, a boolean. Computed from the fields at every call. Buffer is the buffer that This was parsed
    --  from.
-   function A_Le_B (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function A_Le_B (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
    --  Instance `a_lt_b`, a boolean. Computed from the fields at every call. Buffer is the buffer that This was parsed
    --  from.
-   function A_Lt_B (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function A_Lt_B (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
    --  Instance `literals`, a boolean. Computed from the fields at every call.
@@ -93,7 +93,7 @@ is
 
    --  Instance `pound_ge_b`, a boolean. Computed from the fields at every call. Buffer is the buffer that This was
    --  parsed from.
-   function Pound_Ge_B (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Pound_Ge_B (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    with Pre => Valid (This) and then Belongs_To (This, Buffer);
 
 private
@@ -116,22 +116,22 @@ private
    function B (This : T) return Kaitai.Types.Slice
    is (This.B);
 
-   function A_Gt_Pound (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function A_Gt_Pound (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    is (Kaitai.Byte_Arrays.Compare (Buffer (This.A.First .. This.A.Last), (16#C2#, 16#A3#))
        = Kaitai.Byte_Arrays.Greater);
 
-   function A_Le_B (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function A_Le_B (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    is (Kaitai.Byte_Arrays.Compare (Buffer (This.A.First .. This.A.Last), Buffer (This.B.First .. This.B.Last))
        /= Kaitai.Byte_Arrays.Greater);
 
-   function A_Lt_B (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function A_Lt_B (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    is (Kaitai.Byte_Arrays.Compare (Buffer (This.A.First .. This.A.Last), Buffer (This.B.First .. This.B.Last))
        = Kaitai.Byte_Arrays.Less);
 
    function Literals (This : T) return Boolean
    is (True);
 
-   function Pound_Ge_B (Buffer : Kaitai.Types.Bytes; This : T) return Boolean
+   function Pound_Ge_B (This : T; Buffer : Kaitai.Types.Bytes) return Boolean
    is (Kaitai.Byte_Arrays.Compare ((16#C2#, 16#A3#), Buffer (This.B.First .. This.B.Last)) /= Kaitai.Byte_Arrays.Less);
 
 end Str_Ordering;

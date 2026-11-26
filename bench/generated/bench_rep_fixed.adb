@@ -4,7 +4,7 @@ package body Bench_Rep_Fixed
   with SPARK_Mode
 is
 
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; This : out T) is
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       Kaitai.Streams.Read_U4le (Buffer, S, This.Num_Items);
       Kaitai.Streams.Read_Elements (S, Kaitai.Types.To_Count (Kaitai.Types.S64 (This.Num_Items)), 1, This.Items);

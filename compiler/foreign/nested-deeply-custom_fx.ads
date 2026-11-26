@@ -1,0 +1,31 @@
+--  The custom process `nested.deeply.custom_fx(key)` of the Kaitai Struct tests
+--  (formats/process_custom.ksy): the bytes between two underscores.  The key
+--  is not used.  The contract is "Foreign code" in docs/codegen.md.
+
+with Kaitai.Types;
+
+package Nested.Deeply.Custom_Fx
+  with SPARK_Mode, Always_Terminates
+is
+
+   use type Kaitai.Types.Length;
+   use type Kaitai.Types.Status_Kind;
+
+   --  An underscore, Source, and an underscore, written to Target.  The
+   --  result has two bytes more than Source.
+   procedure Decode
+     (Source  : Kaitai.Types.Bytes;
+      Key     : Kaitai.Types.S64;
+      Target  : in out Kaitai.Types.Bytes;
+      Last    : out Kaitai.Types.Length;
+      Outcome : out Kaitai.Types.Status_Kind)
+   with
+     Global => null,
+     Pre    => Target'First >= 1,
+     Post   =>
+       Last >= Target'First - 1
+       and then Last - (Target'First - 1) <= Kaitai.Types.Length (Target'Length)
+       and then (if Outcome /= Kaitai.Types.Success then Last = Target'First - 1)
+       and then (if Outcome = Kaitai.Types.Success then Last - (Target'First - 1) = Source'Length + 2);
+
+end Nested.Deeply.Custom_Fx;

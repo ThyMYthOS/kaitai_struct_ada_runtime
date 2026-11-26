@@ -92,6 +92,8 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
   private case class ASwitch(cs: ClassSpec, obj: String, a: AttrSpec, st: SwitchType, buf: String) extends AV
   /** The stream the root was parsed from */
   private case class AIo(code: String) extends AV
+  /** A member of a value of an opaque type, read with the accessor that the hand-written package is assumed to have; its type is not known */
+  private case class AOpaque(code: String) extends AV
   /** An integer that the expression turns into its decimal string */
   private case class AIntStr(i: AInt) extends AV
   /** Condition that tells a member is absent, for `expected: null` */
@@ -257,9 +259,10 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
   private def processed(ctx: Ctx, cs: ClassSpec, obj: String, a: AttrSpec, dt: DataType, buf: String): AV = {
     val pkg = pkgOf(cs)
     val nm = cc.memberName(cs, a.id)
+    // the result of zlib is larger than the input, and a custom process may do what it likes
     val zlib = dt match {
-      case b: BytesType => b.process.contains(ProcessZlib)
-      case ut: UserTypeFromBytes => ut.process.contains(ProcessZlib)
+      case b: BytesType => b.process.exists(p => p == ProcessZlib || p.isInstanceOf[ProcessCustom])
+      case ut: UserTypeFromBytes => ut.process.exists(p => p == ProcessZlib || p.isInstanceOf[ProcessCustom])
       case _ => false
     }
     val work = ctx.name("Work")
@@ -349,6 +352,13 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
         case Nil => nt(s"cast to ${t.nameAsStr}: no such case in the switch")
         case _ => nt(s"cast to ${t.nameAsStr}: the switch has several cases of that type")
       }
+    case AOpaque(code) =>
+      // `.as<u1>`: the test says what the type of the member is
+      t.names.toList match {
+        case List(n) if n.matches("[us][1248](le|be)?") =>
+          AInt(code, (if (n.head == 'u') "U" else "S") + (n.drop(1).take(1).toInt * 8), None)
+        case _ => nt(s"cast `.as<${t.nameAsStr}>` of a member of an opaque type")
+      }
     case AUser(cs, _, _) if t.names.nonEmpty && resolveType(t).eq(cs) => v
     case _ => nt(s"cast `.as<${t.nameAsStr}>` of something that is not a switch")
   }
@@ -423,6 +433,10 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
   }
 
   private def attribute(ctx: Ctx, v: AV, attr: String): AV = v match {
+    case AUser(cs, obj, _) if cs.meta.isOpaque =>
+      // the type is written by hand, and the description does not say what its members are: the accessor has the name
+      // that a generated one would have
+      AOpaque(s"${pkgOf(cs)}.${cc.base(attr)} ($obj)")
     case AUser(cs, obj, buf) => member(ctx, cs, obj, attr, buf)
     case ASwitch(cs, obj, a, st, buf) if variants(st).size == 1 && variants(st).head._1.isInstanceOf[UserType] =>
       // a switch with one type of case: the member is that of the only variant, where the switch chose it

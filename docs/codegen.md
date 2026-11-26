@@ -475,11 +475,217 @@ were applied, as in the other targets.
 A value inside processed bytes is therefore parsed only when it is asked
 for, and an error in it shows only then. `Parse` cannot use such a value;
 the compiler rejects a description in which an expression, a `valid`, a
-`switch-on` or another field depends on one. A custom process, a process of
-a string, of a repeated field, of a field whose type depends on a value, and
-of a parse instance are rejected.
+`switch-on` or another field depends on one. A process of a string, of a
+repeated field, of a field whose type depends on a value, and of a parse
+instance are rejected.
+
+A custom process (`process: my_custom_fx(key, true)`) is undone by code that
+is not generated; see "Foreign code". Its accessor has the same form as that
+of `zlib`.
 
 `examples/extras` shows this and the next two sections.
+
+## Foreign code
+
+Two constructs of Kaitai Struct call code that the description does not
+contain: an opaque type (`meta: ks-opaque-types: true` and a `type:` that no
+description defines) and a custom `process`. The compiler generates the
+calls. What they call is a package that the user writes by hand, and a
+contract says what it must provide. The generated code is proven against the
+specification of that package, which therefore has to be in SPARK. Its body
+may be in Ada that is not SPARK (`SPARK_Mode => Off`, the heap, exceptions
+inside); then GNATprove takes the specification on trust, and the body must
+keep it: it terminates, it changes nothing but its parameters, no exception
+leaves it, and everything that goes wrong is reported in the way the
+specification says. `compiler/foreign/` has the packages for the custom
+processes of the tests of Kaitai Struct, `examples/foreign` an opaque type
+and two custom processes whose bodies are proven too.
+
+The unit name follows the rule of "Names": every word of the name of the
+description is capitalised.
+
+| In the description | Package |
+|---|---|
+| `type: foo_bar` or `type: foo_bar(1, x)`, not defined | `Foo_Bar`, the package that a description `foo_bar` has |
+| `process: my_custom_fx(...)` | `My_Custom_Fx` |
+| `process: nested.deeply.custom_fx(...)` | `Nested.Deeply.Custom_Fx`, a child of `Nested.Deeply`, which is a child of `Nested`; both parents have to exist, and may be empty |
+
+A name is rejected, with the path of the attribute, where it is a reserved
+word of Ada or a name that the generated code uses (the list under "Names"),
+the name of a package of the library (`Types`, `Streams`, ...), or the name of
+a description of the compilation, and for an opaque type where it has `::`.
+The first name of such a package is also kept from the members of the
+description, like the packages of imported descriptions: a field `acme` next
+to `process: acme.scramble` is `Acme_Field`. The unit has a `with` clause for
+each package.
+
+### Opaque types
+
+A type that no description defines is opaque if the description or the
+command line asks for it (`ks-opaque-types: true`); otherwise the compiler
+reports the type as unknown. This is how the tests of Kaitai Struct use
+another description, `hello_world`, without importing it. The package of an
+opaque type provides at least this:
+
+```ada
+with Kaitai.Streams;
+with Kaitai.Types;
+
+package Foo_Bar
+  with SPARK_Mode, Always_Terminates
+is
+   --  A value of the type. Its objects are initialised by default, it can be
+   --  copied and needs no clean-up: a private type whose full view is a
+   --  record with default values.
+   type T is private;
+
+   --  True if This is the result of a Parse that succeeded
+   function Valid (This : T) return Boolean
+   with Global => null;
+
+   --  Parse one value at the position of S. The parameters after S are the
+   --  arguments of the description, one for each, in their order: an integer is
+   --  a Kaitai.Types.S64, a boolean a Boolean. There are none for a type that is
+   --  written without arguments.
+   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Len : Kaitai.Types.S64; This : out T)
+   with
+     Global => null,
+     Pre    => Kaitai.Streams.Is_Valid (S, Buffer),
+     Post   =>
+       Kaitai.Streams.Is_Valid (S, Buffer)
+       and then Kaitai.Streams.Advanced (S'Old, S)
+       and then Valid (This) = Kaitai.Streams.OK (S);
+
+   --  ... whatever the package offers to read a value
+private
+   type T is record
+      Is_Valid : Boolean := False;
+      ...
+   end record;
+
+   function Valid (This : T) return Boolean
+   is (This.Is_Valid);
+end Foo_Bar;
+```
+
+What the generated code does with it:
+
+- A field `hw` of the type has a component `Hw : Hello_World.T`, and the
+  accessor `function Hw (This : T) return Hello_World.T` with the
+  postcondition `Hello_World.Valid (Hw'Result)`. `Valid` of the type that has
+  the field includes `Hello_World.Valid (This.Hw)`. `Parse` calls
+  `Hello_World.Parse (Buffer, S, [arguments,] This.Hw)` where the field is read,
+  or with a substream (`size`, `terminator`, `process`) as for any type. A
+  repetition of the type, a case of a `switch-on` and a parse instance work the
+  same way. What the postcondition says about the stream is all that the
+  generated `Parse` knows afterwards; it proves its own postcondition from it.
+  A foreign `Parse` may read nothing at all; a loop over elements ends as it does
+  for a generated type that may read nothing.
+- The arguments are exactly those of the description. An integer is passed as
+  a `Kaitai.Types.S64`, the type in which expressions are computed, and a
+  boolean as a `Boolean`. An enumeration, a string, bytes, a type or a stream
+  as an argument is rejected. The foreign `Parse` must accept every
+  value; a value it cannot use is a failure of the stream (`Fail (S,
+  Kaitai.Types.Arithmetic_Error)` and the like), not a precondition. A literal
+  also fits a parameter of a narrower type, so that the parser generated from
+  `params_def` (`len: u4`) serves for `params_def(5, true)`; an argument that is
+  not a literal does not.
+- Nothing else is passed: no byte order (`Order`), no `Parent_X`, no
+  `Root_X`, no `Depth`. What the foreign type needs from the parent or the
+  root is an argument of the type: `type: foo_bar(_parent.len)`.
+- `Parse` may be called with the stream in the middle of a byte, behind bit
+  fields that the field before left open; the generated parsers of types
+  that start with bit fields continue in that byte. The foreign `Parse` has
+  no precondition but `Is_Valid (S, Buffer)`, and takes the bits as it finds
+  them. A parser that this compiler generated for a type that starts with bit
+  fields has `Bits_Left (S) = 0` as a further precondition (see Fields) and so
+  does not keep the contract.
+- The contract has no `Belongs_To`. The type that holds a foreign value has it
+  without the foreign part: `Belongs_To (This, Buffer)` says nothing of
+  `This.Hw`, and the compiler cannot know whether the foreign type has such a
+  function (a generated parser has it only if it holds a slice, which `hello_world`
+  does not). A foreign type that refers to the buffer must be used with the
+  buffer it was parsed from, and has to check what it reads. A foreign package
+  may declare `Belongs_To`, but a generated unit never uses it.
+- A description with an opaque type is rejected under `--read-write`: the
+  contract has no `Write`.
+
+A parser that this compiler generated from a description `foo_bar` keeps the
+contract without a change if its `Parse` takes the stream and the arguments
+and nothing else, and has no precondition but `Is_Valid (S, Buffer)`: no
+`Order`, `Parent_X`, `Root_X` or `Depth` parameter, no start with bit fields,
+and for each parameter of the description either an `s8`, a `bool`, or a
+literal at every use. `hello_world` and `opaque_external_type_02_child` do, and
+`params_def` for literal arguments; this is how the tests use them (the
+tests repository has them as parsers that are simply not imported). Where one
+does not, the user generates it under another `id` and writes the package
+`Foo_Bar` that has the specification above and calls it, converting the
+arguments or aligning the stream first.
+
+### Custom `process`
+
+`process: my_custom_fx(7, true, [0x20, 0x30])` is the call of a procedure
+`Decode` in the package `My_Custom_Fx` from the accessor of the field (see
+Processing). The package provides this:
+
+```ada
+with Kaitai.Types;
+
+package My_Custom_Fx
+  with SPARK_Mode, Always_Terminates
+is
+   use type Kaitai.Types.Length;
+   use type Kaitai.Types.Status_Kind;
+
+   --  The decoded bytes of Source, written to Target from Target'First
+   procedure Decode
+     (Source  : Kaitai.Types.Bytes;
+      Key     : Kaitai.Types.S64;
+      Flag    : Boolean;
+      Mask    : Kaitai.Types.Bytes;
+      Target  : in out Kaitai.Types.Bytes;
+      Last    : out Kaitai.Types.Length;
+      Outcome : out Kaitai.Types.Status_Kind)
+   with
+     Global => null,
+     Pre    => Target'First >= 1,
+     Post   =>
+       Last >= Target'First - 1
+       and then Last - (Target'First - 1) <= Kaitai.Types.Length (Target'Length)
+       and then (if Outcome /= Kaitai.Types.Success then Last = Target'First - 1);
+end My_Custom_Fx;
+```
+
+- `Source` is the bytes of the field as `X_Raw` delivers them (after
+  `terminator` and `pad-right`), as a slice of the buffer: its first index is
+  not 1, and it may be empty.
+- The arguments of the process follow `Source` in the order of the
+  description, as for an opaque type: an integer is a `Kaitai.Types.S64`, a
+  boolean a `Boolean`, and bytes (an array literal or a field of bytes) are a
+  `Kaitai.Types.Bytes`. A string, an enumeration or another kind of value is
+  rejected, so is an argument that uses `_io`. A process without arguments
+  (`process: custom_fx_no_args`) has none, and no parentheses.
+- If `Outcome` is `Success`, `Target (Target'First .. Last)` is the result,
+  empty if `Last = Target'First - 1`; its length is up to the package, and
+  `Last` stays within `Target`. If it is anything else, `Last = Target'First - 1`
+  and the content of `Target` is not used. `Decode` reports a result that does
+  not fit as `Capacity_Exceeded`, an argument or data that it cannot use with
+  the status that fits (`Arithmetic_Error`, `Illegal_Sequence`); an exception
+  must not leave it. The generated accessor passes `Outcome` on; for a field
+  of a type it parses the result when `Outcome` is `Success` and gives the
+  status of that parse otherwise.
+- The compiler checks the arguments that are not defined (an overflow in an
+  expression): `Decode` is not called then and `Outcome` is `Arithmetic_Error`.
+- `Write` does not call the package. It writes the bytes of the input, as
+  for `xor` and `zlib` (see Writing), so there is no `Encode` and the
+  process need not have an inverse.
+- The process of a string, of a repeated field, of a field whose type depends
+  on a value and of a parse instance are rejected as for the built-in
+  processes, as is a field whose value an expression needs.
+
+`examples/foreign` is a description that uses an opaque type, a custom process with arguments and
+one without, for a field of bytes and for a field of a type, with the packages
+written for it.
 
 ## Types that contain themselves
 
@@ -713,8 +919,8 @@ Where the rules above are silent, the compiler does the following.
   nested types are `Foo.Bar_Type`, its enumerations `Foo.Baz_Enum`. The
   top-level type has no `_Type` suffix. The unit has `with Foo;` for each
   such package it uses. The compiler writes the files of every description of
-  the compilation, the imported ones included. A type that the compiler is
-  told to treat as opaque is rejected.
+  the compilation, the imported ones included. A type that no description
+  defines is an opaque type if `ks-opaque-types` is set; see "Foreign code".
 - `valid` on a repetition of integers of a fixed size holds for every
   element. After the read, a loop decodes each element again and applies the
   check, which fails the stream like the check of a single field; with
@@ -738,6 +944,11 @@ Where the rules above are silent, the compiler does the following.
   of the description in which the type is written.
 - The bytes of a field with `process` are processed when the field is asked
   for, not when it is parsed.
+- An opaque type does not get `_io`, `_parent` and `_root`, and a custom
+  process is a procedure of a package, not a class that is constructed with the
+  arguments: they are arguments of `Decode`. What the foreign code needs from
+  the parent is an argument of the type. `Write` does not call an `encode` of a
+  custom process; it writes the bytes of the input (see "Foreign code").
 - A type that contains itself can be nested only up to a fixed depth.
 - A failure is not an exception. It is the status of the stream.
 - `contents` fields are checked but not stored.

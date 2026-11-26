@@ -42,7 +42,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   }
 
   /** The names of the packages of other descriptions, which a name of the description must not take */
-  private lazy val importedNames: Set[String] = classSpecs.keys.map(k => base(k).toLowerCase).toSet
+  private lazy val importedNames: Set[String] =
+    classSpecs.keys.map(k => base(k).toLowerCase).toSet ++ foreignRoots.map(_.toLowerCase)
 
   private def isReserved(n: String): Boolean =
     Reserved.contains(n.toLowerCase) || n.toLowerCase == topAdaName.toLowerCase || importedNames.contains(n.toLowerCase)
@@ -70,7 +71,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         case st: SwitchType =>
           st.cases.values.foreach {
             case ut: UserType =>
-              val y = base(ut.classSpec.get.name.last)
+              val y = variantBase(ut.classSpec.get)
               out += s"${b}_as_$y".toLowerCase
               out += s"${b}_is_$y".toLowerCase
             case _ =>
@@ -233,6 +234,74 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     visit(topClass)
     seen.toList
   }
+
+  // ------------------------------------------------------------ foreign code
+
+  /** The processes of a field, whatever its type: a field of bytes, a string, a type or a case of a switch */
+  private def processesOf(dt: DataType): List[ProcessExpr] = dt match {
+    case b: BytesType => b.process.toList
+    case StrFromBytesType(b, _, _) => b.process.toList
+    case ut: UserTypeFromBytes => ut.process.toList
+    case st: SwitchType => st.cases.values.toList.flatMap(processesOf)
+    case _ => Nil
+  }
+
+  private def attrsOf(cs: ClassSpec): List[AttrLikeSpec] =
+    cs.seq ++ cs.instances.values.toList.collect { case p: ParseInstanceSpec => p }
+
+  /** The packages that hand-written code provides: the opaque types and the custom processes, by their full names */
+  private lazy val foreignPackages: List[String] = foreignPackagesOf(allClasses)
+
+  /** The foreign packages that the given classes call: those of their opaque types and custom processes */
+  private def foreignPackagesOf(classes: List[ClassSpec]): List[String] = {
+    val procs = classes.filter(c => !c.meta.isOpaque).flatMap(c => attrsOf(c).flatMap(a => processesOf(a.dataType))).collect {
+      case ProcessCustom(name, _) => name.map(base).mkString(".")
+    }
+    val types = classes.filter(c => !c.meta.isOpaque).flatMap(c => attrsOf(c).flatMap(a => opaqueOf(a.dataType))).map(fullPackageOf)
+    (types ++ procs).distinct.sorted
+  }
+
+  private def opaqueOf(dt: DataType): List[ClassSpec] = dt match {
+    case ut: UserType => ut.classSpec.filter(_.meta.isOpaque).toList
+    case st: SwitchType => st.cases.values.toList.flatMap(opaqueOf)
+    case _ => Nil
+  }
+
+  /** The first names of those packages, which no name of the generated code may take */
+  private lazy val foreignRoots: Set[String] = foreignPackages.map(_.takeWhile(_ != '.')).toSet
+
+  /**
+    * The name of the package of an opaque type or a custom process, written from the names of the description. A
+    * name that Ada cannot use for a package, or that the generated code uses itself, is an error: the description
+    * would have to be changed.
+    */
+  private def foreignName(names: List[String], what: String): String = {
+    val parts = names.map(base)
+    parts.zip(names).foreach { case (b, raw) =>
+      val l = b.toLowerCase
+      if (Reserved.contains(l) || LibPackages.exists(_.toLowerCase == l) || l == topAdaName.toLowerCase || classSpecs.keys.exists(k => base(k).toLowerCase == l) ||
+          raw.contains("__") || raw.endsWith("_"))
+        unsupported(s"$what `${names.mkString(".")}`: its name `$raw` is not usable as the name of a package (a reserved word of Ada, a name that the generated code uses, or the name of a description)")
+    }
+    parts.mkString(".")
+  }
+
+  private def processPackage(name: List[String]): String = foreignName(name, "custom `process:`")
+
+  /** The opaque types and custom processes of the compilation are ones that the backend can generate calls for. */
+  private def checkForeign(): Unit =
+    allClasses.filterNot(_.meta.isOpaque).foreach { c =>
+      attrsOf(c).foreach { a =>
+        guard(a.path) {
+          opaqueOf(a.dataType).foreach { o =>
+            if (o.name.size != 1) unsupported(s"opaque type `${o.nameAsStr}`: only a name without `::` is supported")
+            foreignName(o.name, "opaque type")
+            if (config.readWrite) unsupported(s"`--read-write` for the opaque type `${o.nameAsStr}`, whose package has no `Write` in the contract")
+          }
+          processesOf(a.dataType).foreach { case ProcessCustom(name, _) => processPackage(name); case _ => }
+        }
+      }
+    }
 
   private def reaches(from: ClassSpec, target: ClassSpec): Boolean = {
     val seen = ListBuffer[ClassSpec]()
@@ -1147,10 +1216,47 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     guarded(gs, body, rc, List(s"$target := ${KT}Little_Endian;"))
   }
 
+  /** What kind of value an argument is, for a message */
+  private def kindOf(vt: VT): String = vt match {
+    case VInt | VU64Lit(_) => "an integer"
+    case VBool => "a boolean"
+    case VEnum(_) => "an enumeration"
+    case VBytes | VBytesLit(_) => "bytes"
+    case VStr(_) | VStrLit(_) => "a string"
+    case VUser(_) => "a value of a type"
+    case VArray => "an array"
+    case VStream | VRootStream => "a stream"
+  }
+
+  /**
+    * The arguments that a call of the parser of an opaque type gets: the arguments of the description and nothing else,
+    * an integer as a `Kaitai.Types.S64` and a boolean as a `Boolean` (see "Foreign code" in docs/codegen.md).
+    */
+  private def opaqueArgs(ut: UserType, rc: RC): (List[String], List[String]) = {
+    val pre = ListBuffer[String]()
+    val args = ListBuffer[String]()
+    ut.args.zipWithIndex.foreach { case (a, i) =>
+      val t = T(a, rc)
+      val ada = t.vt match {
+        case VInt => KT + "S64"
+        case VBool => "Boolean"
+        case other => unsupported(s"argument ${i + 1} of the opaque type `${ut.classSpec.get.nameAsStr}`, which is ${kindOf(other)}; only integers and booleans can be passed")
+      }
+      if (t.guards.isEmpty) args += t.code
+      else {
+        val v = rc.scope.fresh("Arg")
+        rc.scope.decls += s"$v : $ada;"
+        pre ++= guarded(t.guards, List(s"$v := ${t.code};"), rc, List(s"$v := ${defaultOf(ada)};"), init = false)
+        args += v
+      }
+    }
+    (pre.toList, args.toList)
+  }
+
   /** Statements before the call, and the arguments of the call (including the byte order). */
   private def callArgs(ut: UserType, rc: RC): (List[String], List[String]) = {
     val callee = ut.classSpec.get
-    if (callee.meta.isOpaque) throw new AdaUnsupported(s"opaque type ${callee.nameAsStr}")
+    if (callee.meta.isOpaque) return opaqueArgs(ut, rc)
     if (ut.args.size != callee.params.size)
       throw new AdaUnsupported(s"type ${callee.nameAsStr} takes ${callee.params.size} parameters")
     val pre = ListBuffer[String]()
@@ -1303,6 +1409,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     checkRecursion()
     checkParentKey()
     checkBitStart()
+    checkForeign()
     refsOf(topClass)
     val (spec, body) = genClass(topClass)
     val srcName = topClass.fileName.map(f => new java.io.File(f).getName).getOrElse(topClass.name.head + ".ksy")
@@ -1371,7 +1478,11 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val tail = ListBuffer[Item]()
     if (belongs)
       tail ++= List(Gap, P("V does not hold byte arrays, strings and repetitions but says where they are in Buffer. Buffer must stay unchanged while V is used, and the functions and procedures that take a buffer must be given the same one."))
-    tail ++= List(Gap, P("Nothing here allocates memory or raises an exception."))
+    val foreign = foreignPackagesOf(allClasses.filter(c => classFile(c) == classFile(topClass)))
+    if (foreign.nonEmpty)
+      tail ++= List(Gap, P(s"This parser calls ${if (foreign.size == 1) "a package" else "packages"} that ${if (foreign.size == 1) "is" else "are"} written by hand: ${foreign.mkString(", ")}. The section \"Foreign code\" of docs/codegen.md says what ${if (foreign.size == 1) "it has" else "they have"} to provide."))
+    tail ++= List(Gap, P("Nothing here allocates memory or raises an exception" +
+      (if (foreign.isEmpty) "." else s", as long as ${if (foreign.size == 1) "that package keeps" else "those packages keep"} to that contract.")))
     if (config.readWrite) {
       val wr = ListBuffer[String]()
       wr += "W : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);"
@@ -1389,8 +1500,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   /** `with` clauses for the packages of other descriptions that the lines use and that are not named yet */
   private def importedWiths(lines: List[String], known: List[String] = Nil): List[String] = {
     val clean = lines.map(l => l.takeWhile(_ != '-')).mkString("\n")
-    val ws = classSpecs.keys.toList.filter(_ != topClass.name.head).map(base).sorted.distinct
-      .filter(p => ("\\b" + p + "\\.").r.findFirstIn(clean).isDefined)
+    val ws = (classSpecs.keys.toList.filter(_ != topClass.name.head).map(base) ++ foreignPackages).sorted.distinct
+      .filter(p => ("\\b" + java.util.regex.Pattern.quote(p) + "\\.").r.findFirstIn(clean).isDefined)
       .map(p => s"with $p;").filterNot(known.contains)
     if (ws.isEmpty) Nil else ws
   }
@@ -2109,10 +2220,6 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       case ut: UserTypeFromBytes => (ut.process.get, ut.bytes, Some(ut))
       case _ => unsupported("`process` on a string")
     }
-    proc match {
-      case ProcessCustom(name, _) => unsupported(s"custom `process: ${name.mkString(".")}`")
-      case _ =>
-    }
     if (a.valid.isDefined) unsupported("`valid` on a field with `process`")
     val (pre, hasName) = condParts(cs, a, o)
     val raw = s"This.$nm"
@@ -2125,6 +2232,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       case ProcessXor(_) => "xor"
       case ProcessRotate(true, _) => "rol"
       case ProcessRotate(false, _) => "ror"
+      case ProcessCustom(name, _) => name.mkString(".")
       case _ => "zlib"
     }
     o.unread += nm
@@ -2140,7 +2248,27 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val rcKey = RC("Unavailable_Stream", if (storesOrder(cs)) "This.Order" else "", sc, a.path)
     val src = s"Buffer ($raw.First .. $raw.Last)"
     val isZlib = proc == ProcessZlib
+    val isCustom = proc.isInstanceOf[ProcessCustom]
+    val procNames = proc match { case ProcessCustom(name, _) => name; case _ => Nil }
     val zlibKinds = "Kaitai.Zlib."
+    // The call of Decode of the package that the description names: the bytes, the arguments of the description, and
+    // the array, `Last` and `Outcome`; the conditions under which the arguments are defined
+    def customCall(dst: String, last: String): (List[String], List[String]) = proc match {
+      case ProcessCustom(name, args) =>
+        val pkg = processPackage(name)
+        val ts = args.toList.zipWithIndex.map { case (e, i) =>
+          val t = T(e, rcKey)
+          val code = t.vt match {
+            case VInt | VBool => t.code
+            case VBytes => s"Buffer (${t.atom}.First .. ${t.atom}.Last)"
+            case VBytesLit(_) => t.code
+            case other => unsupported(s"argument ${i + 1} of the custom `process: ${name.mkString(".")}`, which is ${kindOf(other)}; only integers, booleans and bytes can be passed")
+          }
+          (code, t.guards)
+        }
+        (List(s"$pkg.Decode (${(List(src) ++ ts.map(_._1) ++ List(dst, last, "Outcome")).mkString(", ")});"), ts.flatMap(_._2))
+      case _ => (Nil, Nil)
+    }
     // the call of the processing from src into dst, and the conditions under which it is defined
     def processCall(dst: String): (List[String], List[String]) = proc match {
       case ProcessXor(key) =>
@@ -2174,7 +2302,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         }
       case _ => unsupported("`process`")
     }
-    val keyGuards: List[String] = if (isZlib) Nil else processCall("Target")._2
+    val keyGuards: List[String] =
+      if (isZlib) Nil else if (isCustom) customCall("Target", "Last")._2 else processCall("Target")._2
     val outcomeOfZlib = List(
       "case Inflated is",
       s"   when ${zlibKinds}Done =>",
@@ -2190,11 +2319,12 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         val dst = "Target (Target'First .. Last)"
         val params = s"Buffer : ${KT}Bytes; This : T; Target : in out ${KT}Bytes; Last : out ${KT}Length; Outcome : out ${KT}Status_Kind"
         val post =
-          if (isZlib)
+          if (isZlib || isCustom)
             s"Last >= Target'First - 1 and then Last - (Target'First - 1) <= ${KT}Length (Target'Length) and then (if Outcome /= ${KT}Success then Last = Target'First - 1)"
           else s"(if Outcome = ${KT}Success then Last = Target'First + ${KT}Size (${bs}_Raw (This)) - 1 else Last = Target'First - 1)"
         opTypes += "Status_Kind"
         val notUsable = if (isZlib) "Illegal_Sequence if the data are not valid zlib data"
+                        else if (isCustom) "Arithmetic_Error if an argument of the process is not defined"
                         else if (procName == "xor") "Arithmetic_Error if the key is not defined or not usable (an integer outside 0 .. 255, or no bytes)"
                         else "Arithmetic_Error if the expression of the amount is not defined"
         o.pub ++= ind(describe(List(s"Field ${q(k)}, the bytes of ${bs}_Raw with the processing (`process: $procName`) undone, written to Target (Target'First .. Last)"),
@@ -2202,17 +2332,23 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
           tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
           tag("param", "This", "The value that has the field") ++
           tag("param", "Target", "Where the result goes, from Target'First, which must be at least 1. It must have room for " +
-            (if (isZlib) "the inflated bytes" else s"as many bytes as ${bs}_Raw has")) ++
+            (if (isZlib) "the inflated bytes" else if (isCustom) s"the bytes that Decode of ${processPackage(procNames)} delivers" else s"as many bytes as ${bs}_Raw has")) ++
           tag("param", "Last", "The index in Target of the last byte of the result: Target'First - 1 if the result is empty or Outcome is not Success") ++
           tag("param", "Outcome", (List("Success", "Capacity_Exceeded if Target is too small") ++
-            (if (isZlib || keyGuards.nonEmpty) List(notUsable) else Nil)).mkString(", ")) ++ List(
+            (if (isZlib || keyGuards.nonEmpty) List(notUsable) else Nil) ++
+            (if (isCustom) List(s"or else why Decode of ${processPackage(procNames)} did not accept the bytes") else Nil)).mkString(", ")) ++ List(
           s"procedure $nm ($params)", "with",
           s"  Pre  => $pre and then Belongs_To (This, Buffer) and then Target'First >= 1,",
           s"  Post => $post;", ""))
         val stmts: List[String] =
           if (isZlib)
             List(s"${zlibKinds}Inflate ($src, Target, Last, Inflated);") ++ outcomeOfZlib
-          else {
+          else if (isCustom) {
+            val (call, gs) = customCall("Target", "Last")
+            if (gs.isEmpty) call
+            else List(s"if ${conjoin(gs)} then") ++ ind(call) ++
+              List("else", "   Last := Target'First - 1;", s"   Outcome := ${KT}Arithmetic_Error;", "end if;")
+          } else {
             val (call, gs) = processCall(dst)
             val work =
               if (gs.isEmpty) call ++ List(s"Outcome := ${KT}Success;")
@@ -2237,6 +2373,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         val params = s"Buffer : ${KT}Bytes; This : T; Storage : in out ${KT}Bytes; Result : out ${userPkg(ut)}.T; Outcome : out ${KT}Status_Kind"
         opTypes += "Status_Kind"
         val notUsable = if (isZlib) "Illegal_Sequence if the data are not valid zlib data"
+                        else if (isCustom) "Arithmetic_Error if an argument of the process is not defined"
                         else if (procName == "xor") "Arithmetic_Error if the key is not defined or not usable (an integer outside 0 .. 255, or no bytes)"
                         else "Arithmetic_Error if the expression of the amount is not defined"
         o.pub ++= ind(describe(List(s"Field ${q(k)}, ${whatIs(ut)}: the bytes of ${bs}_Raw with the processing (`process: $procName`) undone into Storage, and the value parsed from there"),
@@ -2244,12 +2381,13 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
           tag("param", "Buffer", "The buffer that This was parsed from, unchanged") ++
           tag("param", "This", "The value that has the field") ++
           tag("param", "Storage", "Where the processed bytes go, from Storage'First, which must be at least 1. It must have room for " +
-            (if (isZlib) "the inflated bytes" else s"as many bytes as ${bs}_Raw has")) ++
+            (if (isZlib) "the inflated bytes" else if (isCustom) s"the bytes that Decode of ${processPackage(procNames)} delivers" else s"as many bytes as ${bs}_Raw has")) ++
           tag("param", "Result", "The value. Valid if and only if Outcome is Success" +
             (if (belongsOk) ". It refers to Storage, not to Buffer, so Storage must stay unchanged while Result is used" else "")) ++
           tag("param", "Outcome", "Success, Capacity_Exceeded if Storage is too small, " +
             (if (isZlib) "Illegal_Sequence if the data are not valid zlib data, " else if (keyGuards.nonEmpty) notUsable + ", " else "") +
-            "or else why the value was not accepted") ++ List(
+            (if (isCustom) s"why Decode of ${processPackage(procNames)} did not accept the bytes, or else why" else "or else why") +
+            " the value was not accepted") ++ List(
           s"procedure $nm ($params)", "with",
           s"  Pre  => $pre and then Belongs_To (This, Buffer) and then Storage'First >= 1,",
           s"  Post => $pkg" + s"Valid (Result) = (Outcome = ${KT}Success)" + (if (belongsOk) s" and then ${pkg}Belongs_To (Result, Storage);" else ";"), ""))
@@ -2262,7 +2400,12 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
             List(s"${zlibKinds}Inflate ($src, Storage, Last, Inflated);", "case Inflated is", s"   when ${zlibKinds}Done =>") ++ ind(parseStmts, 2) ++
               List(s"   when ${zlibKinds}Corrupt =>", "      Result := None;", s"      Outcome := ${KT}Illegal_Sequence;",
                 s"   when ${zlibKinds}Target_Full =>", "      Result := None;", s"      Outcome := ${KT}Capacity_Exceeded;", "end case;")
-          else {
+          else if (isCustom) {
+            val (call, gs) = customCall("Storage", "Last")
+            val work = call ++ List(s"if Outcome = ${KT}Success then") ++ ind(parseStmts) ++ List("else", "   Result := None;", "end if;")
+            if (gs.isEmpty) work
+            else List(s"if ${conjoin(gs)} then") ++ ind(work) ++ List("else", "   Result := None;", s"   Outcome := ${KT}Arithmetic_Error;", "end if;")
+          } else {
             val (call, gs) = processCall(dst)
             val work = List(s"if not ${KT}Is_Empty ($raw) then") ++ ind(call) ++ List("end if;") ++ parseStmts
             val guardedWork =
@@ -2350,8 +2493,10 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
             List(s"Requires that it is neither infinity nor not-a-number: Kaitai.Floats.Is_Finite (${bs}_Bits (This))") ++ there))
       case ut: UserType =>
         val pkg = userPkg(ut)
+        val opaque = if (ut.classSpec.get.meta.isOpaque)
+          List(s"The description does not define this type; $pkg.Parse reads it, and the package $pkg is written by hand") else Nil
         accessor(o, nm, stored, pre, Some(s"$pkg.Valid ($nm'Result)"), s"This.$nm",
-          comment = describe(List(s"Field ${q(k)}, ${whatIs(dt)}"), a.doc, there))
+          comment = describe(List(s"Field ${q(k)}, ${whatIs(dt)}"), a.doc, opaque ++ there))
         o.valid += validWrap(a, s"$pkg.Valid (This.$nm)")
         if (hasBelongs(ut.classSpec.get)) o.belongs += s"$pkg.Belongs_To (This.$nm, Buffer)"
       case _: BytesType | _: StrType =>
@@ -2623,6 +2768,15 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     o.parse ++= wrapCond(a, if (hasCond(a)) Some(hasName) else None, choose(branches), rc)
   }
 
+  /**
+    * The name that the variant of a switch gets for a case of the type `c`: its own name, with `_T` after it where the
+    * type is a package of its own (the top-level type of another description, an opaque type). The component of the
+    * variant would otherwise have the name of that package, which it must not have.
+    */
+  private def variantBase(c: ClassSpec): String =
+    if (c.name.size == 1 && (c.meta.isOpaque || classFile(c) != classFile(topClass))) base(c.name.last) + "_T"
+    else base(c.name.last)
+
   /** The variants of a switch that is not all integers, in order: the type of the case and the name `Is_<Name>` is built from. */
   def switchVariants(st: SwitchType): List[(DataType, String)] = {
     val variants = ListBuffer[(DataType, String)]()
@@ -2630,7 +2784,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     st.cases.toList.foreach { case (_, dt) =>
       if (!variants.exists(_._1 == dt)) {
         val baseName = dt match {
-          case ut: UserType => base(ut.classSpec.get.name.last)
+          case ut: UserType => variantBase(ut.classSpec.get)
           case _: BytesType => "Bytes"
           case _: StrType => "Str"
           case other => throw new AdaUnsupported(s"switch with case of type $other mixed with other types")

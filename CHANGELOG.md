@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- Compiler: opaque types (`meta: ks-opaque-types: true` and a `type:` that no
+  description defines) and custom `process` (`my_custom_fx(7, true, [0x20])`,
+  `nested.deeply.custom_fx`) are generated. Both call a package that is written by
+  hand: `Foo_Bar.Parse` for the opaque type `foo_bar`, `My_Custom_Fx.Decode` for the
+  process `my_custom_fx`. A contract, "Foreign code" in `docs/codegen.md`, says
+  what the specification of such a package has to provide, and the generated code
+  is proven against it; the body of the package need not be in SPARK. The
+  contract gives the arguments of the description as `S64` and `Boolean` (and
+  bytes for a process), and passes nothing else. An opaque type is rejected under
+  `--read-write`; a custom process is written as the bytes of the input, like the
+  other processes. `examples/foreign` is a description with an opaque type and two
+  custom processes and the packages written for it, proven, tested and fuzzed;
+  `compiler/foreign/` has the packages of the custom processes of the tests of
+  Kaitai Struct, which `scripts/run-kaitai-suite.sh` and `scripts/survey.sh` use.
+  Six more formats of the test suite are generated (`opaque_external_type`,
+  `opaque_external_type_02_parent`, `opaque_with_param`, `process_custom`,
+  `process_custom_no_args`, `process_term_struct`; `type_ternary_opaque` is still
+  rejected, for the reason of `type_ternary`). A switch whose case is the
+  top-level type of another description, or an opaque type, names the variant
+  `X_Is_Foo_T` and its component `Foo_T`; before, the component had the name of
+  the package and the unit did not compile.
 - Library: every declaration of a visible part has a documentation comment of its
   own, directly before it, also the integer types, the record components and the
   enumeration literals. Comments that stood before a group of declarations

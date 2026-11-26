@@ -65,6 +65,18 @@ round_trip=0
 KNOWN_DIFFERENCES=(
    "debug_array_user_eof_exception|after a failed Parse nothing can be read (docs/codegen.md, Shape of a type); the test expects partial results"
 )
+# Tests whose format uses an opaque type (`ks-opaque-types`), and the format of
+# the tests repository that provides the package of that type: "test|format".
+# The other targets have the opaque type as a parser generated from that format;
+# here it is generated as well, even if the run is only of the test, and found
+# through the source directories.  A custom `process` has its package in
+# compiler/foreign/, which is always a source directory.
+OPAQUE_SUPPORT=(
+   "opaque_external_type|hello_world"
+   "opaque_external_type_02_parent|opaque_external_type_02_child"
+   "opaque_with_param|params_def"
+   "type_ternary_opaque|hello_world"
+)
 names=()
 
 while [ $# -gt 0 ]; do
@@ -143,6 +155,16 @@ if [ ${#names[@]} -eq 0 ]; then
 fi
 echo "${#names[@]} tests"
 
+# formats that only provide the code of an opaque type for a test of this run
+support=()
+for pair in "${OPAQUE_SUPPORT[@]}"; do
+   t=${pair%%|*}
+   f=${pair##*|}
+   if printf '%s\n' "${names[@]}" | grep -qx "$t" && ! printf '%s\n' "${names[@]}" ${support[@]+"${support[@]}"} | grep -qx "$f"; then
+      support+=("$f")
+   fi
+done
+
 # ------------------------------------------------- compiler and translator
 
 stamp=$KSC_DIR/.kst-published
@@ -184,7 +206,7 @@ if [ "$round_trip" -eq 1 ]; then
    export ADA_SG_ROUND_TRIP=1
 fi
 export ksc out KST_DIR ksc_extra
-printf '%s\n' "${names[@]}" | xargs -P "$jobs" -I{} bash -c 'gen_one {}'
+printf '%s\n' "${names[@]}" ${support[@]+"${support[@]}"} | xargs -P "$jobs" -I{} bash -c 'gen_one {}'
 
 generated=()
 for n in "${names[@]}"; do
@@ -229,7 +251,8 @@ built=()
 if [ ${#translated[@]} -gt 0 ]; then
    step "building the test programs"
    mains=$(printf '"test_%s.adb", ' "${translated[@]}")
-   dirs=$(printf '"gen/%s", ' "${translated[@]}")
+   dirs=$(printf '"gen/%s", ' "${translated[@]}" ${support[@]+"${support[@]}"})
+   dirs="$dirs\"$here/compiler/foreign\", "
    cat > "$out/suite.gpr" <<EOF
 with "$here/kaitai_struct.gpr";
 with "$here/kaitai_struct_files.gpr";

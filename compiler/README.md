@@ -13,6 +13,7 @@ upstream tree and are copied over a checkout of the compiler.
 |---|---|
 | `shared/src/main/scala/io/kaitai/struct/AdaClassCompiler.scala` | the emitter; it walks the `ClassSpec` tree itself and writes `<id>.ads` and `<id>.adb` |
 | `shared/src/main/scala/io/kaitai/struct/translators/AdaTranslator.scala` | translation of expressions to Ada, with the conditions under which they are defined |
+| `foreign/` | hand-written Ada packages for the tests of Kaitai Struct that use foreign code: the custom processes `my_custom_fx`, `nested.deeply.custom_fx` and `custom_fx_no_args` (with the empty parents `Nested` and `Nested.Deeply`), written to the contract of "Foreign code" in `docs/codegen.md`; proven by `scripts/survey.sh --prove` and a source directory of `scripts/run-kaitai-suite.sh` |
 | `upstream.patch` | the edits of existing upstream files: the registry (`LanguageCompilerStatic`), `Main.scala`, the option `--ada-max-depth` (`RuntimeConfig.scala`, `JavaMain.scala`), `MetaSpec.scala` (keeps `meta/title`, which upstream checks and drops), and `project/plugins.sbt` (`sbt-scalajs-crossproject` 1.3.2 instead of 1.0.0, which is no longer found) |
 
 Pinned upstream: `kaitai-io/kaitai_struct_compiler` at commit
@@ -62,11 +63,11 @@ happens to each of the 334 formats of the Kaitai Struct test suite, and
 | `valid` | `eq`, `min`, `max`, range, `any-of`, `in-enum`, `expr`; on a repetition of integers of a fixed size; on a field whose type is chosen by `switch-on`, if all cases are integers and there is a `_` case | on other repeated fields; on other fields with `switch-on`, and `in-enum` on any of them |
 | `if` | yes | – |
 | Enumerations | on integers; with values up to 2**64-1 on unsigned fields | values above 2**63-1 on signed fields or together with negative values |
-| User types | nested types by path; `size`, `size-eos`, `terminator` and `pad-right` on a field of a type (the value is parsed from the bytes that are cut out); imports (a type of another description is `<Package>.T`; all files of a compilation are written) | opaque types; types that contain each other, also through imports |
+| User types | nested types by path; `size`, `size-eos`, `terminator` and `pad-right` on a field of a type (the value is parsed from the bytes that are cut out); imports (a type of another description is `<Package>.T`; all files of a compilation are written); opaque types (`ks-opaque-types`): `Parse` of a package that is written by hand and keeps a contract (see "Foreign code" in `docs/codegen.md`), with integer and boolean arguments, as a field, a case of a `switch-on`, a repetition, or a parse instance, with `size`, `terminator` and `process` | types that contain each other, also through imports; an opaque type whose name has `::`, whose name is not usable for a package, or with an argument that is not an integer or a boolean; an opaque type under `--read-write`; a member of an opaque value in an expression (the front end of the compiler does not allow it either) |
 | Types that contain themselves | directly or through a repetition, with the parameter `Depth` (`--ada-max-depth N` sets `Max_Depth`, default 8) | a field whose type depends on a value and can be the type itself; `valid` on a field of its own type |
 | `switch-on` | on integers, enumerations, strings or bytes; cases that are structures, integers or byte arrays; a switch that has only the `_` case | – |
 | `repeat` | `expr`, `eos`, `until`; structures, bytes and strings with a cursor, integers and floats of a fixed size as a slice | on a field with `switch-on`; on a parse instance; `_index` |
-| `process` | `xor` with a byte or with a key of bytes, `rol`, `ror`, `zlib`; the accessor undoes it into an array of the caller | a custom process; on a string, a repeated field, a field with `switch-on` or a parse instance; an expression or a `valid` that depends on a processed value |
+| `process` | `xor` with a byte or with a key of bytes, `rol`, `ror`, `zlib`, and a custom process (`my_custom_fx(7, true, [0x20])`, `nested.deeply.custom_fx`, `custom_fx_no_args`: `Decode` of a package that is written by hand, with integer, boolean and bytes arguments); the accessor undoes it into an array of the caller | on a string, a repeated field, a field with `switch-on` or a parse instance; an expression or a `valid` that depends on a processed value; a custom process with an argument that is a string, an enumeration or uses `_io`, or whose name is not usable for a package |
 | Parameters | integer, boolean, enumeration | any other type (strings, bytes, user types, arrays, streams) |
 | `_parent`, `_root` | for values that are integers, booleans or enumerations, chains such as `_parent._parent.x` included; they become parameters of `Parse` | other values (a string, bytes, a user type, `_parent._io`); `_parent` in the top-level type; `_root` in a type of another description that is used from elsewhere, or in a description whose top-level type contains itself; the key `parent` on a field whose type uses `_parent` |
 | Instances | with a value: integer, boolean, enumeration, and bytes or a string that is a field (`value: name`); with a position: `pos`, `size`, `io: _root._io` | a value of bytes or a string that is not a field (a literal, a concatenation); an instance with a position that is used in an expression, has `repeat` or `process` |
@@ -98,8 +99,9 @@ option these are rejected, each with an error that names the construct: a
 type that contains itself, a terminator of more than one byte, a terminator
 that is included but not consumed, a value cut from bytes with a size and a
 terminator or padding, an integer switch whose cases have different types,
-`contents` with a condition. `scripts/survey.sh --read-write` repeats the
-survey with the option.
+`contents` with a condition, an opaque type (the contract has no `Write`). A
+custom `process` is written like the other processes, as the bytes of the
+input. `scripts/survey.sh --read-write` repeats the survey with the option.
 
 `compiler/SURVEY.md` lists what happens to the formats of the Kaitai
 Struct test suite.
@@ -180,6 +182,23 @@ bytes, lists, `null` (the presence function is false) and floats (within
 1e-6, relative for large values). The names of the generated code are taken
 from the compiler itself (`AdaClassCompiler.memberName` and the like), so the
 test generator follows the compiler when it changes how it names things.
+
+### Foreign code
+
+The tests with an opaque type (`ks-opaque-types: true`) or a custom `process`
+need code that the descriptions do not contain. The other targets keep it in
+their tests: another generated parser for an opaque type (`hello_world`,
+`params_def`, `opaque_external_type_02_child`), hand-written classes for the
+processes. Here the opaque type is the parser that the compiler generates from
+that format: the script generates it as well (`OPAQUE_SUPPORT` at the top of
+`scripts/run-kaitai-suite.sh` says which format belongs to which test), even
+if the run is only of the test, and finds it through the source directories. The
+packages of the custom processes are the hand-written ones of `compiler/foreign/`,
+which is a source directory of every run. `AdaSG` reads a member of an opaque
+value (`hw.one.as<u1>`, where the type of the member is given by the cast) with
+the accessor `Hello_World.One`, which the generated parser has.
+`type_ternary_opaque` stays `not generated`: its value instance `dif` is of a
+type and uses a field with `process`, as in `type_ternary`.
 
 ### Processed fields, imports, recursion, known differences, round trips
 

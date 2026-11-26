@@ -48,6 +48,8 @@
 #   KST_DIR   a checkout of kaitai-io/kaitai_struct_tests at the pinned
 #             commit (default: $HOME/.cache/kaitai_struct_tests)
 #   PYTHON    the Python 3 to use (default: python3)
+#   The Python classes of the custom processes of the tests, spec/python/extra of the tests
+#             repository, are checked out into KST_DIR and found through PYTHONPATH.
 #   KAITAI_PYTHON_RUNTIME  a checkout of kaitai_struct_python_runtime (default:
 #             $HOME/.cache/kaitai_struct_python_runtime, cloned at the commit
 #             that the script names if it is missing)
@@ -145,7 +147,6 @@ if [ ! -f "$py_runtime/kaitaistruct.py" ]; then
    git clone --quiet https://github.com/kaitai-io/kaitai_struct_python_runtime.git "$py_runtime"
    git -C "$py_runtime" checkout --quiet "$py_runtime_commit"
 fi
-export PYTHONPATH=$py_runtime
 
 # ---------------------------------------------------------- the tests
 
@@ -158,6 +159,14 @@ if [ ! -f "$KST_DIR/translator/build.sbt" ] || [ ! -d "$KST_DIR/formats" ] || [ 
    step "checking out formats, spec/ks, src and translator at $kst_commit"
    git -C "$KST_DIR" checkout --quiet "$kst_commit" -- formats spec/ks src translator
 fi
+
+# The classes of the custom processes of the tests (my_custom_fx, nested.deeply, custom_fx_no_args), which
+# the Python parsers import
+if [ ! -f "$KST_DIR/spec/python/extra/my_custom_fx.py" ]; then
+   step "checking out spec/python/extra at $kst_commit"
+   git -C "$KST_DIR" checkout --quiet "$kst_commit" -- spec/python/extra
+fi
+export PYTHONPATH=$py_runtime:$KST_DIR/spec/python/extra
 
 # The overlay (new files of the tests repository) and the patch (edits of existing ones)
 (cd "$here/compiler/tests-overlay" && find . -type f) | while read -r f; do
@@ -507,6 +516,7 @@ if [ ${#dumped[@]} -gt 0 ]; then
    for attempt in 1 2 3 4; do
       mains=$(printf '"dump_%s.adb", ' "${remaining[@]}")
       dirs=$(printf '"gen/%s", "dump/%s", ' $(for n in "${remaining[@]}"; do echo "$n" "$n"; done))
+      dirs="$dirs\"$here/compiler/foreign\", "
       cat > "$out/diff.gpr" <<EOF
 with "$here/kaitai_struct.gpr";
 with "$here/kaitai_struct_files.gpr";

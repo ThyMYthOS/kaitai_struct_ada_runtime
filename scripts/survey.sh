@@ -18,6 +18,12 @@
 # added to it; imports_abs imports common/vlq_base128_le.ksy from there, and
 # is "invalid" (the file is not found) without it.
 #
+# The formats that use an opaque type or a custom process call packages that
+# are written by hand: the opaque types of the tests are formats of the suite,
+# which are generated too, and the packages of the custom processes are in
+# compiler/foreign/, a source directory of the project that compiles and proves
+# the parsers.
+#
 # KSC names the compiler launcher (default: the one scripts/build-compiler.sh
 # builds in $KSC_DIR).  KST_DIR names a checkout of kaitai_struct_tests.
 set -eu
@@ -76,7 +82,7 @@ done >"$out/generate.tsv"
 cat >"$out/survey.gpr" <<GPR
 with "$here/kaitai_struct.gpr";
 project Survey is
-   for Source_Dirs use ("src");
+   for Source_Dirs use ("src", "$here/compiler/foreign");
    for Object_Dir use "obj";
    for Create_Missing_Dirs use "True";
    package Compiler is

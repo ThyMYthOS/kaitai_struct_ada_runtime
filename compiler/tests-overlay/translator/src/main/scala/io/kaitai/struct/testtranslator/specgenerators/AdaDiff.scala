@@ -193,6 +193,7 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
       if (signed) List(s"Put_S ($path, ${KT}S64 ($code));") else List(s"Put_U ($path, ${KT}U64 ($code));")
     case FloatMultiType(w, _) => List(s"Put_Float${w.width} ($path, $code);")
     case _: BytesType | _: StrType => List(s"Put_Hex ($path, $buf, $code);")
+    case ut: UserType if ut.classSpec.get.meta.isOpaque => skip(s"the opaque type ${ut.classSpec.get.nameAsStr}, whose members are not known")
     case ut: UserType =>
       val cs = ut.classSpec.get
       val p = procOf(cs)
@@ -336,9 +337,10 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
   private def adaProcessed(cs: ClassSpec, a: AttrSpec, dt: DataType, obj: String, buf: String, path: String): List[String] = {
     val pkg = pkgOf(cs)
     val mname = cc.memberName(cs, a.id)
+    // the result of zlib is larger than the input, and a custom process may do what it likes
     val zlib = dt match {
-      case b: BytesType => b.process.contains(ProcessZlib)
-      case ut: UserTypeFromBytes => ut.process.contains(ProcessZlib)
+      case b: BytesType => b.process.exists(p => p == ProcessZlib || p.isInstanceOf[ProcessCustom])
+      case ut: UserTypeFromBytes => ut.process.exists(p => p == ProcessZlib || p.isInstanceOf[ProcessCustom])
       case _ => false
     }
     val work = nm("Work")
@@ -391,6 +393,7 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
     case FloatMultiType(w, _) => List(s"put_float($path, $v, '${if (w.width == 4) "f" else "d"}')")
     case _: BytesType => List(s"put_bytes($path, $v)")
     case _: StrType => List(s"put_str($path, $v, ${pyLit(enc)})")
+    case ut: UserType if ut.classSpec.get.meta.isOpaque => skip(s"the opaque type ${ut.classSpec.get.nameAsStr}, whose members are not known")
     case ut: UserType =>
       val p = procOf(ut.classSpec.get)
       List(s"if $v is None:", s"   put_absent($path)", "else:", s"   dump_$p($v, $path)")

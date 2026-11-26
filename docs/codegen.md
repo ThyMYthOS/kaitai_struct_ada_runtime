@@ -29,7 +29,8 @@ A name gets the suffix `_Field` if it is
 - used by the generated code itself (`T`, `Parse`, `Valid`, `Belongs_To`,
   `Next`, `Has_Element`, `Remaining`, `Max_Depth`, `Depth`, `Is_Valid`, `Io`, and the
   names `This`, `Buffer`, `S`, `Order` of parameters),
-- `Kaitai`, the name of the package of an imported description, or an identifier of package Standard that the code uses
+- `Kaitai`, the name of the package of an imported description, the first name of a package of foreign code (an
+  opaque type, a custom `process`; see "Foreign code"), or an identifier of package Standard that the code uses
   (`Boolean`, `True`, `False`, `Natural`, `Positive`, `Integer`, `String`,
   `Character`, `Standard`),
 - the name of the enclosing top-level package.
@@ -521,8 +522,8 @@ each package.
 
 ### Opaque types
 
-A type that no description defines is opaque if the description or the
-command line asks for it (`ks-opaque-types: true`); otherwise the compiler
+A type that no description defines is opaque if `meta: ks-opaque-types: true`
+or the compiler option `--opaque-types=true` is given; otherwise the compiler
 reports the type as unknown. This is how the tests of Kaitai Struct use
 another description, `hello_world`, without importing it. The package of an
 opaque type provides at least this:
@@ -580,7 +581,10 @@ What the generated code does with it:
   same way. What the postcondition says about the stream is all that the
   generated `Parse` knows afterwards; it proves its own postcondition from it.
   A foreign `Parse` may read nothing at all; a loop over elements ends as it does
-  for a generated type that may read nothing.
+  for a generated type that may read nothing. It is also called with a stream
+  that has failed, as the generated `Parse` is, and then leaves `This` not
+  valid, as the postcondition says; the reading operations of `Kaitai.Streams`
+  do nothing on a failed stream, so a body made of them does that by itself.
 - The arguments are exactly those of the description. An integer is passed as
   a `Kaitai.Types.S64`, the type in which expressions are computed, and a
   boolean as a `Boolean`. An enumeration, a string, bytes, a type or a stream
@@ -658,7 +662,9 @@ end My_Custom_Fx;
 
 - `Source` is the bytes of the field as `X_Raw` delivers them (after
   `terminator` and `pad-right`), as a slice of the buffer: its first index is
-  not 1, and it may be empty.
+  not 1, and it may be empty, in which case `Decode` is called all the same,
+  since a process may make bytes of none. `Target'First` is at least 1 and
+  otherwise any index, and `Target` may be empty.
 - The arguments of the process follow `Source` in the order of the
   description, as for an opaque type: an integer is a `Kaitai.Types.S64`, a
   boolean a `Boolean`, and bytes (an array literal or a field of bytes) are a
@@ -671,9 +677,10 @@ end My_Custom_Fx;
   and the content of `Target` is not used. `Decode` reports a result that does
   not fit as `Capacity_Exceeded`, an argument or data that it cannot use with
   the status that fits (`Arithmetic_Error`, `Illegal_Sequence`); an exception
-  must not leave it. The generated accessor passes `Outcome` on; for a field
-  of a type it parses the result when `Outcome` is `Success` and gives the
-  status of that parse otherwise.
+  must not leave it. The accessor of a field of bytes passes `Outcome` on. The
+  accessor of a field of a type parses the result if `Outcome` is `Success` and
+  reports the status of that parse; otherwise it reports `Outcome` and the value
+  is not valid.
 - The compiler checks the arguments that are not defined (an overflow in an
   expression): `Decode` is not called then and `Outcome` is `Arithmetic_Error`.
 - `Write` does not call the package. It writes the bytes of the input, as

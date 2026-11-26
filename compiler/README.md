@@ -204,7 +204,7 @@ type and uses a field with `process`, as in `type_ternary`.
 
 - A field with `process` has an accessor that is a procedure. `AdaSG` gives it
   an array on the heap (as large as the input for `xor` and `rol`/`ror`, 256
-  times the input plus 4 KiB for `zlib`) and compares `Target (First .. Last)`;
+  times the input plus 4 KiB for `zlib` and a custom process) and compares `Target (First .. Last)`;
   for a field of a type the `Result` is read, and everything inside it (strings,
   bytes, repetitions, switches) refers to that array, not to the input.
 - Accessors of imported types are written with the package of the other

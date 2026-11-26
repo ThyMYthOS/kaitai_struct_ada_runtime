@@ -472,6 +472,27 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
       val n = BigInt(CommonSizeOf.bitToByteSize(CommonSizeOf.getBitsSizeOfType(value.toString, typeDetector.detectType(value))))
       return ATr(n.toString, 0, Nil, VInt, n, n, isLiteral = true)
     }
+    if (attr == "size") value match {
+      // the size of a stream that is chosen by a condition is the size of the one that is chosen
+      case Ast.expr.IfExp(c, a, b) =>
+        return translate(Ast.expr.IfExp(c, Ast.expr.Attribute(a, Ast.identifier("size")), Ast.expr.Attribute(b, Ast.identifier("size"))))
+      // the stream of a field: a substream has the size that the field was cut with, other values are in the stream of this type
+      case Ast.expr.Attribute(Ast.expr.Name(Ast.identifier(n)), Ast.identifier(Identifier.IO)) if !n.startsWith("_") =>
+        provider.nowClass.seq.find(a => a.id.humanReadable == n || a.id == NamedIdentifier(n)) match {
+          case Some(a) if a.cond.repeat == NoRepeat && a.cond.ifExpr.isEmpty =>
+            a.dataType match {
+              case ut: UserTypeFromBytes if ut.process.isEmpty =>
+                ut.bytes match {
+                  case BytesLimitType(size, None, false, None, None) => return translate(size)
+                  case _ => unsupported(s"`$n._io` of a field that is cut at a terminator or padding")
+                }
+              case _: UserTypeInstream => return translate(Ast.expr.Attribute(Ast.expr.Name(Ast.identifier(Identifier.IO)), Ast.identifier("size")))
+              case _ => unsupported(s"`$n._io` of a field that is not a value of a user type")
+            }
+          case _ => unsupported(s"`$n._io`: only the stream of a field that is neither optional nor repeated is supported")
+        }
+      case _ =>
+    }
     if (isRootIo(value)) {
       return attr match {
         case "size" => int(s"Kaitai.Types.S64 (${useBuffer()}'Length)", 0, Nil, 0, S64Max, ub = true)

@@ -772,6 +772,27 @@ before the call, with its guards, so an expression that is not defined there
 (a division by zero, a field with an `if` that does not hold) fails the stream
 with `Arithmetic_Error` at the call, also if the callee would not have used it.
 
+A cast of an outside value (`_parent._parent.as<foo>.flag`, `hw_param.as<hello_world>.one` for a
+parameter of type `struct`) names the type of the value and nothing else: the
+caller reads the value as its own, and its own type decides what the member is.
+A cast of a value that is passed as a whole is rejected, as is any other value
+of a user type that a type needs as a whole.
+
+The key `parent` on a field gives the value of `_parent` for the type of the
+field: the caller reads `_parent.x` of the callee as `E.x`, where `E` is the
+expression of the key, written in the caller. `parent: false` gives the type no
+parent, so a type that uses `_parent` is rejected on such a field.
+
+A stream from outside is used by its `size`: `arg.size` of a parameter of type
+`io`, `first._io.size` (the size that the field `first` was cut with, or the size of
+the stream of the caller if it is not cut) and `_root._io.size`. An argument
+that chooses between streams is chosen from by the caller
+(`(c ? first._io : _root._io).size` is `c ? first._io.size : _root._io.size`), and
+an element of a list that is given as an argument is read at compile time
+(`[first._io, _root._io][0]`). `.pos` and `.eof` of such a stream, and the stream
+as a whole (`io:` of a parse instance), are rejected: the stream of the parent
+is at another position when the child is read.
+
 The value is taken when the parser of the parent calls. A reference to a
 field that is parsed later than the field with the call, to a parse instance,
 or to a type that is not passed by value is rejected by the compiler. So is
@@ -781,9 +802,8 @@ written; a type of another description that uses `_root` is rejected. So is
 `_root.x` in a description whose top-level type contains itself: for the
 nested value it would have to be the field of the outermost value, which the
 nested value does not know.
-The key `parent`, which gives one use of a type another parent or none, is
-rejected on a field whose type uses `_parent`: here the value always comes
-from the type that has the field.
+The key `parent` is rejected on a field whose type calculates its byte order
+from `_parent` (see "Rules of the compiler").
 
 ## Documentation
 

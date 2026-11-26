@@ -316,14 +316,15 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   private def isRecursive(cs: ClassSpec): Boolean = userTypesOf(cs).exists(_ eq cs)
 
   /**
-    * The key `parent` gives one use of a type another parent, or none. Here the type that has the field passes the
-    * values of `_parent`, so the key is rejected where the type of the field, or a type that it uses, needs them.
+    * The key `parent` gives one use of a type another parent, or none. The values of `_parent` that the type needs are
+    * computed by the type that has the field from the expression of the key (see `liftExpr`); a byte order that is
+    * calculated from `_parent` is not, so the key is rejected where the type of the field, or a type that it uses,
+    * needs it.
     */
   private def checkParentKey(): Unit = {
     def usesParent(c: ClassSpec, seen: ListBuffer[ClassSpec]): Boolean =
       !seen.exists(_ eq c) && {
         seen += c
-        outsideExprs(c).exists(containsParent) ||
         (c.meta.endian match { case Some(ce: CalcEndian) => containsParent(ce.on); case _ => false }) ||
         userTypesOf(c).exists(u => usesParent(u, seen))
       }
@@ -510,6 +511,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     case Ast.expr.Call(f, args) => containsParent(f) || args.exists(containsParent)
     case Ast.expr.Subscript(a, b) => containsParent(a) || containsParent(b)
     case Ast.expr.List(es) => es.exists(containsParent)
+    case Ast.expr.CastToType(v, _) => containsParent(v)
     case _ => false
   }
 
@@ -613,12 +615,14 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   private def isChain(e: Ast.expr): Boolean = e match {
     case _: Ast.expr.Name => true
     case Ast.expr.Attribute(v, _) => isChain(v)
+    case Ast.expr.CastToType(v, _) => isChain(v)
     case _ => false
   }
 
   private def chainNames(e: Ast.expr): List[String] = e match {
     case Ast.expr.Name(Ast.identifier(n)) => List(n)
     case Ast.expr.Attribute(v, Ast.identifier(a)) => chainNames(v) :+ a
+    case Ast.expr.CastToType(v, _) => chainNames(v)
     case _ => Nil
   }
 
@@ -656,6 +660,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       case BoolOp(o, vs) => vs.map(showExpr).mkString(if (o == Ast.boolop.And) " and " else " or ")
       case UnaryOp(o, v) => (if (o == Ast.unaryop.Not) "not " else if (o == Ast.unaryop.Minus) "-" else "~") + showExpr(v)
       case IfExp(c, a, b) => s"${showExpr(c)} ? ${showExpr(a)} : ${showExpr(b)}"
+      case CastToType(v, ty) => s"${showExpr(v)}.as<${ty.names.mkString("::")}>"
       case Subscript(a, i) => s"${showExpr(a)}[${showExpr(i)}]"
       case Call(f, args) => s"${showExpr(f)}(${args.map(showExpr).mkString(", ")})"
       case List(es) => es.map(showExpr).mkString("[", ", ", "]")
@@ -730,9 +735,22 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
               if (a == "length" || a == "size") Some(OVal(CalcIntType)) else None
             case OVal(_: ArrayType) => if (a == "size") Some(OVal(CalcIntType)) else None
             case OIo => if (a == "size") Some(OVal(CalcIntType)) else None
+            case OVal(KaitaiStreamType | OwnedKaitaiStreamType) => if (a == "size") Some(OVal(CalcIntType)) else None
             case _ => None
           }
           m.map(x => (x, true))
+        }
+      case CastToType(v, ty) =>
+        // an outside value that is cast to a type is that value; the caller reads it as its own, whose type it knows
+        outTypeOf(cs, v).flatMap {
+          case (ov @ (OParent(_) | ORoot | OVal(_: StructType)), true) if !ty.isArray =>
+            val c = try Some(provider.resolveClassSpec(ty)) catch { case _: Throwable => None }
+            c.map { cl =>
+              val u = UserTypeInstream(cl.name, None)
+              u.classSpec = Some(cl)
+              (OVal(u), true)
+            }
+          case _ => None
         }
       case Subscript(a, i) =>
         both(a, i) {
@@ -916,6 +934,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       case Ast.expr.Name(Ast.identifier(n)) => Some(n.stripPrefix("_"))
       case Ast.expr.Attribute(v, Ast.identifier(a)) => path(v).map(_ + "_" + a.stripPrefix("_"))
       case Ast.expr.Subscript(v, Ast.expr.IntNum(i)) => path(v).map(_ + "_" + i)
+      case Ast.expr.CastToType(v, _) => path(v)
       case _ => None
     }
     val raw =
@@ -975,23 +994,41 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     * The expression `e` of the type `callee`, which `caller` uses with the arguments of `ut`, as it reads in `caller`:
     * what is `_parent.x` for the callee is `x`, a parameter is the argument that the caller gives for it.
     */
-  private def liftExpr(caller: ClassSpec, ut: UserType, callee: ClassSpec, e: Ast.expr): Ast.expr = {
+  private def liftExpr(caller: ClassSpec, ut: UserType, callee: ClassSpec, e0: Ast.expr): Ast.expr = {
+    // a cast of an outside value only tells its type; the caller reads the value as its own
+    def strip(e: Ast.expr): Ast.expr = e match {
+      case Ast.expr.CastToType(v, _) if isChain(v) => strip(v)
+      case _ => mapChildren(e)(strip)
+    }
     def go(e: Ast.expr): Ast.expr = e match {
       case Ast.expr.Attribute(v, Ast.identifier(a)) if parentHops(e).isEmpty && parentHops(v).isDefined =>
         val h = parentHops(v).get
-        if (h == 1) Ast.expr.Name(Ast.identifier(a))
+        if (ut.forcedParent.isDefined) {
+          val base: Ast.expr = ut.forcedParent.get match {
+            case Ast.expr.Bool(false) =>
+              unsupported(s"the key `parent: false` on a field of type ${callee.nameAsStr}, which uses `_parent`")
+            case p => p
+          }
+          Ast.expr.Attribute((2 to h).foldLeft(base)((x, _) => Ast.expr.Attribute(x, Ast.identifier(Identifier.PARENT))), Ast.identifier(a))
+        } else if (h == 1) Ast.expr.Name(Ast.identifier(a))
         else Ast.expr.Attribute(parentChain(h - 1), Ast.identifier(a))
       case _ if parentHops(e).isDefined =>
         val h = parentHops(e).get
-        if (h == 1) unsupported("`_parent` used as a value") else parentChain(h - 1)
+        if (ut.forcedParent.isDefined) unsupported("`_parent` used as a value")
+        else if (h == 1) unsupported("`_parent` used as a value") else parentChain(h - 1)
       case Ast.expr.Attribute(v, Ast.identifier(a))
           if (rootOf(caller) eq caller) && a != Identifier.IO && chainOf(v).exists(c => c._1 == Identifier.ROOT && c._2.isEmpty) =>
         Ast.expr.Name(Ast.identifier(a))
       case Ast.expr.Name(Ast.identifier(n)) if callee.params.exists(p => idRaw(p.id) == n && !isPrimDt(p.dataType)) =>
         ut.args(callee.params.indexWhere(p => idRaw(p.id) == n))
-      case _ => mapChildren(e)(go)
+      case _ =>
+        mapChildren(e)(go) match {
+          // an element of a list that the caller gives as an argument
+          case Ast.expr.Subscript(Ast.expr.List(es), Ast.expr.IntNum(i)) if i >= 0 && i < es.size => es(i.toInt)
+          case other => other
+        }
     }
-    go(e)
+    go(strip(e0))
   }
 
   private def containsRoot(e: Ast.expr): Boolean = e match {

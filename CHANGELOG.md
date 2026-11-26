@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Compiler: `valid` and `contents` on a repetition of bytes, strings or bit fields are checked on each element in
+  `Parse`. Example `repeat_valid`.
+
 - Compiler: repetitions of bit fields (`b1`, `bN`, and enumerations over them) with a cursor, and `_index` in the
   expressions of the elements of a cursor (`size: sizes[_index]`, `type: row(_index)`, the condition of `repeat-until`);
   the element procedure takes the number, the cursor keeps it. The early exit at an element that read nothing

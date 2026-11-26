@@ -33,6 +33,7 @@ with Repeat_Index;
 with Repeat_N_Empty;
 with Repeat_N_Struct;
 with Repeat_Until_Complex;
+with Repeat_Valid;
 with Sample_Data;
 with Showcase;
 with Str_Encodings;
@@ -172,6 +173,8 @@ package body Fuzz_Targets is
    Repeat_Index_Data : constant Bytes :=
      (16#03#, 16#00#, 16#00#, 16#00#, 16#02#, 16#00#, 16#01#, 16#61#, 16#62#, 16#63#, 16#11#, 16#22#, 16#22#);
 
+   Repeat_Valid_Data : constant Bytes := (16#4B#, 16#53#, 16#4B#, 16#53#, 16#01#, 16#02#, 16#03#, 16#04#);
+
    Bits_In_Types_Data    : constant Bytes := (16#AB#, 16#CD#);
    Bits_In_Repeat_Data   : constant Bytes := (16#AB#, 16#CD#, 16#EF#, 16#12#);
    Bits_After_Bytes_Data : constant Bytes := (16#11#, 16#B6#, 16#2A#, 16#07#);
@@ -295,6 +298,9 @@ package body Fuzz_Targets is
 
          when Repeat_Index_Parser              =>
             return Repeat_Index_Data;
+
+         when Repeat_Valid_Parser              =>
+            return Repeat_Valid_Data;
 
          when Repeat_Eos_U4_Parser             =>
             return Sample_Data.Repeat_Eos_Struct;
@@ -647,6 +653,7 @@ package body Fuzz_Targets is
       end loop;
    end Run_Repeat_Index;
 
+   procedure Run_Repeat_Valid is new Run_Parse_Only (Repeat_Valid.T, Repeat_Valid.Parse, Repeat_Valid.Valid);
    procedure Run_Repeat_N_Empty is new Run_Parse_Only (Repeat_N_Empty.T, Repeat_N_Empty.Parse, Repeat_N_Empty.Valid);
    procedure Run_Repeat_Eos_U4 is new Run_Parse_Only (Repeat_Eos_U4.T, Repeat_Eos_U4.Parse, Repeat_Eos_U4.Valid);
    procedure Run_Repeat_Until_Complex is new
@@ -1108,6 +1115,9 @@ package body Fuzz_Targets is
 
          when Repeat_Bits_Parser               =>
             Run_Repeat_Bits (Input, Fields);
+
+         when Repeat_Valid_Parser              =>
+            Run_Repeat_Valid (Input, Fields);
 
          when Repeat_Index_Parser              =>
             Run_Repeat_Index (Input, Fields);

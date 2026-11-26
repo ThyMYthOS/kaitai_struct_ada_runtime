@@ -33,6 +33,7 @@ with Repeat_Index;
 with Repeat_N_Empty;
 with Repeat_N_Struct;
 with Repeat_Until_Complex;
+with Repeat_Valid;
 with Sample_Data;    use Sample_Data;
 with Str_Eos_Pad_Term;
 with Str_Encodings;
@@ -512,6 +513,37 @@ package body Examples_Tests is
       Parse (This, Short, S);
       Check (not Valid (This) and then Status (S) = End_Of_Stream, "an element beyond the data");
    end Test_Repeat_Index;
+
+   procedure Test_Repeat_Valid is
+      use Repeat_Valid;
+      Data   : constant Bytes (1 .. 8) := (16#4B#, 16#53#, 16#4B#, 16#53#, 16#01#, 16#02#, 16#03#, 16#04#);
+      Bad_1  : constant Bytes (1 .. 8) := (16#4B#, 16#53#, 16#4B#, 16#54#, 16#01#, 16#02#, 16#03#, 16#04#);
+      Bad_2  : constant Bytes (1 .. 8) := (16#4B#, 16#53#, 16#4B#, 16#53#, 16#01#, 16#02#, 16#00#, 16#00#);
+      S      : Stream := Open (Data);
+      This   : Repeat_Valid.T;
+      Pair   : Slice;
+      Target : Bytes (1 .. 8) := (others => 16#EE#);
+      W      : Kaitai.Writers.Writer := Kaitai.Writers.Open (Target);
+   begin
+      Group ("examples repeat_valid");
+      Parse (This, Data, S);
+      Check (Valid (This) and then Is_EOF (S), "parses all eight bytes");
+      if Valid (This) then
+         Check (Marks_Count (This) = 2 and then Pairs_Count (This) = 2, "counts");
+         Get_Pairs (This, Data, 1, Pair);
+         Check (Size (Pair) = 2 and then Data (Pair.First) = 16#03#, "pairs[1]");
+         Write (This, Data, Target, W);
+         Check (Kaitai.Writers.OK (W) and then Size (Kaitai.Writers.Written (W)) = 8 and then Target = Data, "written");
+      end if;
+
+      S := Open (Bad_1);
+      Parse (This, Bad_1, S);
+      Check (not Valid (This) and then Status (S) = Validation_Not_Equal, "the second mark is wrong");
+
+      S := Open (Bad_2);
+      Parse (This, Bad_2, S);
+      Check (not Valid (This) and then Status (S) = Validation_Expr, "the last pair is zero");
+   end Test_Repeat_Valid;
 
    procedure Test_Repeat_Eos_U4 is
       use Repeat_Eos_U4;
@@ -1676,6 +1708,7 @@ package body Examples_Tests is
       Test_Repeat_N_Empty;
       Test_Repeat_Bits;
       Test_Repeat_Index;
+      Test_Repeat_Valid;
       Test_Repeat_Eos_U4;
       Test_Repeat_Until_Complex;
       Test_Switch_Manual_Int;

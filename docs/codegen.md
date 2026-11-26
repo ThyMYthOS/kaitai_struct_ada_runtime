@@ -1168,8 +1168,13 @@ Where the rules above are silent, the compiler does the following.
 - `valid` on a repetition of integers of a fixed size holds for every
   element. After the read, a loop decodes each element again and applies the
   check, which fails the stream like the check of a single field; with
-  `repeat: until` each element is checked as it is read. `valid` on other
-  repetitions is rejected.
+  `repeat: until` each element is checked as it is read. `valid` (and
+  `contents`, which is `valid` with `eq`) on a repetition of bytes, strings or
+  bit fields is checked on each element in the loop of `Parse` right after
+  the element is read, with `_` the element; a check that fails fails the
+  stream and ends the loop. It costs one comparison per element. `Next` and
+  `Get_X` do not check again. `valid` on repetitions of structures is
+  rejected.
 - A subscript `x[i]` is defined for bytes and for a repetition of integers
   of a fixed size that is not `repeat: until`. It is defined where `0 <= i`
   and `i` is below the number of elements, which becomes a condition of the

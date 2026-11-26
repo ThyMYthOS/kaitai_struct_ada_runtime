@@ -1959,6 +1959,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
             guarded(t.guards, List(s"if not $isFn (${t.code}) then", "   " + failStmt(rc, "Validation_Not_In_Enum"), "end if;"), rc)
           case _ => throw new AdaUnsupported("`in-enum` on something that is not an enumeration")
         }
+      case ValidationExpr(Ast.expr.Compare(l, Ast.cmpop.NotEq, r)) =>
+        // the failure is `l == r`; not `not (not Equal (...))`
+        check(Ast.expr.Compare(l, Ast.cmpop.Eq, r), "Validation_Expr")
       case ValidationExpr(e) =>
         check(Ast.expr.UnaryOp(Ast.unaryop.Not, e), "Validation_Expr")
     }
@@ -2798,8 +2801,13 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         case _: FloatMultiType | _: BitsType | _: BitsType1 | EnumType(_, _, _: BitsType) => false
         case _ => true
       }))
-      if (a.cond.repeat != NoRepeat && !sliceInts)
-        throw new AdaUnsupported("`valid` on a repeated field that is not a repetition of integers of a fixed size")
+      // elements that are read one by one are checked as each is read
+      val perElement = a.dataType match {
+        case _: BytesType | _: StrType | _: BitsType | _: BitsType1 | EnumType(_, _, _: BitsType) => !AdaTranslator.hasProcess(a.dataType)
+        case _ => false
+      }
+      if (a.cond.repeat != NoRepeat && !sliceInts && !perElement)
+        throw new AdaUnsupported("`valid` on a repeated field that is not a repetition of integers of a fixed size, bytes, strings or bit fields")
     }
     if (a.cond.repeat != NoRepeat && AdaTranslator.hasProcess(a.dataType)) throw new AdaUnsupported("`process` on a repeated field")
     a.cond.repeat match {
@@ -3797,6 +3805,11 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       s"$helper (Buffer, S, ${callThis}${callIndex("I - 1")}$el);"
     } else elemStmts0.head.replace("(Element, ", s"($el, ")
     val Iv = "I"
+    // `valid` is checked on each element as it is read; a check that fails ends the loop
+    val checks = a.valid.toList.flatMap(v => validate(v, dt, el, rc)) match {
+      case Nil => Nil
+      case cs => cs ++ List(s"exit when not ${KS}OK (S);")
+    }
     // at most one element per byte that is left; a bit field takes at least a bit, so at most eight per byte
     val bound =
       if (isScalar) s"(if ${KS}Remaining (S) < ${KT}Length'Last / 8 - 1 then ${KS}Remaining (S) * 8 + 8 else ${KT}Length'Last)"
@@ -3820,11 +3833,11 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
           }
         guarded(t.guards, List(s"This.${bs}_Count := ${countCode(t)};"), rc, Nil) ++ List(
           s"for $Iv in 1 .. This.${bs}_Count loop"
-        ) ++ ind(before ++ List(parseCall, s"exit when not ${valid(el).replace("OK (S)", "OK (S)")};") ++ same ++ List(
+        ) ++ ind(before ++ List(parseCall, s"exit when not ${valid(el).replace("OK (S)", "OK (S)")};") ++ checks ++ same ++ List(
           s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv);")) ++ List("end loop;")
       case RepeatEos =>
         List(s"This.${bs}_Count := 0;", s"for $Iv in 1 .. $bound loop") ++
-          ind(List(s"exit when ${KS}Is_EOF (S);", parseCall, s"exit when not ${valid(el)};", s"This.${bs}_Count := $Iv;",
+          ind(List(s"exit when ${KS}Is_EOF (S);", parseCall, s"exit when not ${valid(el)};") ++ checks ++ List(s"This.${bs}_Count := $Iv;",
             s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv);")) ++ List(
           "end loop;", s"if ${KS}OK (S) and then not ${KS}Is_EOF (S) then", "   " + failStmt(rc, "Limit_Exceeded"), "end if;")
       case RepeatUntil(cond) =>
@@ -3839,7 +3852,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         tr.knownValid = Set()
         val check = guarded(ct.guards, List(s"$done := ${ct.code};"), rc, List(s"$done := True;"), init = false)
         List(s"This.${bs}_Count := 0;", s"$done := False;", s"for $Iv in 1 .. $bound + 1 loop") ++
-          ind(List(parseCall, s"exit when not ${valid(el)};", s"This.${bs}_Count := $Iv;") ++ planLoop ++ check ++ List(
+          ind(List(parseCall, s"exit when not ${valid(el)};") ++ planLoop ++ checks ++ List(s"This.${bs}_Count := $Iv;") ++ check ++ List(
             s"exit when $done;",
             s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv and then not $done${planInvariant});")) ++
           List("end loop;", s"if ${KS}OK (S) and then not $done then", "   " + failStmt(rc, "Limit_Exceeded"), "end if;")

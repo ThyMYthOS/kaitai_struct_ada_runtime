@@ -85,7 +85,7 @@ happens to each of the 334 formats of the Kaitai Struct test suite, and
 | Strings | comparison with a literal of any characters (the compiler encodes the literal for ASCII, UTF-8, ISO-8859-1, UTF-16LE and UTF-16BE) and with each other; `<`, `>` for ASCII, UTF-8 and ISO-8859-1; `.length`; `.to_i` (of a literal: computed by the compiler) | `+` (concatenation), `substring`, `reverse`, `to_s` of an integer; a literal with a character that is not ASCII for a string in another encoding (`Shift_JIS`, `IBM437`, ...); comparison of strings in different encodings other than ASCII and UTF-8; `<`, `>` in other encodings; `.length` in `Shift_JIS`, `Big5` or `EUC-KR`; `.to_i` in UTF-16 |
 | Bytes | comparison, `.length`, `.first`, `.last`, `.min`, `.max`, subscripts | – |
 | Repetitions | `.size`; subscripts of a repetition of integers of a fixed size | `.first`, `.last`, `.min`, `.max` and other uses of an array; subscripts of other repetitions |
-| `_io.size`, `_io.pos`, `_io.eof` | in the expressions of fields (`size`, `if`, `repeat-expr`, ...) | in a value instance |
+| `_io.size`, `_io.pos`, `_io.eof` | in the expressions of fields (`size`, `if`, `repeat-expr`, ...); `_io.size` also in an instance with a position | in a value instance; `_io.pos` and `_io.eof` in an expression of an instance with a position (`pos`, `size`, `if`, `valid`, ...): the Ada accessor evaluates them at the start of the type, the other targets when the instance is first used, so the results would differ without a message |
 | Fields of nested values, `sizeof<t>`, `_sizeof`, `x._sizeof` | yes | – |
 | Casts (`.as<...>`) | – | all |
 

@@ -3580,6 +3580,12 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   }
 
   private def genParseInstance(cs: ClassSpec, p: ParseInstanceSpec, o: Out): Unit = {
+    tr.inParseInstance = true
+    try genParseInstanceBody(cs, p, o)
+    finally tr.inParseInstance = false
+  }
+
+  private def genParseInstanceBody(cs: ClassSpec, p: ParseInstanceSpec, o: Out): Unit = {
     val nm = plain(idRaw(p.id))
     val bs = base(idRaw(p.id))
     val path = p.path

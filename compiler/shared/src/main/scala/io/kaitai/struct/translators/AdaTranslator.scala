@@ -162,10 +162,16 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
   private var inlining: List[String] = Nil
   /** Code that stands for the current record */
   var thisName: String = "This"
+  /**
+    * True while the expressions of a parse instance are translated: the accessor of an instance is called after the
+    * parser has run, so it cannot know where the stream of the type was when the instance is first used
+    */
+  var inParseInstance: Boolean = false
   /** Types of the library whose operators the generated code uses */
   val ops = scala.collection.mutable.Set[String]()
 
   private def unsupported(msg: String): Nothing = throw new AdaUnsupported(msg)
+
 
   private def useBuffer(): String = buffer match {
     case Some(b) => b
@@ -515,6 +521,8 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         val s = v.code
         attr match {
           case "size" => int(s"Kaitai.Types.S64 (Kaitai.Streams.Size ($s))", 0, Nil, 0, S64Max)
+          case "pos" | "eof" if inParseInstance =>
+            unsupported(s"`_io.$attr` in an expression of a parse instance: the Ada accessor evaluates it at the start of the type, the other targets when the instance is first used")
           case "pos" => int(s"Kaitai.Types.S64 (Kaitai.Streams.Pos ($s))", 0, Nil, 0, S64Max)
           case "eof" => ATr(s"Kaitai.Streams.Is_EOF ($s)", 0, Nil, VBool)
           case _ => unsupported(s"`_io.$attr`")

@@ -9,23 +9,23 @@ Python runtime `kaitai_struct_python_runtime` at commit
 `54076c90b5c81348c0d4d005d769247d0497a007`. The Ada programs were built with
 run-time checks and with the contracts of the library and of the parsers
 executed. No program raised an exception and no contract failed. The script
-took about 18 minutes (`--jobs 3`). The test data are synthetic (files of the
+took about 20 minutes (`--jobs 3`). The test data are synthetic (files of the
 Kaitai test suite and changes of them); they hold no personal data.
 
 | | |
 |---|---|
 | formats | 342 |
-| compared | 231 (223 of the suite, 8 of our own) |
-| skipped | 111 (97 rejected by the Ada backend, as in `SUITE.md`; 14 without a data file) |
+| compared | 243 (235 of the suite, 8 of our own) |
+| skipped | 99 (84 rejected by the Ada backend, as in `SUITE.md`; 14 without a data file; 1 with an opaque type) |
 | failed to build | 0 |
-| inputs | 46431 |
-| parsed by Ada / by Python | 29078 / 29086 |
-| leaves compared in inputs with the same dump | 161923 |
+| inputs | 48843 |
+| parsed by Ada / by Python | 30826 / 30834 |
+| leaves compared in inputs with the same dump | 166045 |
 
 | Class | Inputs |
 |---|---|
-| same dump | 29031 |
-| both fail (`FAILED` on both sides) | 17285 |
+| same dump | 30779 |
+| both fail (`FAILED` on both sides) | 17949 |
 | dump over the limit (8 MB; both gave up at the same line) | 26 |
 | Python timeout or out of memory (not compared) | 17 |
 | known difference | 72 |
@@ -34,7 +34,7 @@ Kaitai test suite and changes of them); they hold no personal data.
 | only Python fails | 0 |
 | Ada exception | 0 |
 | no result | 0 |
-| total | 46431 |
+| total | 48843 |
 
 There is no difference that nothing explains: no input of the classes
 `values differ`, `only Ada fails`, `only Python fails`, `Ada exception` and
@@ -47,11 +47,20 @@ data file are the tests that the suite has no input for (`cast_to_imported`,
 `opaque_external_type_02_child`, `opaque_external_type_02_parent`,
 `opaque_with_param`, `params_def`, `params_def_array_usertype_imported`,
 `params_def_enum_imported`, `params_def_usertype_imported`, `str_literals`,
-`switch_cast`, `to_string_custom`); ten of them are rejected by the backend as
-well, which is why 97 and not 107 rejected formats are counted above.
+`switch_cast`, `to_string_custom`); five of them are rejected by the backend as
+well (`cast_to_imported2`, `enum_to_i_class_border_2`, `imports_circular_b`,
+`str_literals`, `switch_cast`), which is why 84 and not 89 rejected formats are
+counted above. The one format with an opaque type that the survey generates and that has a
+data file, `opaque_external_type`, is skipped: its dump program would have to
+walk the members of `hello_world`, which are not known to it.
+
+The three formats with a custom `process` (`process_custom`,
+`process_custom_no_args`, `process_term_struct`) are compared, with the Python
+classes of `spec/python/extra` of the tests repository: of their 603 inputs Ada
+parses 383, and the dumps are the same on all of them.
 
 A format whose inputs all fail on both sides tests only what comes before the
-failure: of the 231 formats seven have no input that Ada parses
+failure: of the 243 formats seven have no input that Ada parses
 (`eos_exception_bytes`, `eos_exception_sized`, `eos_exception_u4`, whose data
 are made to fail at any length, `valid_fail_contents`, `valid_fail_eq_bytes`,
 `valid_fail_eq_str`, and `expr_to_i_trailing`, whose instance raises an error
@@ -84,7 +93,7 @@ not show either: both sides reject them.
 ## Resource limits that are not differences
 
 17 inputs of `nav_parent` are in the class "Python timeout or out of memory":
-2 where Python raises `MemoryError` and 15 where it is stopped by the time
+3 where Python raises `MemoryError` and 14 where it is stopped by the time
 limit (`rc=124`). Smallest: 12 bytes `0200000800000000ff1bffff`. The format reads
 `qty_entries` (u4) and `filename_len` (u4), then four bytes, then `entries`
 with `repeat: expr` of `qty_entries` elements, each a string of `filename_len`
@@ -114,7 +123,7 @@ causes, which the commit after it addressed:
    backend took a name that it did not know for an encoding of one byte per
    character, which accepts every byte, so a misspelt name was never noticed.
    The backend rejects such a name now, so the format is not compared any more
-   (it is one of the 97 skipped; `SUITE.md` lists it as `not generated`).
+   (it is skipped as rejected; `SUITE.md` lists it as `not generated`).
 3. `%` with a divisor that is not positive (`x_expr`, our own format, 8
    inputs where only Ada failed). `Kaitai.Arithmetic.Modulo` is defined only
    for a positive divisor; the Python target returns a result for a negative
@@ -192,6 +201,8 @@ The unchanged parsers of the same formats gave no difference.
 - `contents` fields are not dumped (the Ada parsers do not keep them, only
   check them; a mismatch is a failure on both sides).
 - Top-level types with parameters are skipped (none of the compared formats).
+- A format with an opaque type is skipped (`opaque_external_type`): the members
+  of the opaque value are not known to the dump program.
 - Strings are compared as bytes: Python's string is encoded again with the
   encoding of the field, which is the identity for the encodings that occur.
 - A dump is capped at 8 MB.

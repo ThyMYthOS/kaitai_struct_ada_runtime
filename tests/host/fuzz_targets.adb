@@ -23,6 +23,7 @@ with Imports0;
 with Instance_Std;
 with Kaitai.Streams; use Kaitai.Streams;
 with Kaitai.Writers;
+with Outside;
 with Params_Def;
 with Position_Abs;
 with Repeat_Eos_U4;
@@ -224,6 +225,9 @@ package body Fuzz_Targets is
 
    Repeat_Eq_Int_Empty : constant Bytes (1 .. 0) := (others => 0);
 
+   Outside_Seed : constant Bytes :=
+     (16#66#, 16#6F#, 16#6F#, 2, 3, 16#78#, 16#79#, 16#7A#, 1, 2, 3, 4, 5, 6, 16#6E#, 16#6F#);
+
    function Seed (T : Target; Round : Positive) return Bytes is
    begin
       case T is
@@ -238,6 +242,9 @@ package body Fuzz_Targets is
 
          when Params_Def_Parser                =>
             return Sample_Data.Str_Encodings;
+
+         when Outside_Parser                   =>
+            return Outside_Seed;
 
          when Hello_World_Parser               =>
             return Sample_Data.Fixed_Struct;
@@ -590,6 +597,8 @@ package body Fuzz_Targets is
       pragma Assert (Params_Def.Valid (R) = OK (S));
       Fields := (if Params_Def.Valid (R) then 1 else 0);
    end Run_Params_Def;
+
+   procedure Run_Outside is new Run_Parse_Only (Outside.T, Outside.Parse, Outside.Valid);
 
    --  Parse Input, write the result and compare: what is written is what
    --  was read, and as long
@@ -981,6 +990,9 @@ package body Fuzz_Targets is
 
          when Params_Def_Parser                =>
             Run_Params_Def (Input, Argument, Fields);
+
+         when Outside_Parser                   =>
+            Run_Outside (Input, Fields);
 
          when Hello_World_Parser               =>
             Run_Hello_World (Input, Fields);

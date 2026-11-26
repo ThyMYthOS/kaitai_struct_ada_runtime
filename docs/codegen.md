@@ -438,9 +438,17 @@ Asking twice parses twice. The caller keeps the result if it needs it again.
 
 ## Parameters
 
-The parameters of a type are parameters of its `Parse`, between the stream
-and the result, and are kept in `T`, where instances and repetitions find
-them again. Each has an accessor.
+The parameters of a type that are integers, booleans or enumerations are
+parameters of its `Parse`, between the stream and the result, and are kept in
+`T`, where instances and repetitions find them again. Each has an accessor.
+
+A parameter of another type (a string, bytes, a user type, an array, a
+stream) is not a parameter of `Parse`. The type gets what it uses of the
+value as a value from outside, as described in the next section: a parameter
+`hdr` of a user type that the type uses as `hdr.width` becomes the integer
+`Hdr_Width`, which the caller computes from the argument it gives for `hdr`.
+A parameter that the type uses as a whole value is rejected with an error
+that names it, as long as no rule below keeps it.
 
 ## Processing
 
@@ -738,9 +746,17 @@ A value has no reference to the value it is part of. Where a type uses
 `_parent.x` or `_root.x.y`, the value of that expression becomes a parameter
 of its `Parse`, named `Parent_X` or `Root_X_Y`, after the parameters of the
 description. It is kept in `T` like those and has no accessor. `_parent.
-_parent.x` is `Parent_Parent_X`. Where the name is the end of a chain, the
-rest of the chain is applied to the parameter: `_parent.name.length` uses
-`Parent_Name`. Only integers, booleans and enumerations can be passed.
+_parent.x` is `Parent_Parent_X`. Only integers, booleans and enumerations are
+passed, so the type gets the largest part of an expression that it needs
+and that depends only on values from outside. A chain that ends in such a
+value is that value: `_parent.hdr.width`, a member of a parameter of a user type
+(`hdr.width`), the length of a string (`_parent.name.length`, `key.length`),
+the `size` of a repetition or of a stream (`_parent._io.size`). An expression
+with a string, a user type or the like in it that has an integer, a boolean
+or an enumeration as its value (`_parent.s1 == "foo"`) is passed as a whole,
+computed by the caller, and is named after its first chain (`Parent_S1_Expr`).
+Where an expression only calculates with integers (`_parent.x + 1`), the
+parts are passed, as before.
 
 The parser of the parent passes the value, computed from its own field, or
 value instance with its guards, at every place where it calls the parser: in
@@ -749,6 +765,12 @@ parse instances. A type that needs `_parent._parent.x` and `_root.x` of a
 type it uses, gets the parameters `Parent_X` and `Root_X` itself and hands
 them on. The top-level type of a description has `_root` as itself: `_root.x`
 is its field `x`.
+
+The caller reads the expression as its own: `_parent.x` is its `x`, a parameter
+of the callee is the argument that the caller gives. It computes the value
+before the call, with its guards, so an expression that is not defined there
+(a division by zero, a field with an `if` that does not hold) fails the stream
+with `Arithmetic_Error` at the call, also if the callee would not have used it.
 
 The value is taken when the parser of the parent calls. A reference to a
 field that is parsed later than the field with the call, to a parse instance,

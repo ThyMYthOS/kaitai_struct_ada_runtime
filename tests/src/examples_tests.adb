@@ -23,6 +23,7 @@ with Kaitai.Byte_Arrays;
 with Kaitai.Streams; use Kaitai.Streams;
 with Kaitai.Types;   use Kaitai.Types;
 with Kaitai.Writers;
+with Outside;
 with Params_Def;
 with Position_Abs;
 with Repeat_Eos_U4;
@@ -608,6 +609,36 @@ package body Examples_Tests is
       Parse (Bad, S, 3, True, This);
       Check (not Valid (This) and then Status (S) = Illegal_Sequence, "the string is checked as UTF-8");
    end Test_Params_Def;
+
+   procedure Test_Outside is
+      use Outside;
+      Data  : constant Bytes (1 .. 16) :=
+        (16#66#, 16#6F#, 16#6F#, 2, 3, 16#78#, 16#79#, 16#7A#, 1, 2, 3, 4, 5, 6, 16#6E#, 16#6F#);
+      Other : Bytes (1 .. 16) := Data;
+      Short : constant Bytes (1 .. 12) := Data (1 .. 12);
+      S     : Stream := Open (Data);
+      This  : Outside.T;
+   begin
+      Group ("examples outside");
+      Parse (Data, S, This);
+      Check (Valid (This) and then Is_EOF (S), "parses");
+      if Valid (This) then
+         Check (Size (Item_Type.Body_Field (Item (This))) = 3, "size from the length of a string of the parent");
+         Check (Size (Item_Type.Pixels (Item (This))) = 6, "size from two integers of a value of the parent");
+         Check (Note_Type.From_Foo (Note (This)), "the string of the parent is foo");
+      end if;
+      Other (1) := 16#62#;
+      S := Open (Other);
+      Parse (Other, S, This);
+      if Valid (This) then
+         Check (not Note_Type.From_Foo (Note (This)), "the string of the parent is not foo");
+      else
+         Check (False, "parses another name");
+      end if;
+      S := Open (Short);
+      Parse (Short, S, This);
+      Check (not Valid (This) and then Status (S) = End_Of_Stream, "a size from the header beyond the input fails");
+   end Test_Outside;
 
    procedure Test_Instance_Std is
       use Instance_Std;
@@ -1486,6 +1517,7 @@ package body Examples_Tests is
       Test_If_Struct;
       Test_Expr_1;
       Test_Params_Def;
+      Test_Outside;
       Test_Instance_Std;
       Test_Position_Abs;
       Test_Valid_Fail_Eq_Int;

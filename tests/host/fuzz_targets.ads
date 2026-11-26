@@ -36,6 +36,7 @@ package Fuzz_Targets is
       Default_Endian_Expr_Is_Le_Parser,
       Valid_Fail_Eq_Int_Parser,
       Params_Def_Parser,
+      Outside_Parser,
       Imports0_Parser,
       Term_Struct_Parser,
       Bytes_Pad_Term_Equal_Parser,

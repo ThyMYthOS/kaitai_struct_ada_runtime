@@ -544,13 +544,13 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   private def unsupported(msg: String): Nothing = throw new AdaUnsupported(msg)
 
   /**
-    * The value of `_parent.x` (hops = 1), `_parent._parent.x` (hops = 2) or `_root.x`, which the parser of a
-    * type gets from outside as a parameter. `path` names the member `x` and, for a value inside a nested
-    * value, the members on the way to it.
+    * A value that the parser of a type gets from outside as a parameter: an expression of the type that depends only
+    * on the parameters of the description that are not integers, booleans or enumerations, and on `_parent` and `_root`
+    * (`_parent.x`, `_root.x.y`, `hdr.width`, `_parent.s1 == "foo"`). The caller computes it. `raw` is the name of the
+    * parameter of `Parse` and of the component of `T`: `_parent.x` is `Parent_X`, `_root.x.y` is `Root_X_Y`.
     */
-  case class Ref(root: Boolean, hops: Int, path: List[String]) {
-    def source: String = (if (root) "_root" else List.fill(hops)("_parent").mkString(".")) + path.map("." + _).mkString
-    def raw: String = (if (root) "root" else List.fill(hops)("parent").mkString("_")) + "_" + path.mkString("_")
+  case class Ref(expr: Ast.expr, raw: String) {
+    def source: String = showExpr(expr)
     def adaName: String = base(raw)
   }
 
@@ -564,7 +564,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   private lazy val usersMemo: Map[String, List[ClassSpec]] = {
     val m = mutable.LinkedHashMap[String, ListBuffer[ClassSpec]]()
     allClasses.foreach { c =>
-      userTypesOf(c).foreach { u =>
+      useSites(c).map(_.classSpec.get).foreach { u =>
         if (classFile(u) == classFile(c)) {
           val l = m.getOrElseUpdate(u.nameAsStr, ListBuffer())
           if (!l.exists(_ eq c)) l += c
@@ -572,6 +572,19 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       }
     }
     m.map(kv => kv._1 -> kv._2.toList).toMap
+  }
+
+  /** The uses of a type as a field or a parse instance of `cs`, with the arguments. */
+  private def useSites(cs: ClassSpec): List[UserType] = {
+    def of(dt: DataType): List[UserType] = dt match {
+      case ut: UserType if ut.classSpec.isDefined => List(ut)
+      case st: SwitchType => st.cases.values.toList.flatMap(of)
+      case _ => Nil
+    }
+    cs.seq.flatMap(a => of(a.dataType)) ++ cs.instances.values.toList.flatMap {
+      case p: ParseInstanceSpec => of(p.dataType)
+      case _ => Nil
+    }
   }
 
   /** The types of the same description that have a field of the type. */
@@ -596,43 +609,185 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     case _ => None
   }
 
-  /** From class `from`, follow the members of `rest` as far as the value of a member that is not a nested value. */
-  private def resolvePath(from: ClassSpec, rest: List[String]): Option[(List[String], DataType)] = {
-    var c = from
-    var consumed = List[String]()
-    var remaining = rest
-    while (remaining.nonEmpty) {
-      val m = memberOpt(c, remaining.head).getOrElse(return None)
-      consumed = consumed :+ remaining.head
-      remaining = remaining.tail
-      val repeated = m match { case a: AttrLikeSpec => a.cond.repeat != NoRepeat; case _ => false }
-      m.dataType match {
-        case ut: UserType if remaining.nonEmpty && !repeated && ut.classSpec.isDefined => c = ut.classSpec.get
-        case dt => return Some((consumed, dt))
-      }
-    }
-    None
+  /** A name followed by members, whatever the name is. */
+  private def isChain(e: Ast.expr): Boolean = e match {
+    case _: Ast.expr.Name => true
+    case Ast.expr.Attribute(v, _) => isChain(v)
+    case _ => false
   }
 
-  /** The reference that the chain starts with, its type, and how many names of the chain it covers. */
-  private def refPrefix(cs: ClassSpec, base: String, attrs: List[String]): (Ref, DataType, Int) =
-    if (base == Identifier.ROOT) {
-      val root = rootOf(cs)
-      resolvePath(root, attrs) match {
-        case Some((p, dt)) => (Ref(root = true, 0, p), dt, p.size)
-        case None => unsupported(s"`_root.${attrs.mkString(".")}`: no such member in type ${root.nameAsStr}")
-      }
-    } else {
-      val hops = 1 + attrs.takeWhile(_ == Identifier.PARENT).size
-      val rest = attrs.dropWhile(_ == Identifier.PARENT)
-      val cands = ancestors(cs, hops)
-      if (cands.isEmpty)
-        unsupported(s"`${List.fill(hops)("_parent").mkString(".")}` in type ${cs.nameAsStr}, which no type of the description has as a field")
-      cands.view.flatMap(c => resolvePath(c, rest)).headOption match {
-        case Some((p, dt)) => (Ref(root = false, hops, p), dt, hops - 1 + p.size)
-        case None => unsupported(s"`${(List.fill(hops)("_parent") ++ rest).mkString(".")}`: no such member in the type that has the field")
-      }
+  private def chainNames(e: Ast.expr): List[String] = e match {
+    case Ast.expr.Name(Ast.identifier(n)) => List(n)
+    case Ast.expr.Attribute(v, Ast.identifier(a)) => chainNames(v) :+ a
+    case _ => Nil
+  }
+
+  /** The expression as it is written in a description, for messages. */
+  private def showExpr(e: Ast.expr): String = {
+    import Ast.expr._
+    def op(o: Ast.operator): String = o match {
+      case Ast.operator.Add => "+"
+      case Ast.operator.Sub => "-"
+      case Ast.operator.Mult => "*"
+      case Ast.operator.Div => "/"
+      case Ast.operator.Mod => "%"
+      case Ast.operator.LShift => "<<"
+      case Ast.operator.RShift => ">>"
+      case Ast.operator.BitOr => "|"
+      case Ast.operator.BitXor => "^"
+      case Ast.operator.BitAnd => "&"
     }
+    def cmp(o: Ast.cmpop): String = o match {
+      case Ast.cmpop.Eq => "=="
+      case Ast.cmpop.NotEq => "!="
+      case Ast.cmpop.Lt => "<"
+      case Ast.cmpop.LtE => "<="
+      case Ast.cmpop.Gt => ">"
+      case Ast.cmpop.GtE => ">="
+    }
+    e match {
+      case Name(Ast.identifier(n)) => n
+      case Attribute(v, Ast.identifier(a)) => showExpr(v) + "." + a
+      case IntNum(n) => n.toString
+      case Bool(b) => b.toString
+      case Str(s) => "\"" + s + "\""
+      case BinOp(l, o, r) => s"(${showExpr(l)} ${op(o)} ${showExpr(r)})"
+      case Compare(l, o, r) => s"${showExpr(l)} ${cmp(o)} ${showExpr(r)}"
+      case BoolOp(o, vs) => vs.map(showExpr).mkString(if (o == Ast.boolop.And) " and " else " or ")
+      case UnaryOp(o, v) => (if (o == Ast.unaryop.Not) "not " else if (o == Ast.unaryop.Minus) "-" else "~") + showExpr(v)
+      case IfExp(c, a, b) => s"${showExpr(c)} ? ${showExpr(a)} : ${showExpr(b)}"
+      case Subscript(a, i) => s"${showExpr(a)}[${showExpr(i)}]"
+      case Call(f, args) => s"${showExpr(f)}(${args.map(showExpr).mkString(", ")})"
+      case List(es) => es.map(showExpr).mkString("[", ", ", "]")
+      case EnumByLabel(en, l, _) => s"${en.name}::${l.name}"
+      case _ => "..."
+    }
+  }
+
+  private def isPrimDt(dt: DataType): Boolean = dt match {
+    case _: IntType | _: EnumType | _: BooleanType => true
+    case _ => false
+  }
+
+  /** What an expression of outside values stands for, before it is a value of a known type. */
+  private sealed trait OV
+  private case class OVal(dt: DataType) extends OV
+  private case class OParent(hops: Int) extends OV
+  private case object ORoot extends OV
+  private case object OIo extends OV
+
+  private def memberValue(c: ClassSpec, a: String): Option[OV] = memberOpt(c, a).flatMap {
+    case p: ParamDefSpec => Some(OVal(p.dataType))
+    case at: AttrSpec =>
+      if (at.cond.repeat != NoRepeat) Some(OVal(ArrayTypeInStream(at.dataType))) else Some(OVal(at.dataType))
+    case v: ValueInstanceSpec => Some(OVal(v.dataType))
+    case _ => None
+  }
+
+  private def isIntLike(o: OV): Boolean = o match {
+    case OVal(_: IntType | _: EnumType) => true
+    case _ => false
+  }
+
+  private def isBoolLike(o: OV): Boolean = o match {
+    case OVal(_: BooleanType) => true
+    case _ => false
+  }
+
+  /**
+    * The type of an expression of `cs` that depends only on outside values (and literals), and whether it depends on
+    * at least one. `None` for an expression that uses a value of the type itself, or that this does not understand.
+    */
+  private def outTypeOf(cs: ClassSpec, e: Ast.expr): Option[(OV, Boolean)] = {
+    import Ast.expr._
+    def both(l: Ast.expr, r: Ast.expr)(f: (OV, OV) => Option[OV]): Option[(OV, Boolean)] =
+      outTypeOf(cs, l).flatMap { case (a, x) =>
+        outTypeOf(cs, r).flatMap { case (b, y) => f(a, b).map(v => (v, x || y)) }
+      }
+    e match {
+      case IntNum(_) | EnumByLabel(_, _, _) => Some((OVal(CalcIntType), false))
+      case Bool(_) => Some((OVal(CalcBooleanType), false))
+      case Str(_) => Some((OVal(CalcStrType), false))
+      case Name(Ast.identifier(n)) =>
+        if (n == Identifier.PARENT) Some((OParent(1), true))
+        else if (n == Identifier.ROOT) { if (rootOf(cs) eq cs) None else Some((ORoot, true)) }
+        else cs.params.find(p => idRaw(p.id) == n) match {
+          case Some(p) if !isPrimDt(p.dataType) => Some((OVal(p.dataType), true))
+          case _ => None
+        }
+      case Attribute(v, Ast.identifier(a)) =>
+        outTypeOf(cs, v).flatMap { case (ov, _) =>
+          val m: Option[OV] = ov match {
+            case OParent(h) =>
+              if (a == Identifier.PARENT) Some(OParent(h + 1))
+              else if (a == Identifier.IO) Some(OIo)
+              else ancestors(cs, h).view.flatMap(c => memberValue(c, a)).headOption
+            case ORoot => if (a == Identifier.IO) None else memberValue(rootOf(cs), a)
+            case OVal(ut: UserType) =>
+              if (a.startsWith("_")) { if (a == Identifier.IO) Some(OIo) else None }
+              else ut.classSpec.flatMap(c => memberValue(c, a))
+            case OVal(_: StrType | _: BytesType) =>
+              if (a == "length" || a == "size") Some(OVal(CalcIntType)) else None
+            case OVal(_: ArrayType) => if (a == "size") Some(OVal(CalcIntType)) else None
+            case OIo => if (a == "size") Some(OVal(CalcIntType)) else None
+            case _ => None
+          }
+          m.map(x => (x, true))
+        }
+      case Subscript(a, i) =>
+        both(a, i) {
+          case (OVal(at: ArrayType), ix) if isIntLike(ix) => Some(OVal(at.elType))
+          case (OVal(_: BytesType), ix) if isIntLike(ix) => Some(OVal(CalcIntType))
+          case _ => None
+        }
+      case BinOp(l, _, r) => both(l, r) { (a, b) => if (isIntLike(a) && isIntLike(b)) Some(OVal(CalcIntType)) else None }
+      case Compare(l, _, r) => both(l, r)((_, _) => Some(OVal(CalcBooleanType)))
+      case BoolOp(_, vs) =>
+        val ts = vs.map(outTypeOf(cs, _))
+        if (ts.forall(t => t.exists(x => isBoolLike(x._1)))) Some((OVal(CalcBooleanType), ts.exists(_.get._2))) else None
+      case UnaryOp(o, v) =>
+        outTypeOf(cs, v).flatMap { case (t, x) =>
+          if (o == Ast.unaryop.Not) { if (isBoolLike(t)) Some((OVal(CalcBooleanType), x)) else None }
+          else if (isIntLike(t)) Some((OVal(CalcIntType), x)) else None
+        }
+      case IfExp(c, a, b) =>
+        for {
+          cx <- outTypeOf(cs, c) if isBoolLike(cx._1)
+          ax <- outTypeOf(cs, a)
+          bx <- outTypeOf(cs, b)
+          r <- if (isBoolLike(ax._1) && isBoolLike(bx._1)) Some(OVal(CalcBooleanType))
+               else if (isIntLike(ax._1) && isIntLike(bx._1)) Some(OVal(CalcIntType)) else None
+        } yield (r, cx._2 || ax._2 || bx._2)
+      case _ => None
+    }
+  }
+
+  /** The type of a value that is passed as it is; an integer that an expression computes is an S64. */
+  private def refType(dt: DataType): DataType = dt match {
+    case CalcIntType => IntMultiType(signed = true, Width8, Some(LittleEndian))
+    case other => other
+  }
+
+  /** An expression that has a value of a type that is not passed on its own (a string, a user type, ...) in it. */
+  private def hasWholeValue(cs: ClassSpec, e: Ast.expr): Boolean = {
+    import Ast.expr._
+    if (isChain(e)) outTypeOf(cs, e) match {
+      case Some((OVal(dt), true)) => !isPrimDt(dt)
+      case Some((_, true)) => true
+      case _ => false
+    }
+    else e match {
+      case Attribute(v, _) => hasWholeValue(cs, v)
+      case BinOp(l, _, r) => hasWholeValue(cs, l) || hasWholeValue(cs, r)
+      case Compare(l, _, r) => hasWholeValue(cs, l) || hasWholeValue(cs, r)
+      case BoolOp(_, vs) => vs.exists(hasWholeValue(cs, _))
+      case UnaryOp(_, v) => hasWholeValue(cs, v)
+      case IfExp(a, b, c) => hasWholeValue(cs, a) || hasWholeValue(cs, b) || hasWholeValue(cs, c)
+      case Call(f, args) => hasWholeValue(cs, f) || args.exists(hasWholeValue(cs, _))
+      case Subscript(a, b) => hasWholeValue(cs, a) || hasWholeValue(cs, b)
+      case _ => false
+    }
+  }
 
   private def procExprs(p: Option[ProcessExpr]): List[Ast.expr] = p match {
     case Some(ProcessXor(k)) => List(k)
@@ -641,13 +796,20 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     case _ => Nil
   }
 
+  /** The arguments of a use of a type that are passed: those for parameters that are integers, booleans or enumerations. */
+  private def passedArgs(ut: UserType): List[Ast.expr] = ut.classSpec match {
+    case Some(c) if c.params.size == ut.args.size =>
+      ut.args.zip(c.params).collect { case (a, p) if isPrimDt(p.dataType) => a }.toList
+    case _ => ut.args.toList
+  }
+
   private def dtExprs(dt: DataType): List[Ast.expr] = dt match {
     case BytesLimitType(size, _, _, _, proc) => size :: procExprs(proc)
     case BytesEosType(_, _, _, proc) => procExprs(proc)
     case BytesTerminatedType(_, _, _, _, proc) => procExprs(proc)
     case StrFromBytesType(bt, _, _) => dtExprs(bt)
-    case ut: UserTypeFromBytes => ut.args.toList ++ dtExprs(ut.bytes) ++ procExprs(ut.process)
-    case ut: UserType => ut.args.toList
+    case ut: UserTypeFromBytes => passedArgs(ut) ++ dtExprs(ut.bytes) ++ procExprs(ut.process)
+    case ut: UserType => passedArgs(ut)
     case st: SwitchType => st.on :: st.cases.toList.flatMap { case (k, v) => k :: dtExprs(v) }
     case _ => Nil
   }
@@ -683,96 +845,219 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       case _ => Nil
     })
 
-  private def scanRefs(cs: ClassSpec, expr: Ast.expr): List[(Ref, DataType)] = {
-    val out = ListBuffer[(Ref, DataType)]()
-    def walk(e: Ast.expr): Unit = chainOf(e) match {
-      case Some((base, attrs)) =>
-        if (base == Identifier.ROOT && attrs.headOption.contains(Identifier.IO)) ()
-        else if (attrs.isEmpty) unsupported(s"`$base` used as a value")
-        else if (base == Identifier.PARENT && attrs.headOption.contains(Identifier.IO)) unsupported("`_parent._io`")
-        else if (base == Identifier.ROOT && isRecursive(rootOf(cs)))
-          // The value that a nested top-level value would need is the one of the outermost value, not its own.
-          unsupported("`_root` in a description whose top-level type contains itself")
-        else if (base == Identifier.ROOT && (rootOf(cs) eq cs)) ()
-        else {
-          val (r, dt, _) = refPrefix(cs, base, attrs)
-          out += ((r, dt))
-        }
-      case None =>
-        e match {
-          case Ast.expr.Attribute(v, _) => walk(v)
-          case Ast.expr.BinOp(l, _, r) => walk(l); walk(r)
-          case Ast.expr.Compare(l, _, r) => walk(l); walk(r)
-          case Ast.expr.BoolOp(_, vs) => vs.foreach(walk)
-          case Ast.expr.UnaryOp(_, v) => walk(v)
-          case Ast.expr.IfExp(a, b, c) => walk(a); walk(b); walk(c)
-          case Ast.expr.Call(f, args) => walk(f); args.foreach(walk)
-          case Ast.expr.Subscript(a, b) => walk(a); walk(b)
-          case Ast.expr.List(es) => es.foreach(walk)
-          case Ast.expr.CastToType(v, _) => walk(v)
-          case Ast.expr.EnumById(_, v, _) => walk(v)
-          case _ =>
-        }
+  /**
+    * The values from outside that the type needs for `expr`: the largest subexpressions that depend only on outside
+    * values and are integers, booleans or enumerations, where such a subexpression has a string, a user type or the
+    * like in it; otherwise the integer, boolean or enumeration that a chain `_parent.x`, `hdr.width` ends in.
+    */
+  private def scanRefs(cs: ClassSpec, expr: Ast.expr): List[(Ast.expr, DataType)] = {
+    val out = ListBuffer[(Ast.expr, DataType)]()
+    def isRootIoChain(e: Ast.expr): Boolean = chainOf(e) match {
+      case Some((Identifier.ROOT, Identifier.IO :: _)) => true
+      case _ => false
+    }
+    def children(e: Ast.expr): Unit = e match {
+      case Ast.expr.Attribute(v, _) => walk(v)
+      case Ast.expr.BinOp(l, _, r) => walk(l); walk(r)
+      case Ast.expr.Compare(l, _, r) => walk(l); walk(r)
+      case Ast.expr.BoolOp(_, vs) => vs.foreach(walk)
+      case Ast.expr.UnaryOp(_, v) => walk(v)
+      case Ast.expr.IfExp(a, b, c) => walk(a); walk(b); walk(c)
+      case Ast.expr.Call(f, args) => walk(f); args.foreach(walk)
+      case Ast.expr.Subscript(a, b) => walk(a); walk(b)
+      case Ast.expr.List(es) => es.foreach(walk)
+      case Ast.expr.CastToType(v, _) => walk(v)
+      case Ast.expr.EnumById(_, v, _) => walk(v)
+      case _ =>
+    }
+    def checkRoot(c: List[String]): Unit =
+      if (c.head == Identifier.ROOT && !c.tail.headOption.contains(Identifier.IO) && c.tail.nonEmpty && isRecursive(rootOf(cs)))
+        // The value that a nested top-level value would need is the one of the outermost value, not its own.
+        unsupported("`_root` in a description whose top-level type contains itself")
+    def walk(e: Ast.expr): Unit = {
+      if (isChain(e)) checkRoot(chainNames(e))
+      val typed = if (isRootIoChain(e)) None else outTypeOf(cs, e)
+      typed match {
+        case Some((OVal(dt), true)) if isPrimDt(dt) =>
+          if (isChain(e) || hasWholeValue(cs, e)) { chainLeaves(e).foreach(checkRoot); out += ((e, refType(dt))) } else children(e)
+        case Some((OParent(_), true)) => unsupported(s"`${showExpr(e)}` used as a value")
+        case Some((ORoot, true)) => unsupported(s"`${showExpr(e)}` used as a value")
+        case Some((OIo, true)) => unsupported(s"`${showExpr(e)}`: only `.size` of a stream from outside is supported")
+        case Some((OVal(dt), true)) if isChain(e) =>
+          unsupported(s"`${showExpr(e)}` has the type ${describeType(dt)}; only integers, booleans and enumerations can be passed")
+        case None if isChain(e) && !isRootIoChain(e) && (chainNames(e).head == Identifier.PARENT || (chainNames(e).head == Identifier.ROOT && !(rootOf(cs) eq cs))) =>
+          val hops = chainNames(e).takeWhile(_ == Identifier.PARENT).size
+          if (chainNames(e).head == Identifier.PARENT && ancestors(cs, hops).isEmpty)
+            unsupported(s"`${List.fill(hops)("_parent").mkString(".")}` in type ${cs.nameAsStr}, which no type of the description has as a field")
+          else unsupported(s"`${showExpr(e)}`: no such member in the type that has the field, or not a value that can be passed")
+        case _ => children(e)
+      }
     }
     walk(expr)
     out.toList
   }
 
-  private def refParamType(dt: DataType, r: Ref): String = dt match {
+  private def describeType(dt: DataType): String = dt match {
+    case _: StrType => "string"
+    case _: BytesType => "bytes"
+    case _: UserType => "a user type"
+    case _: ArrayType => "array"
+    case other => other.toString
+  }
+
+  private def refParamType(dt: DataType, source: String): String = dt match {
     case _: IntType | _: EnumType | _: BooleanType => intAda(dt)
-    case other => unsupported(s"`${r.source}` has the type $other; only integers, booleans and enumerations can be passed")
+    case other => unsupported(s"`$source` has the type ${describeType(other)}; only integers, booleans and enumerations can be passed")
+  }
+
+  /** The name of the parameter of `Parse` for an expression: `_parent.x` is `parent_x`; another expression is named after its first chain. */
+  private def rawName(expr: Ast.expr, taken: Seq[Ref]): String = {
+    def path(e: Ast.expr): Option[String] = e match {
+      case Ast.expr.Name(Ast.identifier(n)) => Some(n.stripPrefix("_"))
+      case Ast.expr.Attribute(v, Ast.identifier(a)) => path(v).map(_ + "_" + a.stripPrefix("_"))
+      case Ast.expr.Subscript(v, Ast.expr.IntNum(i)) => path(v).map(_ + "_" + i)
+      case _ => None
+    }
+    val raw =
+      if (path(expr).isDefined) path(expr).get
+      else chainLeaves(expr).headOption.map(_.map(_.stripPrefix("_")).mkString("_") + "_expr").getOrElse("outside_expr")
+    if (!taken.exists(_.raw == raw)) raw
+    else Iterator.from(2).map(i => s"${raw}_$i").find(n => !taken.exists(_.raw == n)).get
+  }
+
+  /** The chains in an expression, in the order of reading. */
+  private def chainLeaves(e: Ast.expr): List[List[String]] = {
+    import Ast.expr._
+    if (isChain(e)) chainNames(e) :: Nil
+    else e match {
+      case Attribute(v, _) => chainLeaves(v)
+      case BinOp(l, _, r) => chainLeaves(l) ++ chainLeaves(r)
+      case Compare(l, _, r) => chainLeaves(l) ++ chainLeaves(r)
+      case BoolOp(_, vs) => vs.toList.flatMap(chainLeaves)
+      case UnaryOp(_, v) => chainLeaves(v)
+      case IfExp(a, b, c) => chainLeaves(a) ++ chainLeaves(b) ++ chainLeaves(c)
+      case Call(f, args) => chainLeaves(f) ++ args.flatMap(chainLeaves)
+      case Subscript(a, b) => chainLeaves(a) ++ chainLeaves(b)
+      case _ => Nil
+    }
+  }
+
+  /** The node of an expression, rebuilt with `f` applied to each child */
+  private def mapChildren(e: Ast.expr)(f: Ast.expr => Ast.expr): Ast.expr = {
+    import Ast.expr._
+    e match {
+      case Attribute(v, a) => Attribute(f(v), a)
+      case BinOp(l, o, r) => BinOp(f(l), o, f(r))
+      case Compare(l, o, r) => Compare(f(l), o, f(r))
+      case BoolOp(o, vs) => BoolOp(o, vs.map(f))
+      case UnaryOp(o, v) => UnaryOp(o, f(v))
+      case IfExp(a, b, c) => IfExp(f(a), f(b), f(c))
+      case Call(g, args) => Call(f(g), args.map(f))
+      case Subscript(a, b) => Subscript(f(a), f(b))
+      case List(es) => List(es.map(f))
+      case CastToType(v, t) => CastToType(f(v), t)
+      case EnumById(n, v, t) => EnumById(n, f(v), t)
+      case other => other
+    }
+  }
+
+  private def parentHops(e: Ast.expr): Option[Int] = e match {
+    case Ast.expr.Name(Ast.identifier(Identifier.PARENT)) => Some(1)
+    case Ast.expr.Attribute(v, Ast.identifier(Identifier.PARENT)) => parentHops(v).map(_ + 1)
+    case _ => None
+  }
+
+  private def parentChain(hops: Int): Ast.expr =
+    (2 to hops).foldLeft[Ast.expr](Ast.expr.Name(Ast.identifier(Identifier.PARENT)))((v, _) =>
+      Ast.expr.Attribute(v, Ast.identifier(Identifier.PARENT)))
+
+  /**
+    * The expression `e` of the type `callee`, which `caller` uses with the arguments of `ut`, as it reads in `caller`:
+    * what is `_parent.x` for the callee is `x`, a parameter is the argument that the caller gives for it.
+    */
+  private def liftExpr(caller: ClassSpec, ut: UserType, callee: ClassSpec, e: Ast.expr): Ast.expr = {
+    def go(e: Ast.expr): Ast.expr = e match {
+      case Ast.expr.Attribute(v, Ast.identifier(a)) if parentHops(e).isEmpty && parentHops(v).isDefined =>
+        val h = parentHops(v).get
+        if (h == 1) Ast.expr.Name(Ast.identifier(a))
+        else Ast.expr.Attribute(parentChain(h - 1), Ast.identifier(a))
+      case _ if parentHops(e).isDefined =>
+        val h = parentHops(e).get
+        if (h == 1) unsupported("`_parent` used as a value") else parentChain(h - 1)
+      case Ast.expr.Attribute(v, Ast.identifier(a))
+          if (rootOf(caller) eq caller) && a != Identifier.IO && chainOf(v).exists(c => c._1 == Identifier.ROOT && c._2.isEmpty) =>
+        Ast.expr.Name(Ast.identifier(a))
+      case Ast.expr.Name(Ast.identifier(n)) if callee.params.exists(p => idRaw(p.id) == n && !isPrimDt(p.dataType)) =>
+        ut.args(callee.params.indexWhere(p => idRaw(p.id) == n))
+      case _ => mapChildren(e)(go)
+    }
+    go(e)
+  }
+
+  private def containsRoot(e: Ast.expr): Boolean = e match {
+    case Ast.expr.Name(Ast.identifier(Identifier.ROOT)) => true
+    case _ =>
+      var found = false
+      mapChildren(e) { c => if (containsRoot(c)) found = true; c }
+      found
   }
 
   private lazy val refsMemo: Map[String, List[Ref]] = {
     val refs = mutable.LinkedHashMap[String, ListBuffer[Ref]]()
     allClasses.foreach(c => refs(c.nameAsStr) = ListBuffer())
-    def add(c: ClassSpec, r: Ref, dt: DataType): Boolean =
-      if (refs(c.nameAsStr).contains(r)) false
+    def add(c: ClassSpec, e: Ast.expr, dt: DataType): Boolean =
+      if (refs(c.nameAsStr).exists(_.expr == e)) false
       else {
-        guard(c.path)(refParamType(dt, r))
+        guard(c.path)(refParamType(dt, showExpr(e)))
+        if (refs(c.nameAsStr).size >= 64) fail(c.path, "more than 64 values from outside are needed by one type")
+        val r = Ref(e, rawName(e, refs(c.nameAsStr).toList))
         refs(c.nameAsStr) += r
         refTypes((c.nameAsStr, r)) = dt
         true
       }
     allClasses.foreach { c =>
       guard(c.path) {
-        outsideExprs(c).foreach(e => scanRefs(c, e).foreach { case (r, dt) => add(c, r, dt) })
+        outsideExprs(c).foreach(e => scanRefs(c, e).foreach { case (x, dt) => add(c, x, dt) })
       }
     }
     var changed = true
     while (changed) {
       changed = false
       allClasses.foreach { c =>
-        userTypesOf(c).foreach { b =>
-          refs(b.nameAsStr).toList.foreach { r =>
-            val dt = refTypes((b.nameAsStr, r))
-            if (r.root) {
-              if (!(rootOf(c) eq c) && (rootOf(c) eq rootOf(b))) changed |= add(c, r, dt)
-            } else if (r.hops > 1) changed |= add(c, r.copy(hops = r.hops - 1), dt)
+        useSites(c).foreach { ut =>
+          val b = ut.classSpec.get
+          if (ut.args.size == b.params.size) refs(b.nameAsStr).toList.foreach { rb =>
+            if (!(containsRoot(rb.expr) && (rootOf(c) ne rootOf(b)))) guard(c.path) {
+              val up = liftExpr(c, ut, b, rb.expr)
+              scanRefs(c, up).foreach { case (x, dt) => changed |= add(c, x, dt) }
+            }
           }
         }
       }
     }
     allClasses.foreach { c =>
-      if ((rootOf(c) eq c) && refs(c.nameAsStr).exists(!_.root))
-        fail(c.path, s"`${refs(c.nameAsStr).filter(!_.root).head.source}` in the top-level type of a description, which has no parent")
+      refs(c.nameAsStr).find(r => containsParent(r.expr)).foreach { r =>
+        if (rootOf(c) eq c) fail(c.path, s"`${r.source}` in the top-level type of a description, which has no parent")
+      }
     }
     refs.map(kv => kv._1 -> kv._2.toList).toMap
   }
 
   private def refsOf(cs: ClassSpec): List[Ref] = refsMemo.getOrElse(cs.nameAsStr, Nil)
 
-  override def outsideRef(cs: ClassSpec, e: Ast.expr): Option[Either[(String, DataType), Ast.expr]] =
-    chainOf(e).flatMap { case (base, attrs) =>
-      if (attrs.isEmpty) None
-      else if (attrs.head == Identifier.IO) None
-      else if (base == Identifier.ROOT && (rootOf(cs) eq cs))
-        Some(Right(attrs.tail.foldLeft[Ast.expr](Ast.expr.Name(Ast.identifier(attrs.head)))((v, a) => Ast.expr.Attribute(v, Ast.identifier(a)))))
-      else {
-        val (r, dt, n) = refPrefix(cs, base, attrs)
-        if (n == attrs.size) Some(Left((r.adaName, dt))) else None
+  /** The parameters of the type that are passed to `Parse` and kept in `T`: those that are integers, booleans or enumerations. */
+  private def keptParams(cs: ClassSpec): List[ParamDefSpec] = cs.params.filter(p => isPrimDt(p.dataType))
+
+  override def outsideRef(cs: ClassSpec, e: Ast.expr): Option[Either[(String, DataType), Ast.expr]] = e match {
+    case _: Ast.expr.IntNum | _: Ast.expr.Str | _: Ast.expr.Bool => None
+    case _ =>
+      chainOf(e) match {
+        case Some((Identifier.ROOT, attrs)) if attrs.nonEmpty && attrs.head != Identifier.IO && (rootOf(cs) eq cs) =>
+          Some(Right(attrs.tail.foldLeft[Ast.expr](Ast.expr.Name(Ast.identifier(attrs.head)))((v, a) => Ast.expr.Attribute(v, Ast.identifier(a)))))
+        case _ =>
+          refsOf(cs).find(_.expr == e).map(r => Left((r.adaName, refTypes((cs.nameAsStr, r)))))
       }
-    }
+  }
 
   /** Names of the seq fields of `cs` that the value of `e` depends on, instances taken apart. */
   private def memberDeps(cs: ClassSpec, e: Ast.expr, seen: Set[String] = Set()): Set[String] = e match {
@@ -1264,7 +1549,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val (ostm, oarg) = orderArg(callee, rc)
     pre ++= ostm
     oarg.foreach(args += _)
-    ut.args.zip(callee.params).foreach { case (a, p) =>
+    ut.args.zip(callee.params).filter(ap => isPrimDt(ap._2.dataType)).foreach { case (a, p) =>
       val t = T(a, rc)
       val ada = paramAda(p)
       val (code, extra) = convertArg(t, ada, p)
@@ -1280,21 +1565,17 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val caller = provider.nowClass
     refsOf(callee).foreach { r =>
       val dt = refTypes((callee.nameAsStr, r))
-      val ada = refParamType(dt, r)
+      val ada = refParamType(dt, r.source)
       val p = ParamDefSpec(callee.path, NamedIdentifier(r.raw), dt)
-      if (r.root && (rootOf(callee) ne rootOf(caller)))
+      if (containsRoot(r.expr) && (rootOf(callee) ne rootOf(caller)))
         unsupported(s"type ${callee.nameAsStr} of another description uses `_root`")
-      val own = if (r.root) rootOf(caller) eq caller else r.hops == 1
-      val t: ATr =
-        if (own) {
-          val expr = r.path.tail.foldLeft[Ast.expr](Ast.expr.Name(Ast.identifier(r.path.head)))((v, a) => Ast.expr.Attribute(v, Ast.identifier(a)))
-          memberDeps(caller, expr).foreach { n =>
-            val j = caller.seq.indexWhere(a => idRaw(a.id) == n)
-            if (j >= curSeqIdx)
-              unsupported(s"`${r.source}` of type ${callee.nameAsStr} is the field `$n`, which is parsed after the field that needs it")
-          }
-          T(expr, rc)
-        } else tr.fromValue(dt, s"This.${(if (r.root) r else r.copy(hops = r.hops - 1)).adaName}", Nil)
+      val expr = liftExpr(caller, ut, callee, r.expr)
+      memberDeps(caller, expr).foreach { n =>
+        val j = caller.seq.indexWhere(a => idRaw(a.id) == n)
+        if (j >= curSeqIdx)
+          unsupported(s"`${r.source}` of type ${callee.nameAsStr} is the field `$n`, which is parsed after the field that needs it")
+      }
+      val t: ATr = T(expr, rc)
       val (code, extra) = convertArg(t, ada, p)
       val gs = t.guards ++ extra
       if (gs.isEmpty) args += code
@@ -1430,7 +1711,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
   /** The names that a caller gives `Parse` between the stream and the result */
   private def parseArgNames(cs: ClassSpec): List[String] =
-    (if (hasOrderParam(cs)) List("Order") else Nil) ++ cs.params.map(p => paramName(idRaw(p.id))) ++
+    (if (hasOrderParam(cs)) List("Order") else Nil) ++ keptParams(cs).map(p => paramName(idRaw(p.id))) ++
       refsOf(cs).map(_.adaName) ++ (if (isRecursive(cs)) List("Depth") else Nil)
 
   /** A call as lines of code in a comment: one line, or the name and then the arguments */
@@ -1562,8 +1843,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
     // ---- T and its public interface
     val orderPar = if (hasOrderParam(cs)) List(s"Order : ${KT}Byte_Order") else Nil
-    val paramDecls = cs.params.map(p => s"${paramName(idRaw(p.id))} : ${guard(p.path)(paramAda(p))}")
-    val refDecls = refsOf(cs).map(r => s"${r.adaName} : ${refParamType(refTypes((cs.nameAsStr, r)), r)}")
+    val paramDecls = keptParams(cs).map(p => s"${paramName(idRaw(p.id))} : ${guard(p.path)(paramAda(p))}")
+    val refDecls = refsOf(cs).map(r => s"${r.adaName} : ${refParamType(refTypes((cs.nameAsStr, r)), r.source)}")
     val depthDecl = if (isRecursive(cs)) List("Depth : Natural") else Nil
     val parseParams = (List(s"Buffer : ${KT}Bytes", s"S : in out ${KS}Stream") ++ orderPar ++ paramDecls ++ refDecls ++ depthDecl :+ "This : out T").mkString("; ")
     val belongsOk = hasBelongs(cs)
@@ -1617,9 +1898,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     // record
     val ioComp = if (hasIo(cs)) List(s"Io : ${KS}Stream;") else Nil
     val orderComp = if (storesOrder(cs)) List(s"Order : ${KT}Byte_Order := ${KT}Little_Endian;") else Nil
-    val paramComps = cs.params.flatMap(p => paramComponent(p))
+    val paramComps = keptParams(cs).flatMap(p => paramComponent(p))
     val refComps = refsOf(cs).map { r =>
-      val t = refParamType(refTypes((cs.nameAsStr, r)), r)
+      val t = refParamType(refTypes((cs.nameAsStr, r)), r.source)
       s"${r.adaName} : $t := ${defaultOf(t)};"
     }
     val depthComp = if (isRecursive(cs)) List("Depth : Natural := 0;") else Nil
@@ -1639,7 +1920,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       specB += s"   is (${if (bt.isEmpty) "True" else bt.mkString("\n and then ")});"
       specB += ""
     }
-    cs.params.foreach(p => specB ++= genParamAccessor(p, cs))
+    keptParams(cs).foreach(p => specB ++= genParamAccessor(p, cs))
     specB ++= ind(o.privFuncs.toList)
     // ---- Parse body
     val bodyParse = genParseBody(cs, o, sc, parseParams)
@@ -1742,16 +2023,22 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       }
       tags ++= tag("param", "Order", s"The byte order of the integers of this value. $why")
     }
-    cs.params.foreach { p =>
+    keptParams(cs).foreach { p =>
       val d = oneLine(p.doc)
       tags ++= tag("param", paramName(idRaw(p.id)), s"Parameter ${q(idRaw(p.id))} of the type" + (if (d.isEmpty) "" else ": " + d.mkString(" ")))
     }
     refsOf(cs).foreach { r =>
-      val text =
-        if (r.root) s"The value of ${q(r.source)}, passed down from the top-level value"
-        else if (r.hops == 1)
-          s"The value of ${q(r.source)}: the caller is the parser of the value that this one is part of and passes its own ${q(r.path.mkString("."))}"
-        else s"The value of ${q(r.source)}: the caller passes what it has itself as ${q((("_parent" :: List.fill(r.hops - 2)("_parent")) ++ r.path).mkString("."))}"
+      val chain = chainOf(r.expr)
+      val text = chain match {
+        case Some((Identifier.ROOT, _)) => s"The value of ${q(r.source)}, passed down from the top-level value"
+        case Some((Identifier.PARENT, attrs)) if !attrs.contains(Identifier.IO) && attrs.takeWhile(_ == Identifier.PARENT).isEmpty =>
+          s"The value of ${q(r.source)}: the caller is the parser of the value that this one is part of and passes its own ${q(attrs.mkString("."))}"
+        case Some((Identifier.PARENT, attrs)) if !attrs.contains(Identifier.IO) =>
+          val hops = 1 + attrs.takeWhile(_ == Identifier.PARENT).size
+          s"The value of ${q(r.source)}: the caller passes what it has itself as ${q((List.fill(hops - 1)("_parent") ++ attrs.drop(hops - 1)).mkString("."))}"
+        case _ =>
+          s"The value of ${q(r.source)}: the caller computes it, from the arguments that it gives for the parameters of the type and from what it has itself, and passes it"
+      }
       tags ++= tag("param", r.adaName, text)
     }
     if (isRecursive(cs))
@@ -2046,7 +2333,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   private def genMembers(cs: ClassSpec, o: Out, sc: Scope): Unit = {
     val rc = RC("S", if (storesOrder(cs)) "Order" else "", sc, cs.path)
     // parameters
-    cs.params.foreach { p => guard(p.path)(genParamMember(p, cs, o, rc)) }
+    keptParams(cs).foreach { p => guard(p.path)(genParamMember(p, cs, o, rc)) }
     // sequence
     cs.seq.zipWithIndex.foreach { case (a, i) =>
       val rcA = rc.copy(path = a.path)
@@ -3344,7 +3631,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val rc = RC("S", if (storesOrder(cs)) "Order" else "", sc, cs.path)
     val pre = ListBuffer[String]()
     if (hasIo(cs)) pre += "This.Io := S;"
-    cs.params.foreach { p => pre += s"This.${plain(idRaw(p.id))} := ${paramName(idRaw(p.id))};" }
+    keptParams(cs).foreach { p => pre += s"This.${plain(idRaw(p.id))} := ${paramName(idRaw(p.id))};" }
     refsOf(cs).foreach { r => pre += s"This.${r.adaName} := ${r.adaName};" }
     if (isRecursive(cs)) pre += "This.Depth := Depth;"
     ownCalc.foreach { ce =>

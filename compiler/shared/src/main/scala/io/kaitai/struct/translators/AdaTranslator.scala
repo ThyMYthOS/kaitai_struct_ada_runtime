@@ -185,7 +185,7 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
   }
 
   def translate(e: Ast.expr): ATr = e match {
-    case _: Ast.expr.Name | _: Ast.expr.Attribute if env.outsideRef(provider.nowClass, e).isDefined =>
+    case _ if env.outsideRef(provider.nowClass, e).isDefined =>
       env.outsideRef(provider.nowClass, e).get match {
         case Left((comp, dt)) => fromValue(dt, s"$thisName.$comp", Nil)
         case Right(own) => translate(own)

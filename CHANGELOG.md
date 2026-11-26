@@ -35,6 +35,15 @@
   yet.
 - Benchmarks: `float_bench` measures what asking costs for each operation, on the host
   (`icount.sh`) and on the simulated STM32F4 (`target/run.sh`).
+- Compiler: a type can get a value from outside that is not an integer, boolean or
+  enumeration, where it uses only an integer, a boolean, an enumeration or a length of it.
+  A parameter of a user type (`hdr.width`), of a string (`key.length`) or of an array with a
+  constant index, a chain through user-typed values of `_parent` and `_root`
+  (`_parent.hdr.width`), `.size` of a repetition or of a stream (`_parent._io.size`), and an
+  expression of such values with a string in it (`_parent.s1 == "foo"`) become parameters of
+  `Parse` that the parser of the caller computes, as `_parent.x` did. Only descriptions that
+  were rejected before are affected; the code of every description that was generated before
+  is the same. `examples/outside` shows this; `docs/codegen.md` has the rules.
 - Library: every declaration of a visible part has a documentation comment of its
   own, directly before it, also the integer types, the record components and the
   enumeration literals. Comments that stood before a group of declarations

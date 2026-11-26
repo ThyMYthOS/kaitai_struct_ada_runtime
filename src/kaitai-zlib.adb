@@ -127,6 +127,13 @@ is
       --  Place in Symbol where the next symbol of each length goes
       Offs : array (1 .. Max_Bits) of Natural := (others => 0);
       Free : Integer := 1;
+
+      --  How many codes of each length there can be, 2 ** L.  The bound of
+      --  Free is taken from this table and not written as a power, because
+      --  the provers then have constants to compare with: with the power
+      --  the check of 2 * Free was proven only just within the time limit.
+      Codes : constant array (0 .. Max_Bits) of Positive range 1 .. 2**Max_Bits :=
+        (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768);
    begin
       H.Count := (others => 0);
       H.Symbol := (others => 0);
@@ -143,7 +150,7 @@ is
       --  Every length a code may have is looked at: the codes of length L
       --  are 2 ** L at most, and Free is how many of them are not taken.
       for L in 1 .. Max_Bits loop
-         pragma Loop_Invariant (Free >= 0 and then Free <= 2**(L - 1));
+         pragma Loop_Invariant (Free >= 0 and then Free <= Codes (L - 1));
          Free := 2 * Free - H.Count (L);
          if Free < 0 then
             return;

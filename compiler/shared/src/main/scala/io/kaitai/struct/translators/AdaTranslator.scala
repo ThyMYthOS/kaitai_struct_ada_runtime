@@ -172,6 +172,12 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
 
   private def unsupported(msg: String): Nothing = throw new AdaUnsupported(msg)
 
+  /** The message for an integer literal that expressions cannot take: above the largest S64, or beyond 64 bits */
+  private def literalTooBig(n: BigInt): String =
+    if (n > S64Max && n <= U64Max)
+      s"integer literal $n is above the largest signed 64-bit integer (2**63-1); expressions are computed in signed 64 bits, " +
+        "and such a literal is accepted only as an operand of a comparison with an unsigned field (or with another literal)"
+    else s"integer literal $n does not fit into 64 bits"
 
   private def useBuffer(): String = buffer match {
     case Some(b) => b
@@ -198,7 +204,7 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
       }
     case Ast.expr.IntNum(n) =>
       if (n < S64Min || n > S64Max)
-        unsupported(s"integer literal $n does not fit into 64 bits")
+        unsupported(literalTooBig(n))
       ATr(n.toString, if (n < 0) 1 else 0, Nil, VInt, n, n, isLiteral = true)
     case Ast.expr.Bool(b) =>
       ATr(if (b) "True" else "False", 0, Nil, VBool, isLiteral = true)
@@ -738,7 +744,7 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
 
   private def requireInt(v: ATr): Unit = v.vt match {
     case VInt | VEnum(_) =>
-    case VU64Lit(n) => unsupported(s"integer literal $n does not fit into 64 bits")
+    case VU64Lit(n) => unsupported(literalTooBig(n))
     case _ => unsupported("arithmetic on something that is not an integer")
   }
 

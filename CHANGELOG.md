@@ -15,6 +15,10 @@
   `instance_in_repeat_expr`, `instance_in_repeat_until`, `position_in_seq`, `valid_fail_contents_inst`,
   `valid_fail_inst`. See `docs/codegen.md`, "An instance that an expression of the `seq` needs", and
   `examples/instance_kept`.
+- Compiler: an expression may use one byte, `x[i]`, of bytes with `process: xor`, `rol` or `ror`: it is computed from the
+  byte of the input in constant time without an array (`Kaitai.Processing.Xor_Byte`, `Xor_Many_Byte`, `Rotate_Byte`).
+  `expr_if_int_ops` is generated. `zlib`, a custom process and every other use of a processed value stay rejected
+  (`process_coerce_*` and `type_ternary` choose between a processed and an unprocessed value, which needs an array).
 - Compiler: a comparison whose result the ranges of its operands decide (`u1 >= 0`) is a constant, as for literals, so
   that an `if` on it does not make a condition that is always true in the generated code.
 - Compiler: BREAKING. In generated code `This` is now the first parameter of every

@@ -65,6 +65,34 @@ package body Processing_Tests is
       Check (Target (5) = 16#80#, "the largest amount is seven modulo eight");
    end Test_Rotate;
 
+   --  One byte of the processed bytes is what the array routines make of it, at every position
+   procedure Test_One_Byte is
+      Target : Bytes (1 .. 7) := (others => 16#EE#);
+      Key    : constant Bytes (20 .. 22) := (16#FF#, 16#0F#, 16#01#);
+      Same   : Boolean;
+   begin
+      Group ("Processing, one byte");
+      Xor_One (Source, 16#5C#, Target);
+      Same := True;
+      for I in Source'Range loop
+         Same := Same and then Xor_Byte (Source (I), 16#5C#) = Target (I - 10);
+      end loop;
+      Check (Same, "Xor_Byte is a byte of Xor_One");
+      Xor_Many (Source, Key, Target);
+      Same := True;
+      for I in Source'Range loop
+         Same := Same and then Xor_Many_Byte (Source (I), Key, I - Source'First) = Target (I - 10);
+      end loop;
+      Check (Same, "Xor_Many_Byte is a byte of Xor_Many, the key used again");
+      for Amount in -9 .. 17 loop
+         Rotate_Left (Source, Amount, Target);
+         for I in Source'Range loop
+            Same := Same and then Rotate_Byte (Source (I), Amount) = Target (I - 10);
+         end loop;
+      end loop;
+      Check (Same, "Rotate_Byte is a byte of Rotate_Left, for the amounts around a multiple of eight");
+   end Test_One_Byte;
+
    procedure Test_Arena is
       Storage : Bytes (101 .. 110) := (others => 16#EE#);
       A       : Arena := Open (Storage);
@@ -124,6 +152,7 @@ package body Processing_Tests is
    begin
       Test_Xor;
       Test_Rotate;
+      Test_One_Byte;
       Test_Arena;
    end Run;
 

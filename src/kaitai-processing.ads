@@ -46,4 +46,22 @@ is
        and then (for all I in Target'Range =>
                    Target (I) = Rotate_Left (Source (Source'First + (I - Target'First)), Amount mod 8));
 
+   --  The byte Value after Xor_One, which is what one byte of the result of
+   --  process_xor_one is.  An expression that asks for one byte of processed
+   --  bytes needs no array for it.
+   function Xor_Byte (Value : Byte; Key : Byte) return Byte
+   is (Value xor Key)
+   with Inline;
+
+   --  The byte Value, which stands at Offset (counted from 0) in the data,
+   --  after Xor_Many.
+   function Xor_Many_Byte (Value : Byte; Key : Bytes; Offset : Length) return Byte
+   is (Value xor Key (Key'First + Offset mod Key'Length))
+   with Inline, Pre => Key'Length > 0;
+
+   --  The byte Value after Rotate_Left.
+   function Rotate_Byte (Value : Byte; Amount : Integer) return Byte
+   is (Rotate_Left (Value, Amount mod 8))
+   with Inline;
+
 end Kaitai.Processing;

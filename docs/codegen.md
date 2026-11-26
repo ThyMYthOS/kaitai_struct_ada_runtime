@@ -618,6 +618,21 @@ the compiler rejects a description in which an expression, a `valid`, a
 repeated field, of a field whose type depends on a value, and of a parse
 instance are rejected.
 
+One thing of a processed value an expression may use: a byte, `x[i]` of bytes
+with `xor` or `rol`/`ror`. These work byte by byte, so the byte `i` is computed
+from the byte `i` of the input (`Processing.Xor_Byte`, `Xor_Many_Byte`,
+`Rotate_Byte`), in a constant number of instructions and without memory.
+The index is checked against the size of the bytes and an integer key against
+0 .. 255: outside of them the expression is undefined. The amount of a rotation
+is taken modulo 8, as the accessor of the field takes it.
+A value instance that is such a byte is an ordinary function; where Python
+fails at `Parse` because the key is invalid, the instance is undefined here.
+`zlib` and a custom process are rejected, as is every other use: the whole
+processed value is an array that a parser does not have (`x == y`, `x.size`
+of the processed bytes and the like, and the choice between a processed and an
+unprocessed field, `c ? plain : processed`, which would be a value that is
+the one or the other).
+
 A custom process (`process: my_custom_fx(key, true)`) is undone by code that
 is not generated; see "Foreign code". Its accessor has the same form as that
 of `zlib`.

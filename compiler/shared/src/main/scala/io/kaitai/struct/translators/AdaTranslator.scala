@@ -325,6 +325,8 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
           case other => unsupported(s"subscript of a repetition of $other")
         }
         fromValue(m.dataType, decoded, guards).copy(usesBuffer = true)
+      case Ast.expr.Name(id) if processedBytes(cs, id.name).isDefined =>
+        processedSubscript(cs, processedBytes(cs, id.name).get, b)
       case _ =>
         val v = translate(a)
         val i = translate(b)
@@ -343,6 +345,71 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
           case _ => unsupported("subscript of something that is not bytes or a repetition of integers")
         }
     }
+  }
+
+  /** A field of bytes with `process` that is neither repeated nor of a type that depends on a value */
+  private def processedBytes(cs: ClassSpec, name: String): Option[AttrSpec] =
+    try provider.resolveMember(cs, name) match {
+      case a: AttrSpec if a.cond.repeat == NoRepeat =>
+        a.dataType match {
+          case bt: BytesType if bt.process.isDefined => Some(a)
+          case _ => None
+        }
+      case _ => None
+    } catch { case _: Throwable => None }
+
+  /**
+    * `x[i]` of bytes with `process`: the byte `i` of the bytes as they are in the input, processed on the spot. That
+    * takes a constant number of instructions and no memory, for `xor` and `rol`/`ror`, which work byte by byte; `zlib`
+    * and a custom process need the processed bytes in an array.
+    */
+  private def processedSubscript(cs: ClassSpec, a: AttrSpec, idx: Ast.expr): ATr = {
+    val name = a.id.humanReadable
+    val proc = a.dataType.asInstanceOf[BytesType].process.get
+    proc match {
+      case ProcessZlib => unsupported(s"subscript of field `$name` with `process: zlib`, which needs an array for the processed bytes")
+      case _: ProcessCustom => unsupported(s"subscript of field `$name` with a custom `process`, which needs an array for the processed bytes")
+      case _ =>
+    }
+    val i = translate(idx)
+    requireInt(i)
+    val bf = useBuffer()
+    val comp = s"$thisName.${env.memberName(cs, a.id)}"
+    val has = if (a.cond.ifExpr.isDefined) List(s"$thisName.${env.presenceName(cs, a.id)}") else Nil
+    ops += "Length"
+    ops += "S64"
+    val pos = s"Kaitai.Types.Length (${i.code})"
+    val raw = s"$bf ($comp.First + $pos)"
+    val inRange = i.guards ++ has ++ (if (i.lo >= 0) Nil else List(s"${i.atom} >= 0")) ++
+      List(s"${i.atom} < Kaitai.Types.S64 (Kaitai.Types.Size ($comp))")
+    val (code, keyGuards) = proc match {
+      case ProcessXor(k) =>
+        val t = translate(k)
+        t.vt match {
+          case VInt | VEnum(_) =>
+            if (t.native.exists(_._2 == "U8")) (s"Kaitai.Processing.Xor_Byte ($raw, ${t.native.get._1})", t.guards)
+            else if (t.lo >= 0 && t.hi <= 255) (s"Kaitai.Processing.Xor_Byte ($raw, Kaitai.Types.U8 (${t.code}))", t.guards)
+            else (s"Kaitai.Processing.Xor_Byte ($raw, Kaitai.Types.U8 (${t.code}))", t.guards ++ List(s"${t.atom} in 0 .. 255"))
+          case VBytes =>
+            (s"Kaitai.Processing.Xor_Many_Byte ($raw, $bf (${t.atom}.First .. ${t.atom}.Last), $pos)",
+              t.guards ++ List(s"not Kaitai.Types.Is_Empty (${t.code})"))
+          case VBytesLit(bs0) =>
+            if (bs0.isEmpty) unsupported("`xor` with an empty key")
+            (s"Kaitai.Processing.Xor_Many_Byte ($raw, ${t.code}, $pos)", t.guards)
+          case other => unsupported(s"`xor` with a key of $other")
+        }
+      case ProcessRotate(left, amount) =>
+        val t = translate(amount)
+        requireInt(t)
+        val g = t.guards
+        if (t.isLiteral) {
+          val m = (((t.lo % 8) + 8) % 8).toInt
+          (s"Kaitai.Processing.Rotate_Byte ($raw, ${if (left) m else (8 - m) % 8})", g)
+        } else if (left) (s"Kaitai.Processing.Rotate_Byte ($raw, Integer (Kaitai.Arithmetic.Modulo (${t.code}, 8)))", g)
+        else (s"Kaitai.Processing.Rotate_Byte ($raw, Integer (8 - Kaitai.Arithmetic.Modulo (${t.code}, 8)))", g)
+      case _ => unsupported(s"subscript of field `$name` with this `process`")
+    }
+    int(s"Kaitai.Types.S64 ($code)", 0, inRange ++ keyGuards, 0, 255, ub = true)
   }
 
   private def sizeOf(t: Ast.typeId, factor: Int): ATr = {

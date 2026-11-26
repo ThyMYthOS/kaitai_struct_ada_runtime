@@ -6,6 +6,7 @@ with Examples_Tests;
 with Extras_Tests;
 with Float_Arithmetic_Tests;
 with Foreign_Tests;
+with Prefixed_Tests;
 with Processing_Tests;
 with Sample_Parser_Tests;
 with Showcase_Tests;
@@ -34,6 +35,7 @@ begin
    Showcase_Tests.Run;
    Extras_Tests.Run;
    Foreign_Tests.Run;
+   Prefixed_Tests.Run;
    Writers_Tests.Run;
    Write_Model_Tests.Run;
    Test_Support.Summary;

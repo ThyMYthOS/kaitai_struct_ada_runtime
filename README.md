@@ -62,7 +62,7 @@ procedure Example (Buffer : Bytes) is
    S : Stream := Open (Buffer);
    R : Hello_World.T;
 begin
-   Hello_World.Parse (Buffer, S, R);
+   Hello_World.Parse (R, Buffer, S);
    if Hello_World.Valid (R) then
       --  Hello_World.One (R) is the byte; reading it from a result that
       --  is not valid would violate a precondition, which GNATprove finds
@@ -80,6 +80,23 @@ delivers and what it requires, with the `doc` texts of the description where
 there are any. [docs/codegen.md](docs/codegen.md) describes what generated
 code looks like and why. `examples/` holds generated parsers with their
 descriptions; `examples/showcase` uses most constructs in one description.
+
+`This`, the value, is the first parameter of every operation of a generated
+package that has it, so that the caller may write the object first. GNAT allows
+that for untagged types as an extension, which the caller switches on with
+`pragma Extensions_Allowed (On);` in the unit (or `-gnatX` for the build):
+
+```ada
+pragma Extensions_Allowed (On);
+...
+   R.Parse (Buffer, S);                 --  Hello_World.Parse (R, Buffer, S)
+   if R.Valid then                      --  Hello_World.Valid (R)
+      Byte := R.One;                    --  Hello_World.One (R)
+```
+
+It is not standard Ada, and it finds only the operations that the package of the
+type declares; a caller that does not use it writes `Parse (R, Buffer, S)`.
+[docs/codegen.md](docs/codegen.md) says what works and what does not.
 
 ## The library
 

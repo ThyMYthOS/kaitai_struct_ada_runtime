@@ -5,6 +5,18 @@ the programs that produce them. Results and the conclusions drawn from them
 are recorded in the issue tracker, because they depend on machine, compiler
 and allocator.
 
+## Generated and hand-written parsers
+
+The parsers of `generated/` are what the compiler writes; `generate.sh` makes
+them again, and their callers follow the order of parameters of generated code,
+in which `This` is the first parameter (`Parse (This, Buffer, S)`,
+`Next (This, Buffer, Position, Element)`). The hand-written parsers of `src/` that imitate
+generated code (the `_v2`, `_v3` and `_d1`, `_d2` variants, `pstr_*`, `puser_*`, `pnav_*`,
+`rep_use`, `rep_empty`) were written before that change and keep the order that
+generated code had before it (`Parse (Buffer, S, This)`); they are not converted, so
+that the variants compared with each other stay as they were measured. Where such a
+parser calls a generated one (a nested type), the call has the order of generated code.
+
 ## Running
 
 Three scripts report different metrics:

@@ -162,7 +162,7 @@ or failed to build; `--no-fail` makes it always 0.
 
 A test program reads `src/<data>` (the first argument is the directory that
 holds the data files, default `src`) into a buffer on the heap with
-`Kaitai.Files`, parses with `<Pkg>.Parse (Buffer.all, S, R)` and prints one
+`Kaitai.Files`, parses with `<Pkg>.Parse (R, Buffer.all, S)` and prints one
 line per assert, `ok <n>` or `FAIL <n>: <expression>`, and `PASSED` or
 `FAILED` at the end (exit status 1 for `FAILED`). The accessors of the
 generated parser have preconditions, so each assert first checks the

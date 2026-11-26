@@ -82,7 +82,7 @@ package Header_Type is
    function Valid (This : T) return Boolean;
    function Belongs_To (This : T; Buffer : Bytes) return Boolean;
 
-   procedure Parse (Buffer : Bytes; S : in out Stream; This : out T)
+   procedure Parse (This : out T; Buffer : Bytes; S : in out Stream)
    with
      Pre  => Is_Valid (S, Buffer),
      Post =>
@@ -109,18 +109,29 @@ end Header_Type;
   the buffer lies within `Buffer`. `Parse` establishes it for the buffer it
   read from. A type gets this function only if it or a value nested in it
   holds a slice or a stream.
-- `Parse` takes the buffer, the stream, the parameters of the type and the
-  result. It never raises. After it, `Valid (This) = OK (S)`; the reason for
+- `Parse` takes the result, the buffer, the stream and the parameters of the
+  type, in that order. It never raises. After it, `Valid (This) = OK (S)`; the reason for
   a failure is `Status (S)`. `Advanced` says that the stream covers the same
   bytes as before, has not moved back, and has still failed if it had failed
   before; nested parsers compose through it.
+- `This` is the first parameter of every operation of the visible part that
+  has it: `Parse (This : out T; Buffer; S; ...)`, `Write (This; ...)`, the
+  accessors (`X (This)`, `X (This, Buffer, Index)`), `Next (This, Buffer,
+  Position, Element)`, `Get_X (This, Buffer, Index, Element)`, the
+  procedures of instances and of processed fields (`X (This, Buffer, Result,
+  Outcome)`). The other parameters keep their order: the buffer before the
+  rest, then what the operation takes besides. What is not about the value
+  `This` keeps its own object first: `Belongs_To (Position, Buffer)`,
+  `Remaining (Position)`, `Has_Element (Position)`, `X_First (This)`, and the
+  functions that take no value (`Is_X_Enum (Value)`). The reason is the
+  prefixed notation, see "Prefixed notation of the caller" below.
 - All functions of the private part are expression functions, which lets
   GNATprove see through them in the code that uses the parser.
 
 ### `Parse`
 
 ```ada
-procedure Parse (Buffer : Bytes; S : in out Stream; This : out T) is
+procedure Parse (This : out T; Buffer : Bytes; S : in out Stream) is
 begin
    Read_U1 (Buffer, S, This.Version);
    Read_U1 (Buffer, S, This.Flags);
@@ -150,6 +161,63 @@ Nothing in `Parse` returns early. After a failure the remaining reads do
 nothing, since a failed stream stays failed, and the values they deliver are
 zero or empty.
 
+### Prefixed notation of the caller
+
+`This` comes first so that a caller can write the object before the name of the
+operation, as for the objects of a tagged type: `V.Parse (Buffer, S)`,
+`V.Valid`, `V.Samples (Buffer, I)`, `V.Next (Buffer, Position, Element)`. For
+the types of generated code, which are untagged, this is an extension of GNAT
+and not standard Ada. The caller switches it on, in the unit that uses it, with
+`pragma Extensions_Allowed (On);` before the context clause, or for the whole
+build with the switch `-gnatX`. Generated code itself is plain Ada 2012 and
+does not use it; a caller that does not switch the extension on writes
+`Parse (V, Buffer, S)` and `Samples (V, Buffer, I)`.
+
+```ada
+pragma Extensions_Allowed (On);
+
+with Kaitai.Streams;
+with Showcase;
+
+procedure Example (Buffer : Kaitai.Types.Bytes) is
+   S        : Kaitai.Streams.Stream := Kaitai.Streams.Open (Buffer);
+   V        : Showcase.T;
+   Position : Showcase.Entries_Cursor;
+   Element  : Showcase.Entry_Type.T;
+begin
+   V.Parse (Buffer, S, 3);                -- Showcase.Parse (V, Buffer, S, 3)
+   if V.Valid then                        -- Showcase.Valid (V)
+      Position := V.Entries_First;
+      while Position.Has_Element loop     -- Showcase.Has_Element (Position)
+         V.Next (Buffer, Position, Element);
+         exit when not Element.Valid;     -- Showcase.Entry_Type.Valid (Element)
+      end loop;
+   end if;
+end Example;
+```
+
+What the notation does and does not do:
+
+- The operation is looked for in the package of the type of the object, that is
+  where generated code declares it. `V.Samples (Buffer, I)` finds `Samples`
+  of `Showcase`; an operation that the caller declares for the type itself, or
+  that another package declares, is not found (GNAT: `no selector "X" for private
+  type "T"`). Those are called as before, `X (V)`. So are the operations whose
+  object is not their first parameter, `Belongs_To (Position, Buffer)` being the
+  cursor's: `Position.Belongs_To (Buffer)` works, `Buffer.Belongs_To (Position)`
+  does not.
+- The object can be a call of an accessor: `V.Header.Version` is
+  `Showcase.Header_Type.Version (Showcase.Header (V))`, since `Version` is in the
+  package of the type that `Header` returns.
+- The preconditions and postconditions are those of the called operation. GNATprove
+  proves a caller that uses the notation as it proves one that does not; `Valid`
+  is still required where the contract says so. `tests/src/prefixed_use.adb` is a
+  SPARK caller that is proven, `tests/src/prefixed_tests.adb` one that runs on the
+  development machine and on the simulated STM32F4.
+- `gnatformat` formats such code, and GNATdoc documents the packages that it
+  calls as before: the notation is a different spelling of the same call.
+- Code that is written for another compiler than GNAT cannot use it.
+
 ## Fields
 
 | In the description | In `Parse` | Component |
@@ -165,8 +233,8 @@ zero or empty.
 | `pad-right`, `terminator` on bytes with a size | `This.X := Strip_Right (Buffer, This.X, Pad)`, `Terminate_At (…)` after the read | `Slice` |
 | string | as bytes, then `if not Strings.Is_Valid (Buffer, This.X, UTF_8) then Fail (S, Illegal_Sequence); end if;` | `Slice` |
 | `contents` | `Read_Contents (Buffer, S, Expected)` | none; `Expected` is a constant of the body |
-| field of a type | `Foo_Type.Parse (Buffer, S, Arguments, This.X)` | `Foo_Type.T` |
-| field of a type with `size` | `Substream (Buffer, S, To_Size (Size), Sub); Foo_Type.Parse (Buffer, Sub, This.X); Join (S, Sub);` | `Foo_Type.T` |
+| field of a type | `Foo_Type.Parse (This.X, Buffer, S, Arguments)` | `Foo_Type.T` |
+| field of a type with `size` | `Substream (Buffer, S, To_Size (Size), Sub); Foo_Type.Parse (This.X, Buffer, Sub); Join (S, Sub);` | `Foo_Type.T` |
 | field with `enum` | as the integer | the integer; see Enumerations |
 
 A size is the value of an expression and goes through `To_Size`. A value
@@ -263,7 +331,7 @@ case This.Code is
       declare
          Value : Point_Type.T;
       begin
-         Point_Type.Parse (Buffer, S, Value);
+         Point_Type.Parse (Value, Buffer, S);
          This.Body_F := (Kind => Body_Is_Point, Point => Value);
       end;
    ...
@@ -290,7 +358,7 @@ one slice. `Read_Elements (S, Count, Element_Size, This.X)` reads them for
 function Samples_Count (This : T) return Length
 with Pre => Valid (This);
 
-function Samples (Buffer : Bytes; This : T; Index : Length) return U16
+function Samples (This : T; Buffer : Bytes; Index : Length) return U16
 with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Samples_Count (This);
 ```
 
@@ -325,9 +393,9 @@ function Entries_First (This : T) return Entries_Cursor;
 function Remaining (Position : Entries_Cursor) return Length;
 function Has_Element (Position : Entries_Cursor) return Boolean;
 
-procedure Next (Buffer : Bytes; This : T; Position : in out Entries_Cursor; Element : out Entry_Type.T);
+procedure Next (This : T; Buffer : Bytes; Position : in out Entries_Cursor; Element : out Entry_Type.T);
 
-procedure Get_Entries (Buffer : Bytes; This : T; Index : Length; Element : out Entry_Type.T);
+procedure Get_Entries (This : T; Buffer : Bytes; Index : Length; Element : out Entry_Type.T);
 ```
 
 `Next` delivers the element at the cursor and moves on; `Remaining` gets
@@ -427,7 +495,7 @@ in `This`. For that, `T` keeps the stream as it was when `Parse` began. The
 accessor is a procedure, because it reads from the buffer:
 
 ```ada
-procedure First_Entry (Buffer : Bytes; This : T; Result : out Entry_Type.T; Outcome : out Status_Kind)
+procedure First_Entry (This : T; Buffer : Bytes; Result : out Entry_Type.T; Outcome : out Status_Kind)
 with
   Pre  => Valid (This) and then Belongs_To (This, Buffer),
   Post => Entry_Type.Valid (Result) = (Outcome = Success) and then Entry_Type.Belongs_To (Result, Buffer);
@@ -439,7 +507,7 @@ Asking twice parses twice. The caller keeps the result if it needs it again.
 ## Parameters
 
 The parameters of a type that are integers, booleans or enumerations are
-parameters of its `Parse`, between the stream and the result, and are kept in
+parameters of its `Parse`, after the stream, and are kept in
 `T`, where instances and repetitions find them again. Each has an accessor.
 
 A parameter of another type (a string, bytes, a user type, an array, a
@@ -460,10 +528,10 @@ caller, since a parser has no memory of its own:
 function Secret_Raw (This : T) return Slice
 with Pre => Valid (This);
 
-procedure Secret (Buffer : Bytes; This : T; Target : in out Bytes; Last : out Length; Outcome : out Status_Kind);
+procedure Secret (This : T; Buffer : Bytes; Target : in out Bytes; Last : out Length; Outcome : out Status_Kind);
 
 procedure Packed
-  (Buffer : Bytes; This : T; Storage : in out Bytes; Result : out Inner_Type.T; Outcome : out Status_Kind);
+  (This : T; Buffer : Bytes; Storage : in out Bytes; Result : out Inner_Type.T; Outcome : out Status_Kind);
 ```
 
 `Secret` is for a byte array: the result is `Target (Target'First .. Last)`.
@@ -552,11 +620,12 @@ is
    function Valid (This : T) return Boolean
    with Global => null;
 
-   --  Parse one value at the position of S. The parameters after S are the
+   --  Parse one value at the position of S. The result comes first, as in every
+   --  generated parser. The parameters after S are the
    --  arguments of the description, one for each, in their order: an integer is
    --  a Kaitai.Types.S64, a boolean a Boolean. There are none for a type that is
    --  written without arguments.
-   procedure Parse (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Len : Kaitai.Types.S64; This : out T)
+   procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Len : Kaitai.Types.S64)
    with
      Global => null,
      Pre    => Kaitai.Streams.Is_Valid (S, Buffer),
@@ -583,7 +652,7 @@ What the generated code does with it:
   accessor `function Hw (This : T) return Hello_World.T` with the
   postcondition `Hello_World.Valid (Hw'Result)`. `Valid` of the type that has
   the field includes `Hello_World.Valid (This.Hw)`. `Parse` calls
-  `Hello_World.Parse (Buffer, S, [arguments,] This.Hw)` where the field is read,
+  `Hello_World.Parse (This.Hw, Buffer, S[, arguments])` where the field is read,
   or with a substream (`size`, `terminator`, `process`) as for any type. A
   repetition of the type, a case of a `switch-on` and a parse instance work the
   same way. What the postcondition says about the stream is all that the
@@ -623,8 +692,8 @@ What the generated code does with it:
   contract has no `Write`.
 
 A parser that this compiler generated from a description `foo_bar` keeps the
-contract without a change if its `Parse` takes the stream and the arguments
-and nothing else, and has no precondition but `Is_Valid (S, Buffer)`: no
+contract without a change if its `Parse` takes the result, the buffer, the
+stream and the arguments and nothing else, and has no precondition but `Is_Valid (S, Buffer)`: no
 `Order`, `Parent_X`, `Root_X` or `Depth` parameter, no start with bit fields,
 and for each parameter of the description either an `s8`, a `bool`, or a
 literal at every use. `hello_world` and `opaque_external_type_02_child` do, and
@@ -711,7 +780,7 @@ on reduced by one, and at zero the stream fails with `Limit_Exceeded`.
 `Depth` is what proves that the recursion ends:
 
 ```ada
-procedure Parse (Buffer : Bytes; S : in out Stream; Depth : Natural; This : out T)
+procedure Parse (This : out T; Buffer : Bytes; S : in out Stream; Depth : Natural)
 with ..., Subprogram_Variant => (Decreases => Depth, Decreases => 1);
 ```
 
@@ -731,7 +800,7 @@ given type.
 
 A field of its own type is not held in `T`, which Ada does not allow. Like a
 repetition it is parsed again when asked for: `T` keeps the stream as it was
-before the field, and a procedure `X (Buffer, This, Result, Outcome)` parses
+before the field, and a procedure `X (This, Buffer, Result, Outcome)` parses
 it, like the accessor of a parse instance. A type that contains itself only
 through a repetition needs nothing more, since repetitions are not held
 either.
@@ -914,7 +983,7 @@ Where the rules above are silent, the compiler does the following.
 - A value instance with a guard is a pair `Has_X`/`X`. Value instances of
   the same type that an expression uses are inserted into the expression, so
   they can be used in `Parse`. A value instance that needs the buffer (a
-  string length, a comparison of bytes) takes `Buffer` before `This`, and its
+  string length, a comparison of bytes) takes `Buffer` after `This`, and its
   precondition adds `Belongs_To (This, Buffer)`. A value instance of an
   enumeration has `X_Value` and `X`.
 - A parse instance without `io` reads from `This.Io`; with `io: _root._io`
@@ -1026,7 +1095,7 @@ nothing of this section is generated. A parsed value can then be written
 again. Every type gets, next to `Parse`,
 
 ```ada
-procedure Write (Buffer : Bytes; This : T; Target : in out Bytes; W : in out Writer)
+procedure Write (This : T; Buffer : Bytes; Target : in out Bytes; W : in out Writer)
 with
   Pre  => Valid (This) and then Belongs_To (This, Buffer) and then Is_Valid (W, Target),
   Post => Is_Valid (W, Target) and then Same_Window (W'Old, W);
@@ -1046,8 +1115,8 @@ room is `Capacity_Exceeded`.
 | bytes or string with a size | `Write_Bytes (Target, W, Buffer (This.X.First .. This.X.Last))` |
 | bytes or string with a terminator | `Write_Bytes_Term (…, Term)`; with `pad-right` and a size `Write_Padded` |
 | `contents` | `Write_Bytes (Target, W, X_Expected)` |
-| field of a type | `Foo_Type.Write (Buffer, This.X, Target, W)`; for a type of another description `Foo.Write` |
-| field of a type with `size` | `Subwriter (Target, W, To_Size (Size), Sub); Foo_Type.Write (Buffer, This.X, Target, Sub); Join (W, Sub);` |
+| field of a type | `Foo_Type.Write (This.X, Buffer, Target, W)`; for a type of another description `Foo.Write` |
+| field of a type with `size` | `Subwriter (Target, W, To_Size (Size), Sub); Foo_Type.Write (This.X, Buffer, Target, Sub); Join (W, Sub);` |
 | field with `if`, field chosen by `switch-on` | under the same condition (`Has_X`), the variant that is there |
 | repetition of a fixed size | the slice, with `Write_Bytes` |
 | other repetition | a loop over the cursor that writes each element |

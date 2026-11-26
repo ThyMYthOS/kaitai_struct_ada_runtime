@@ -2,6 +2,35 @@
 
 ## Unreleased
 
+- Compiler: BREAKING. In generated code `This` is now the first parameter of every
+  operation of the visible part that has it. This breaks every positional call of
+  generated code of 0.2.0: `Parse (Buffer, S, [arguments,] V)` becomes
+  `Parse (V, Buffer, S[, arguments])`, `Write (Buffer, V, Target, W)` becomes
+  `Write (V, Buffer, Target, W)`, `Samples (Buffer, V, I)` becomes
+  `Samples (V, Buffer, I)`, `Next (Buffer, V, Position, Element)` becomes
+  `Next (V, Buffer, Position, Element)`, `Get_X (Buffer, V, I, Element)` becomes
+  `Get_X (V, Buffer, I, Element)`, and the same for `X_Bits`, `Has_X`, value
+  instances, parse instances, processed fields (`X (V, Buffer, Target, Last,
+  Outcome)`, `X (V, Buffer, Storage, Result, Outcome)`) and a field of the type
+  itself. The other parameters keep their order. Operations whose object is a
+  cursor (`Belongs_To (Position, Buffer)`, `Remaining`, `Has_Element`) and
+  functions without `This` are unchanged. A caller adapts by moving the argument
+  that is the value (for `Parse` the last one, the result) to the front; a call
+  that was missed does not compile, since the value and the buffer have different
+  types. The parameters, the contracts and the
+  code of the operations are the same, and the generated unit changes in no other
+  way (the call at the top of a package and the `@param` lines show the new
+  order). The reason is the prefixed notation `V.Parse (Buffer, S)`,
+  `V.Samples (Buffer, I)`, which GNAT offers for untagged types as an extension
+  that the caller switches on (`pragma Extensions_Allowed (On);` or `-gnatX`); it
+  is described in `docs/codegen.md` and tried in `tests/src/prefixed_tests.adb`
+  and, proven, in `tests/src/prefixed_use.adb`. Generated code stays plain
+  Ada 2012. Foreign code follows: the contract of an opaque type is
+  `Parse (This : out T; Buffer; S; [arguments])`, so a package written for 0.2.0
+  needs its `Parse` changed. `Decode` of a custom process is unchanged. The
+  generated parsers of `bench/generated` and `examples/` are regenerated; the
+  hand-written parsers of `bench/src` that imitate generated code were written
+  before the change and keep their order.
 - Compiler: opaque types (`meta: ks-opaque-types: true` and a `type:` that no
   description defines) and custom `process` (`my_custom_fx(7, true, [0x20])`,
   `nested.deeply.custom_fx`) are generated. Both call a package that is written by

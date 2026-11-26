@@ -130,7 +130,11 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
 
   /** What a dump walks in a type: parameters, stored fields, instances (in the order of the description) */
   private def members(cs: ClassSpec): List[MemberSpec] = {
-    val params: List[MemberSpec] = cs.params
+    // a parameter that is not an integer, a boolean or an enumeration is not kept: the parser gets what the type uses of it
+    val params: List[MemberSpec] = cs.params.filter(p => p.dataType match {
+      case _: IntType | _: EnumType | _: BooleanType => true
+      case _ => false
+    })
     val seq: List[MemberSpec] = cs.seq.filter(a => cc.isStored(a))
     val inst: List[MemberSpec] = cs.instances.values.toList
     params ++ seq ++ inst

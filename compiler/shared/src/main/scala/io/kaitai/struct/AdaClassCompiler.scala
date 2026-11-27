@@ -3789,7 +3789,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       val ok = keptOk(s"This.${keptComp(key)}")
       if (ok.isEmpty) Nil
       else {
-        val gate = if (byCount) keptAbsent(key) else s"I <= $key"
+        // the turn I is at least 1: `I <= 1` is `I = 1`, which the compiler would otherwise say is a comparison that can only be an equality
+        val gate = if (byCount) keptAbsent(key) else if (key == 1) "I = 1" else s"I <= $key"
         val plainOk = ok.mkString(" and then ")
         // a slice that was not set is empty and lies in any buffer; what is set in the first turn holds in all
         if (isSlice || (!byCount && key <= 0)) List(" and then " + plainOk) else List(s" and then ($gate or else ($plainOk))")

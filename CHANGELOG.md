@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Compiler: the invariant of the loop of a `repeat: expr` that keeps `x[1]` says `I = 1` where it said `I <= 1`, which is
+  the same for a loop that starts at 1, and which GNAT warns about (`-gnatwc`, "can never be less than"). Example
+  `repeat_second`.
+
 - Compiler: `Parse` no longer starts with `This := (others => <>);` only because a `valid` has a guarded test (the
   conversion of a bit field, an arithmetic question). The statement only fails the stream, so every component is
   assigned as before, and GNATprove reported the assignment as without effect (a flow warning, which the survey

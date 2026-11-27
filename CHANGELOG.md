@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Compiler: an expression that uses `.size`, `.first` or `.last` of a repeated parse instance is rejected with
+  "parse instance `x` with `repeat`", as it was before the elements of repetitions were used in expressions, and not
+  with "repeated field `x` (only `.size` is supported)", which is wrong for `.size`. New description
+  `compiler/rejected/repeat_instance_size.ksy`.
+
 - Compiler: the invariant of the loop of a `repeat: expr` that keeps `x[1]` says `I = 1` where it said `I <= 1`, which is
   the same for a loop that starts at 1, and which GNAT warns about (`-gnatwc`, "can never be less than"). Example
   `repeat_second`.

@@ -807,6 +807,8 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
       case None =>
     }
     val v = value match {
+      case Ast.expr.Name(id) if isRepeatedParseInstance(provider.nowClass, id.name) =>
+        unsupported(s"parse instance `${id.name}` with `repeat`")
       case Ast.expr.Name(id) if isRepeatedMember(provider.nowClass, id.name) =>
         unsupported(s"repeated field `${id.name}` (only `.size` is supported)")
       case _ => translate(value)
@@ -885,6 +887,15 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
       case other => unsupported(s"`.$attr` of $other")
     }
   }
+
+  /** The member is an instance that is read at a position and repeated, which is not generated at all */
+  private def isRepeatedParseInstance(cs: ClassSpec, name: String): Boolean =
+    try {
+      provider.resolveMember(cs, name) match {
+        case p: ParseInstanceSpec => p.cond.repeat != NoRepeat
+        case _ => false
+      }
+    } catch { case _: Throwable => false }
 
   private def isRepeatedMember(cs: ClassSpec, name: String): Boolean =
     try {

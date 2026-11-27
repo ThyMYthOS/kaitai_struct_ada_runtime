@@ -3,29 +3,29 @@
 Result of `scripts/diff-python.sh` (see `compiler/README.md`, "Comparing the
 Ada parsers with the Python parsers") with its defaults (200 changes of each
 data file, fixed seed) on the 334 formats of `kaitai_struct_tests` at commit
-`4108136c807f8df88df843de6571f1a7bf29c74e` and the 8 formats of
+`4108136c807f8df88df843de6571f1a7bf29c74e` and the 14 formats of
 `compiler/diff-formats`, with the backend and library of this commit and the
 Python runtime `kaitai_struct_python_runtime` at commit
 `54076c90b5c81348c0d4d005d769247d0497a007`. The Ada programs were built with
 run-time checks and with the contracts of the library and of the parsers
 executed. No program raised an exception and no contract failed. The script
-took about 20 minutes (`--jobs 3`). The test data are synthetic (files of the
+took about 17 minutes (`--jobs 3`). The test data are synthetic (files of the
 Kaitai test suite and changes of them); they hold no personal data.
 
 | | |
 |---|---|
-| formats | 342 |
-| compared | 243 (235 of the suite, 8 of our own) |
-| skipped | 99 (84 rejected by the Ada backend, as in `SUITE.md`; 14 without a data file; 1 with an opaque type) |
+| formats | 348 |
+| compared | 260 (246 of the suite, 14 of our own) |
+| skipped | 88 (73 rejected by the Ada backend, as in `SUITE.md`; 14 without a data file; 1 with an opaque type) |
 | failed to build | 0 |
-| inputs | 48843 |
-| parsed by Ada / by Python | 30826 / 30834 |
-| leaves compared in inputs with the same dump | 166045 |
+| inputs | 52260 |
+| parsed by Ada / by Python | 32295 / 32303 |
+| leaves compared in inputs with the same dump | 196459 |
 
 | Class | Inputs |
 |---|---|
-| same dump | 30779 |
-| both fail (`FAILED` on both sides) | 17949 |
+| same dump | 32248 |
+| both fail (`FAILED` on both sides) | 19897 |
 | dump over the limit (8 MB; both gave up at the same line) | 26 |
 | Python timeout or out of memory (not compared) | 17 |
 | known difference | 72 |
@@ -34,7 +34,7 @@ Kaitai test suite and changes of them); they hold no personal data.
 | only Python fails | 0 |
 | Ada exception | 0 |
 | no result | 0 |
-| total | 48843 |
+| total | 52260 |
 
 There is no difference that nothing explains: no input of the classes
 `values differ`, `only Ada fails`, `only Python fails`, `Ada exception` and
@@ -49,7 +49,7 @@ data file are the tests that the suite has no input for (`cast_to_imported`,
 `params_def_enum_imported`, `params_def_usertype_imported`, `str_literals`,
 `switch_cast`, `to_string_custom`); five of them are rejected by the backend as
 well (`cast_to_imported2`, `enum_to_i_class_border_2`, `imports_circular_b`,
-`str_literals`, `switch_cast`), which is why 84 and not 89 rejected formats are
+`str_literals`, `switch_cast`), which is why 73 and not 78 rejected formats are
 counted above. The one format with an opaque type that the survey generates and that has a
 data file, `opaque_external_type`, is skipped: its dump program would have to
 walk the members of `hello_world`, which are not known to it.
@@ -60,14 +60,14 @@ classes of `spec/python/extra` of the tests repository: of their 603 inputs Ada
 parses 383, and the dumps are the same on all of them.
 
 A format whose inputs all fail on both sides tests only what comes before the
-failure: of the 243 formats seven have no input that Ada parses
+failure: of the 260 formats nine have no input that Ada parses
 (`eos_exception_bytes`, `eos_exception_sized`, `eos_exception_u4`, whose data
-are made to fail at any length, `valid_fail_contents`, `valid_fail_eq_bytes`,
-`valid_fail_eq_str`, and `expr_to_i_trailing`, whose instance raises an error
-for every input and whose data file is empty), and seven have fewer than ten
+are made to fail at any length, `valid_fail_contents`, `valid_fail_contents_inst`, `valid_fail_eq_bytes`,
+`valid_fail_eq_str`, `valid_fail_inst`, and `expr_to_i_trailing`, whose instance raises an error
+for every input and whose data file is empty), and eight have fewer than ten
 (`default_endian_expr_exception`, `valid_fail_anyof_int`,
 `valid_fail_range_bytes`, `valid_fail_range_int`, `valid_fail_range_str`,
-`valid_fail_repeat_eq_int`, `zlib_with_header_78`). For these the comparison
+`valid_fail_repeat_contents`, `valid_fail_repeat_eq_int`, `zlib_with_header_78`). For these the comparison
 says little beyond "both fail on the same inputs": the 200 changes did not
 find the few bytes that make the data valid. `yaml_ints` has no field and an
 empty data file; its 201 inputs are all the same empty file, and it compares
@@ -194,8 +194,8 @@ The unchanged parsers of the same formats gave no difference.
 
 ## Not covered
 
-- Only what the data files of the tests and our eight formats reach through
-  changes of bytes. A format whose data fail at once on any change (the seven
+- Only what the data files of the tests and our fourteen formats reach through
+  changes of bytes. A format whose data fail at once on any change (the nine
   above) is hardly tested. A change that has to be right in several places at
   once (a checksum, a length that is also stored elsewhere) is rarely found.
 - `contents` fields are not dumped (the Ada parsers do not keep them, only

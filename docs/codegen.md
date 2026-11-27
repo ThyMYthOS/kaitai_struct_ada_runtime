@@ -432,11 +432,15 @@ the other elements. The element is a `U64` (a `Boolean` for `b1`, the integer
 of the enumeration), and the stream of the cursor carries the bit position, so
 the next element goes on in the byte that the one before left open. An element
 reads at least a bit and fails at the end of the data, so the loop of `repeat:
-expr` is bounded by the data and needs no early exit; `repeat: eos` and
-`repeat: until` run at most once per bit that was left, which is eight per byte
-and is the bound of their `for` loop. The cost of `Parse` is the number of
-elements, at most 8 times the bytes that are left; of `Next`, a few instructions;
-of `Get_X`, the index.
+expr` is bounded by the data and needs no early exit. The `for` loop of
+`repeat: eos` and of `repeat: until` has `8 * Remaining + 8` turns (`Length'Last`
+where that would pass it, which no stream reaches): `Remaining` bytes and the
+7 bits that the byte at the position may still have hold at most `8 * Remaining + 7`
+elements, and the turn that finds the end of the data is the last one, as with
+elements of a byte, where the bound is `Remaining + 1`. It is the same number for
+both, so the bound of `until` does not add one more turn. The cost of `Parse` is
+the number of elements, at most 8 times the bytes that are left; of `Next`, a few
+instructions; of `Get_X`, the index.
 
 #### `_index`
 

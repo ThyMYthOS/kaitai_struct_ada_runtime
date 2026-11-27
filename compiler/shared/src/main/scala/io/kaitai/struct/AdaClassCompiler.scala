@@ -3935,10 +3935,14 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       case Nil => Nil
       case cs => cs ++ List(s"exit when not ${KS}OK (S);")
     }
-    // at most one element per byte that is left; a bit field takes at least a bit, so at most eight per byte
+    // at most one element per byte that is left; a bit field takes at least a bit, so at most eight per byte, and the
+    // bits that the byte at the position still has make up the 8 that is added. `until` has one more turn than there
+    // are elements, the one that finds the end of the data, so for bit fields it is that 8 (at most 8 * Remaining + 7
+    // elements and the turn that fails) and not one more: the loop is not allowed to pass Length'Last
     val bound =
       if (isScalar) s"(if ${KS}Remaining (S) < ${KT}Length'Last / 8 - 1 then ${KS}Remaining (S) * 8 + 8 else ${KT}Length'Last)"
       else s"${KS}Remaining (S)"
+    val untilBound = if (isScalar) bound else s"$bound + 1"
     // a slice has no validity to look at; the loop uses the element in its invariant
     val sliceInv = if (isSlice && !isScalar) s" and then ${KT}Within ($el, Buffer)" else ""
     // after an element is read: the statements that keep it, and what is then true of the record
@@ -3985,7 +3989,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         tr.iterator = None
         tr.knownValid = Set()
         val check = guarded(ct.guards, List(s"$done := ${ct.code};"), rc, List(s"$done := True;"), init = false)
-        List(s"This.${bs}_Count := 0;", s"$done := False;", s"for $Iv in 1 .. $bound + 1 loop") ++
+        List(s"This.${bs}_Count := 0;", s"$done := False;", s"for $Iv in 1 .. $untilBound loop") ++
           ind(List(parseCall, s"exit when not ${valid(el)};") ++ keptStmts(el, Iv) ++ planLoop ++ checks ++ List(s"This.${bs}_Count := $Iv;") ++ check ++ List(
             s"exit when $done;",
             s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv and then not $done${planInvariant}${keptInv(true)});")) ++

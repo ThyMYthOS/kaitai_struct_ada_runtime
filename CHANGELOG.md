@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Compiler: the loop of `repeat: until` over bit fields has `8 * Remaining + 8` turns, as `repeat: eos` has, and not
+  one more. The `+ 1` after `Length'Last` could overflow, and GNATprove did not prove it (it is not a time limit). Eight
+  per byte is enough: at most `8 * Remaining + 7` elements and the turn that finds the end of the data. Example
+  `repeat_bits_use`.
+
 - Compiler: floating-point expressions. Float literals, `f4` and `f8` fields (also under `if`, in a nested value and in
   `valid`), `+`, `-` and `*` between floats and with an integer, unary minus, the six comparisons, `?:`, `to_i`
   (truncation toward zero) and value instances of float type are generated, computed in `Kaitai.Floats.F64` with

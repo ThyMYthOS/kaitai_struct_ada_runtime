@@ -3,6 +3,7 @@
 
 with Ada.Command_Line;
 with All_Tests;
+with Bits_Arith_Tests;
 with Files_Tests;
 with Float_Reading_Tests;
 with Float_Steps_Tests;
@@ -13,6 +14,7 @@ with Test_Support;
 
 procedure Tests_Main is
 begin
+   Bits_Arith_Tests.Run;
    Files_Tests.Run;
    Float_Reading_Tests.Run;
    Float_Steps_Tests.Run;

@@ -2,7 +2,6 @@
 
 with Kaitai.Streams;
 with Kaitai.Types;
-with Kaitai.Arithmetic;
 with Kaitai.Writers;
 
 package Bits_Enum
@@ -34,6 +33,8 @@ is
    --     else
    --        --  Kaitai.Writers.Status (W) tells why they could not be written
    --     end if;
+
+   use type Kaitai.Types.U64;
 
    --  Enumeration `animal`
    --  @enum Animal_Cat `cat`, 0
@@ -101,10 +102,7 @@ is
    --  requires Is_Animal_Enum of One_Value.
    function One (This : T) return Animal_Enum
    with
-     Pre =>
-       Valid (This)
-       and then Kaitai.Arithmetic.Fits (One_Value (This))
-       and then Is_Animal_Enum (Kaitai.Types.S64 (One_Value (This)));
+     Pre => Valid (This) and then One_Value (This) <= 15 and then Is_Animal_Enum (Kaitai.Types.S64 (One_Value (This)));
 
    --  Field `two` as the integer that is in the data
    function Two_Value (This : T) return Kaitai.Types.U64
@@ -114,10 +112,7 @@ is
    --  requires Is_Animal_Enum of Two_Value.
    function Two (This : T) return Animal_Enum
    with
-     Pre =>
-       Valid (This)
-       and then Kaitai.Arithmetic.Fits (Two_Value (This))
-       and then Is_Animal_Enum (Kaitai.Types.S64 (Two_Value (This)));
+     Pre => Valid (This) and then Two_Value (This) <= 255 and then Is_Animal_Enum (Kaitai.Types.S64 (Two_Value (This)));
 
    --  Field `three` as the integer that is in the data
    function Three_Value (This : T) return Kaitai.Types.U64
@@ -128,9 +123,7 @@ is
    function Three (This : T) return Animal_Enum
    with
      Pre =>
-       Valid (This)
-       and then Kaitai.Arithmetic.Fits (Three_Value (This))
-       and then Is_Animal_Enum (Kaitai.Types.S64 (Three_Value (This)));
+       Valid (This) and then Three_Value (This) <= 1 and then Is_Animal_Enum (Kaitai.Types.S64 (Three_Value (This)));
 
    --  Writes This to Target, at the position of W, and leaves W behind what it wrote.
    --

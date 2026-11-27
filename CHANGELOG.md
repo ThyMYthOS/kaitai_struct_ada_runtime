@@ -8,6 +8,11 @@
   target whose `Length` is narrower than the parameter (the 32-bit STM32F4: 2**31 - 1 against `u4`), and GNAT says so
   (-gnatwc); the test is the same on every target. Example `repeat_index`.
 
+- Compiler: where an expression uses a bit field of N bits (N below 64), the test that it fits S64 is `X <= 2**N - 1`,
+  as long as `Kaitai.Arithmetic.Fits (X)` was. A value instance over a bit field (`n + 1`, `m + n`, `a.n + 1`,
+  `kind.to_i + 1`) was unproved: the translator knows the width and asks no overflow question, and the accessor,
+  which runs after Parse, knew nothing of the field. Example `bits_arith`, differential description `x_bits_arith`.
+
 - Compiler: an expression with a float that a procedure evaluates (`if`, `size`, `repeat-expr`, `repeat-until`,
   `valid`, `pos`, `switch-on`, an argument of a type; in `Parse`, in the parser of an element of a cursor, in the
   procedures of instances and in `Write`) is evaluated by a subprogram of its own in the body of the package

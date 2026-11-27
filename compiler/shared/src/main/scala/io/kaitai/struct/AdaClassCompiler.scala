@@ -2163,6 +2163,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       tr.thisName = "This"
       tr.knownValid = Set()
       tr.iterator = Some((dt, target))
+      tr.iteratorTyped = !target.startsWith("This.")
       tr.finiteKnown = if (isFloat && nonFinite.isDefined) Set(target) else Set()
       var t = try guard(rc.path)(tr.translate(cond)) finally { tr.iterator = None; tr.finiteKnown = Set() }
       var floatFirst = false
@@ -3853,6 +3854,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         rc.scope.decls += s"$value : $valT;"
         tr.buffer = Some("Buffer"); tr.io = Some("S"); tr.thisName = "This"; tr.knownValid = Set()
         tr.iterator = Some((dt, value))
+        tr.iteratorTyped = false
         val ct = try floatStep(cond, guard(a.path)(tr.translate(cond)), rc, "Until", false) finally tr.iterator = None
         val check = guarded(ct.guards, List(s"$done := ${ct.code};"), rc, List(s"$done := True;"), init = false)
         List(s"$start := S;", s"$done := False;", s"for I in 1 .. ${KS}Remaining (S) + 1 loop") ++
@@ -4201,6 +4203,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         rc.scope.decls += s"$done : Boolean;"
         tr.buffer = Some("Buffer"); tr.io = Some("S"); tr.thisName = "This"
         tr.iterator = Some((dt, el))
+        tr.iteratorTyped = isScalar
         tr.knownValid = Set(el)
         tr.indexCode = Some(s"$Iv - 1")
         val ct = try floatStep(cond, guard(a.path)(tr.translate(cond)), rc, "Until", false) finally tr.indexCode = None

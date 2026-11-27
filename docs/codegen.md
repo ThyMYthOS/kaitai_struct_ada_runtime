@@ -241,6 +241,26 @@ A size is the value of an expression and goes through `To_Size`. A value
 that is negative or that no buffer can have then makes the read fail with
 `End_Of_Stream`, without a check in the parser.
 
+The component that holds a bit field is a plain `Kaitai.Types.U64`, and so is
+what the accessor returns. Where an expression uses a bit field of N bits (N
+below 64), the test that the translator makes for every unsigned 64-bit value,
+which says that it fits `S64`, says `X <= 2**N - 1` instead of
+`Kaitai.Arithmetic.Fits (X)`. It costs the same, and it is what lets the proof
+know the bound where nothing else says it: the accessor of a value instance
+runs after `Parse`, and the record is all that it knows of the field, so
+`n + 1` over a `b4` could not be proven not to overflow while the translator,
+which knows the width, asks no question. For a parameter of a bit type, which
+a caller of `Parse` can give any value, it is a real test: an expression that
+uses a parameter above its bits has no value. (A range on the component,
+`U64 range 0 .. 2**N - 1`, proves the accessors too, but each read then ends
+with a range check: 4 to 13 instructions more for each `Parse` of the benchmark
+parsers of bit fields with run-time checks on, on x86-64 and on a Cortex-M4,
+and none less without.)
+The element of a repetition of bit fields has the subtype described under
+"Bit fields" of Repetitions, and the guard is left as `Fits` there, since a
+test that a value of the subtype is below 2**N is always true. A bit field of
+64 bits has no bound below `Fits`.
+
 A run of bit fields goes on in the byte that the bit fields before it left
 open. Reads that are not bit fields align by themselves. Where a type that
 starts with bit fields is certainly entered at a byte boundary, its `Parse`

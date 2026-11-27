@@ -194,6 +194,8 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
   var knownValid: Set[String] = Set()
   /** What `_` stands for: Kaitai type and code of the value as stored */
   var iterator: Option[(DataType, String)] = None
+  /** The code of `_` has the subtype of the bits of an element of a repetition of bit fields */
+  var iteratorTyped: Boolean = false
   /** What `_index` stands for: the code of the number of the element, a `Kaitai.Types.Length` */
   var indexCode: Option[String] = None
   /** The slices of the current record that expressions decode elements from (`This.Sizes`) */
@@ -570,7 +572,7 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     val has = if (m.cond.ifExpr.isDefined) List(s"$thisName.${env.presenceName(cs, m.id)}") else Nil
     val count = s"$thisName.${bs}_Count"
     val guards = has ++ List(s"$count > ${if (key < 0) 0 else key}")
-    val r = fromValue(m.dataType, s"$thisName.$comp", guards)
+    val r = fromValue(m.dataType, s"$thisName.$comp", guards, typed = true)
     r.vt match {
       case VBytes | VStr(_) => r.copy(usesBuffer = true)
       case _ => r
@@ -681,7 +683,7 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
       ATr(io.getOrElse(unsupported("`_io` in a value instance")), 0, Nil, VStream)
     case Identifier.ITERATOR =>
       iterator match {
-        case Some((dt, code)) => fromValue(dt, code, Nil)
+        case Some((dt, code)) => fromValue(dt, code, Nil, typed = iteratorTyped)
         case None => unsupported("`_` outside of `repeat-until` and `valid`")
       }
     case Identifier.INDEX =>
@@ -749,7 +751,7 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     * The translation of a value of the given Kaitai type that is available
     * as Ada expression `code` of the type it was read as.
     */
-  def fromValue(dt: DataType, code: String, guards: List[String]): ATr = dt match {
+  def fromValue(dt: DataType, code: String, guards: List[String], typed: Boolean = false): ATr = dt match {
     case _: IntType | _: EnumType =>
       val base = dt match {
         case EnumType(_, _, b) => b
@@ -764,7 +766,15 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         case _ => VInt
       }
       if (adaType == "U64") {
-        ATr(s"Kaitai.Types.S64 ($code)", 0, dedupe(guards ++ List(s"Kaitai.Arithmetic.Fits ($code)")), vt, lo, hi.min(S64Max), Some((code, adaType)))
+        // A bit field of N bits is below 2**N, and the guard says so where the field is used: an accessor runs after
+        // Parse, and the record, a plain U64, is all that it knows of the field. The test is as long as Fits.
+        val fits = base match {
+          // `typed`: the code has the subtype of its bits (an element of a repetition), and a test that it is below
+          // 2**N is always true, which GNAT warns about
+          case BitsType(w, _) if w < 64 && !typed => ops += "U64"; s"$code <= ${(BigInt(1) << w) - 1}"
+          case _ => s"Kaitai.Arithmetic.Fits ($code)"
+        }
+        ATr(s"Kaitai.Types.S64 ($code)", 0, dedupe(guards ++ List(fits)), vt, lo, hi.min(S64Max), Some((code, adaType)))
       } else if (adaType == "S64") {
         ATr(code, 0, dedupe(guards), vt, lo, hi, Some((code, adaType)))
       } else {

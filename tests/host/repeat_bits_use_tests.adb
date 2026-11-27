@@ -1,6 +1,7 @@
 with Kaitai.Streams; use Kaitai.Streams;
 with Kaitai.Types;   use Kaitai.Types;
 with Repeat_Bits_Use;
+with Repeat_Bits_Valid;
 with Test_Support;   use Test_Support;
 
 package body Repeat_Bits_Use_Tests is
@@ -69,6 +70,33 @@ package body Repeat_Bits_Use_Tests is
       S := Open (Long);
       Parse (This, Long, S);
       Check (not Valid (This) and then Status (S) = End_Of_Stream, "5000 bytes of zeros after the flags");
+
+      --  examples repeat_bits_valid: the nibbles 1 2 3 12 are valid, 13 is not
+      declare
+         Good    : constant Bytes (1 .. 2) := (16#12#, 16#3C#);
+         Too_Big : constant Bytes (1 .. 2) := (16#12#, 16#3D#);
+         Short   : constant Bytes (1 .. 1) := (1 => 16#12#);
+         V       : Repeat_Bits_Valid.T;
+         Item    : Repeat_Bits_Valid.Bits_Element;
+      begin
+         Group ("examples repeat_bits_valid");
+         S := Open (Good);
+         Repeat_Bits_Valid.Parse (V, Good, S);
+         Check (Repeat_Bits_Valid.Valid (V) and then Is_EOF (S), "four nibbles up to 12");
+         if Repeat_Bits_Valid.Valid (V) then
+            Check (Repeat_Bits_Valid.Bits_Count (V) = 4, "four elements");
+            Repeat_Bits_Valid.Get_Bits (V, Good, 3, Item);
+            Check (Item = 12, "the last nibble, the largest that is valid");
+         end if;
+         S := Open (Too_Big);
+         Repeat_Bits_Valid.Parse (V, Too_Big, S);
+         Check
+           (not Repeat_Bits_Valid.Valid (V) and then Status (S) = Validation_Greater_Than,
+            "a nibble of 13 is not valid");
+         S := Open (Short);
+         Repeat_Bits_Valid.Parse (V, Short, S);
+         Check (not Repeat_Bits_Valid.Valid (V) and then Status (S) = End_Of_Stream, "the count is more than the data");
+      end;
    end Run;
 
 end Repeat_Bits_Use_Tests;

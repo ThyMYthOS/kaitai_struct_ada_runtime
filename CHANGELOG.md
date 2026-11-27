@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Compiler: `Parse` no longer starts with `This := (others => <>);` only because a `valid` has a guarded test (the
+  conversion of a bit field, an arithmetic question). The statement only fails the stream, so every component is
+  assigned as before, and GNATprove reported the assignment as without effect (a flow warning, which the survey
+  counts as not proven) for a repetition of bit fields with `valid`. Example `repeat_bits_valid`.
+
 - Compiler: the element of a repetition of bit fields of N bits (N below 64) has a subtype of its own, `X_Element`, a
   `U64` range `0 .. 2**N - 1`, in the visible part. `Next`, `Get_X`, the element procedure and the kept elements
   (`X_First_Element` and the others) have it. Before, the bound was lost where the element left the procedure that

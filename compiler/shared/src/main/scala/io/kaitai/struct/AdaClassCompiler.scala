@@ -1994,7 +1994,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         case Some(nf) if isFloat => List(s"if not Kaitai.Floats.Is_Finite ($target) then") ++ ind(nf) ++ List("else") ++ ind(test) ++ List("end if;")
         case _ => test
       }
-      guarded(t.guards, body, rc)
+      // the statements only fail the stream, so that no component of This depends on the guard
+      guarded(t.guards, body, rc, init = false)
     }
     def failUnless(inf: String, reason: String): Option[List[String]] = {
       if (isFloat) opTypes += (if (wide) "U64" else "U32")
@@ -2018,7 +2019,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
             val t = fromValueChecked(dt, target, rc)
             val chk = s"${enumTypeName(et.enumSpec.get).split('.').dropRight(1).mkString(".")}"
             val isFn = (if (chk.isEmpty) "" else chk + ".") + "Is_" + enumTy(et.enumSpec.get)
-            guarded(t.guards, List(s"if not $isFn (${t.code}) then", "   " + failStmt(rc, "Validation_Not_In_Enum"), "end if;"), rc)
+            guarded(t.guards, List(s"if not $isFn (${t.code}) then", "   " + failStmt(rc, "Validation_Not_In_Enum"), "end if;"), rc, init = false)
           case _ => throw new AdaUnsupported("`in-enum` on something that is not an enumeration")
         }
       case ValidationExpr(Ast.expr.Compare(l, Ast.cmpop.NotEq, r)) =>

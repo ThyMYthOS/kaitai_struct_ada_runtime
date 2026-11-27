@@ -1198,7 +1198,10 @@ Where the rules above are silent, the compiler does the following.
   component may stay unassigned on a path (a field with `if`, a switch
   without `else`, a failed condition of an expression, a repetition whose
   count is guarded) or if `This` is handed on as a whole (the element
-  procedure of a repetition takes it). Otherwise there is none. A type
+  procedure of a repetition takes it). Otherwise there is none; in
+  particular a `valid` whose test is guarded (an arithmetic question, the
+  conversion of a bit field) does not need it, as all it does is fail the
+  stream and every component is assigned as before. A type
   without fields has `pragma Unmodified (S);` in `Parse` and no statement
   that touches the stream.
 - The value of a parameter is assigned to `This` before anything is read.

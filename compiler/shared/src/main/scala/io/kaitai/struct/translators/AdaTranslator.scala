@@ -268,7 +268,10 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
   private def floatToInt(v: ATr): ATr = {
     if (v.isLiteral && v.flit.isDefined) {
       val n = BigDecimal(v.flit.get).toBigInt
-      if (n >= S64Min && n <= S64Max) return ATr(n.toString, if (n < 0) 1 else 0, Nil, VInt, n, n, isLiteral = true)
+      if (n >= S64Min && n <= S64Max) {
+        if (n < 0) ops += "S64"
+        return ATr(n.toString, if (n < 0) 1 else 0, Nil, VInt, n, n, isLiteral = true)
+      }
       return ATr("0", 0, List("False"), VInt, 0, 0)
     }
     val known = v.mag < TwoTo63
@@ -1338,7 +1341,7 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         ATr(s"(if $cond then ${a.code} else ${b.code})", 0, guards, VBool, usesBuffer = ub)
       case (VFloat, VFloat) =>
         flt(s"(if $cond then ${a.code} else ${b.code})", 0, guards, math.max(a.mag, b.mag), ub)
-      case _ => unsupported("conditional expression that is not a number or a boolean")
+      case _ => unsupported("conditional expression that is not an integer or a boolean")
     }
   }
 }

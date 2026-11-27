@@ -79,12 +79,14 @@ is
    is
       Arg : Kaitai.Types.U32;
    begin
+      pragma Warnings (Off, "condition can only be False if invalid values present");
       if Kaitai.Types.S64 (Index) in 0 .. 4294967295 then
          Arg := Kaitai.Types.U32 (Kaitai.Types.S64 (Index));
       else
          Kaitai.Streams.Fail (S, Kaitai.Types.Arithmetic_Error);
          Arg := 0;
       end if;
+      pragma Warnings (On, "condition can only be False if invalid values present");
       Row_Type.Parse (Element, Buffer, S, Arg);
    end Parse_Rows_Element;
 

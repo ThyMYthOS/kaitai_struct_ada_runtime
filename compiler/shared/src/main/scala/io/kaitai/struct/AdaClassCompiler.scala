@@ -2036,6 +2036,18 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     (pre.toList, args.toList)
   }
 
+  /**
+    * Statements that test a range of the argument (the `extra` of `convertArg`). Where the argument is a number of an
+    * element, a `Length`, the test is true whatever it is on a target whose `Length` is narrower than the range, and
+    * GNAT says so (-gnatwc); the test is the same on every target, so the warning is switched off for it.
+    */
+  private def quietRange(extra: List[String], stmts: List[String]): List[String] =
+    if (extra.isEmpty) stmts
+    else {
+      val msg = "condition can only be False if invalid values present"
+      List(s"""pragma Warnings (Off, "$msg");""") ++ stmts ++ List(s"""pragma Warnings (On, "$msg");""")
+    }
+
   /** Statements before the call, and the arguments of the call (including the byte order). */
   private def callArgs(ut: UserType, rc: RC): (List[String], List[String]) = {
     val callee = ut.classSpec.get
@@ -2056,7 +2068,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       else {
         val v = rc.scope.fresh("Arg")
         rc.scope.decls += s"$v : $ada;"
-        pre ++= guarded(gs, List(s"$v := $code;"), rc, List(s"$v := ${defaultOf(ada)};"), init = false)
+        pre ++= quietRange(extra, guarded(gs, List(s"$v := $code;"), rc, List(s"$v := ${defaultOf(ada)};"), init = false))
         args += v
       }
     }
@@ -2080,7 +2092,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       else {
         val v = rc.scope.fresh("Arg")
         rc.scope.decls += s"$v : $ada;"
-        pre ++= guarded(gs, List(s"$v := $code;"), rc, List(s"$v := ${defaultOf(ada)};"), init = false)
+        pre ++= quietRange(extra, guarded(gs, List(s"$v := $code;"), rc, List(s"$v := ${defaultOf(ada)};"), init = false))
         args += v
       }
     }

@@ -602,7 +602,7 @@ The compiler asks `Add_OK`, `Multiply_OK` and `Truncate_OK` only where the sizes
 an upper bound of the magnitude of every part of an expression: a literal is its own bound, an `f4` is at most
 3.4028234663852886E+38, an integer at most 2**63, an `f8` is only known to be finite, and the bound of a sum or a product
 follows from those of its operands. A sum is not asked about if both operands are at most 2**1022 in magnitude, a product if
-one operand is at most 1 or both are at most 2**500, a `to_i` if the number is below 2**63. So `celsius + 273.15` and
+one operand is at most 1 or both are at most 2**200, a `to_i` if the number is below 2**63. So `celsius + 273.15` and
 `(celsius + 0.5) * fraction - 2.0` with `f4` fields ask nothing but `Is_Finite`, while
 `gain * gain` with an `f8` field asks `Multiply_OK`:
 
@@ -622,6 +622,17 @@ are not proven at level 1; `Kaitai.Float_Arithmetic` says for each where. They a
 at most 2**500 (about 3.3E150) in magnitude. An operation that has an operand above that may be refused although its
 result is finite, for example `1E160 * 1E150`, or a sum of two numbers of the same sign of which one is above 2**1022
 (about 4.5E307).
+
+An expression with more than eight operations on floats (`+`, `-`, `*`, `to_i`; the value instances that it uses
+count, they are written into it) is rejected with a message that says so (`compiler/rejected/float_long_chain.ksy`). The
+translation of a chain of operations grows with the square of their number, because every question that is asked
+repeats the operations below it, and the proof grows with it: at `--level=1`, in one run for each length, a sum of `f4`
+fields with 7 operations was proved and one with 11 was not (4 checks), a product of `f4` fields with 15 operations
+was proved and one with 23 was not (5 checks), and sums and products of `f8` fields, where every operation is asked
+about, were proved up to 23; a chain of 31 `f4` in a condition gives a line that is longer than the compiler of Ada takes (32766
+characters). A product of eight `f4` fields was not proved in two runs (3 checks) while products were not asked about
+below 2**500; with the limit at 2**200, so that from the third factor on each product is asked about, products of up to
+15 operations were.
 
 A `valid` on a float field compares as the other targets do, also for the values that expressions cannot use. A
 not-a-number is not at least and not at most anything, so it fails `min` and `max` (`Validation_Less_Than` if `min` or

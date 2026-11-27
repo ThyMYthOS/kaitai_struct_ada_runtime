@@ -9,7 +9,9 @@
   The proof of `Parse` does not see the float operations, so that a `Parse` with eight float steps proves at level 1 where
   it did not before, and one with four of some kinds did not reliably; the executed instructions change by less than 3
   percent on x86-64 and on a Cortex-M4. Code for descriptions without a float in such an expression is unchanged.
-  Example `float_steps` (nine float steps in one `Parse`, with a host test and a fuzz target).
+  Example `float_steps` (nine float steps in one `Parse`, with a host test and a fuzz target). A product is asked about
+  (`Multiply_OK`) where an operand is above 2**200, not 2**500, and an expression with more than 8 operations on floats
+  is rejected: longer chains were not proved at level 1.
 
 - `scripts/survey.sh --formats DIR` surveys the descriptions of `DIR` (for example `compiler/diff-formats`, whose
   parsers the survey did not prove before) instead of the formats of the test suite, and `--no-cache` proves without

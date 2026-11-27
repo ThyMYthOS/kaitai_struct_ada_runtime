@@ -115,8 +115,19 @@ object AdaTranslator {
   val U64Max: BigInt = (BigInt(1) << 64) - 1
   /** Largest magnitude of both operands for which Kaitai.Float_Arithmetic.Add_OK holds without a question: 2**1022 */
   val FloatAddLimit: Double = math.pow(2, 1022)
-  /** Largest magnitude of both operands for which Multiply_OK holds: 2**500 */
-  val FloatMulLimit: Double = math.pow(2, 500)
+  /**
+    * Largest magnitude of both operands for which Multiply is not asked about: 2**200. Multiply_OK holds up to 2**500, but
+    * the prover shows from the types alone that a product is defined only as long as the operands are known
+    * to be small: the product of two f4 is below 2**256, the next one is asked
+    */
+  val FloatMulLimit: Double = math.pow(2, 200)
+  /**
+    * Most operations on floats (`+`, `-`, `*`, `to_i`) in one expression. The translation grows with the square of the
+    * number, and so does the proof: of a chain of `f4` that is summed, 7 operations were proved and 11 were not (in the
+    * time that the provers have at level 1), of `f8`, which are all asked about, 23 were proved; and a line of more
+    * than 32766 characters, which a chain of 32 gives, is not accepted by the compiler of Ada
+    */
+  val FloatOpLimit: Int = 8
   /** Largest magnitude of an f4 */
   val F32Max: Double = 3.4028234663852886E38
   /** Magnitude below which Truncate_OK holds: 2**63 */
@@ -292,7 +303,17 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     val known = v.mag < TwoTo63
     val m = if (known) BigDecimal(v.mag).toBigInt else S64Max
     val guard = if (known) Nil else List(s"${FA}Truncate_OK (${v.code})")
-    int(s"${FA}Truncate (${v.code})", 0, v.guards ++ guard, -m, m, v.usesBuffer)
+    val r = int(s"${FA}Truncate (${v.code})", 0, v.guards ++ guard, -m, m, v.usesBuffer)
+    limitOps(r)
+  }
+
+  /** Rejects an expression with more operations on floats than the proof takes */
+  private def limitOps(t: ATr): ATr = {
+    val n = "Kaitai\\.Float_Arithmetic\\.(Add|Subtract|Multiply|Truncate) \\(".r.findAllIn(t.code).size
+    if (n > FloatOpLimit)
+      unsupported(s"an expression with more than $FloatOpLimit operations on floating-point numbers (`+`, `-`, `*`, `to_i`) in one place: " +
+        "the proof of a longer chain is not robust, and its translation is too long")
+    t
   }
 
   /** `+`, `-` and `*` where an operand is a float; the operation is asked about only where the magnitudes leave it open */
@@ -306,11 +327,11 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         val ask = !(l.mag <= FloatAddLimit && r.mag <= FloatAddLimit)
         val sum = l.mag + r.mag
         val mag = if (ask) math.min(sum, math.max(math.max(l.mag, r.mag), 2 * FloatAddLimit)) else sum
-        flt(s"$FA$fn (${l.code}, ${r.code})", 0, g ++ (if (ask) List(s"$FA$name (${l.code}, ${r.code})") else Nil), mag, ub)
+        limitOps(flt(s"$FA$fn (${l.code}, ${r.code})", 0, g ++ (if (ask) List(s"$FA$name (${l.code}, ${r.code})") else Nil), mag, ub))
       case Ast.operator.Mult =>
         val ask = !(l.mag <= 1.0 || r.mag <= 1.0 || (l.mag <= FloatMulLimit && r.mag <= FloatMulLimit))
         val mag = if (ask) Double.MaxValue else l.mag * r.mag
-        flt(s"${FA}Multiply (${l.code}, ${r.code})", 0, g ++ (if (ask) List(s"${FA}Multiply_OK (${l.code}, ${r.code})") else Nil), mag, ub)
+        limitOps(flt(s"${FA}Multiply (${l.code}, ${r.code})", 0, g ++ (if (ask) List(s"${FA}Multiply_OK (${l.code}, ${r.code})") else Nil), mag, ub))
       case Ast.operator.Div =>
         unsupported("division of floating-point numbers (`/`) is not supported")
       case Ast.operator.Mod =>

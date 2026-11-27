@@ -1252,7 +1252,9 @@ Where the rules above are silent, the compiler does the following.
   the element is read, with `_` the element; a check that fails fails the
   stream and ends the loop. It costs one comparison per element. `Next` and
   `Get_X` do not check again. `valid` on repetitions of structures is
-  rejected.
+  rejected. So is a `valid` that uses its own repeated field (`x.size`, an
+  element of `x`): the other targets check an element when the field holds
+  only the elements up to it.
 - A subscript `x[i]` is defined for bytes and for a repetition of integers
   of a fixed size that is not `repeat: until`. It is defined where `0 <= i`
   and `i` is below the number of elements, which becomes a condition of the

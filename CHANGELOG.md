@@ -133,6 +133,10 @@
 - `compiler/README.md` says in two tables what the backend generates and what it
   rejects.
 
+- Compiler, fixed: a `valid` of a repeated field that uses the field itself (`valid: expr: _ < x.size` on `x`) was
+  generated with the size of the whole field, where the other targets take the number of elements read so far, so a
+  parser could accept what they refuse. Such a check is rejected now (`compiler/rejected/repeat_valid_self.ksy`).
+
 ## 0.2.0 (2026-11-25)
 
 The compiler backend covers more of the language and is compared with the

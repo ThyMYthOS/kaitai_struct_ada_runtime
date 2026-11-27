@@ -1134,6 +1134,31 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     case _ => Nil
   }
 
+  /**
+    * The expressions name the field `a` of `cs`: directly, as `_root.a` in the top type, or through the value
+    * instances and the parse instances that they name.
+    */
+  private def namesField(cs: ClassSpec, es: List[Ast.expr], a: AttrSpec): Boolean = {
+    val seen = mutable.Set[String]()
+    def named(n: String): Boolean =
+      memberOpt(cs, n) match {
+        case Some(m: AttrSpec) => m.id == a.id
+        case Some(v: ValueInstanceSpec) if !seen.contains(n) =>
+          seen += n
+          (v.value :: v.ifExpr.toList).exists(walk)
+        case Some(p: ParseInstanceSpec) if !seen.contains(n) =>
+          seen += n
+          attrExprs(p).exists(walk)
+        case _ => false
+      }
+    def walk(e: Ast.expr): Boolean = e match {
+      case Ast.expr.Name(Ast.identifier(n)) if !n.startsWith("_") => named(n)
+      case Ast.expr.Attribute(Ast.expr.Name(Ast.identifier(Identifier.ROOT)), Ast.identifier(n)) if cs.upClass.isEmpty => named(n)
+      case _ => exprKids(e).exists(walk)
+    }
+    es.exists(walk)
+  }
+
   /** `_io.pos` or `_io.eof` is written in the expression */
   private def mentionsIoPos(e: Ast.expr): Boolean = e match {
     case Ast.expr.Attribute(Ast.expr.Name(Ast.identifier(Identifier.IO)), Ast.identifier("pos" | "eof")) => true
@@ -3470,6 +3495,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   private def genRepeat(cs: ClassSpec, a: AttrSpec, rep: RepeatSpec, o: Out, rc: RC): Unit = {
     val nm = plain(idRaw(a.id))
     val bs = base(idRaw(a.id))
+    // the other targets check an element when the field holds the elements up to it; here the field is whole or empty then
+    if (namesField(cs, validExprs(a.valid), a))
+      fail(a.path, s"`valid` of the repeated field `${idRaw(a.id)}` that uses the field itself (its size or one of its elements)")
     val dt = a.dataType
     val (pre, hasName) = condParts(cs, a, o)
     val comment = a.doc

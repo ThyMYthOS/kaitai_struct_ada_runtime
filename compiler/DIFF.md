@@ -3,38 +3,38 @@
 Result of `scripts/diff-python.sh` (see `compiler/README.md`, "Comparing the
 Ada parsers with the Python parsers") with its defaults (200 changes of each
 data file, fixed seed) on the 334 formats of `kaitai_struct_tests` at commit
-`4108136c807f8df88df843de6571f1a7bf29c74e` and the 14 formats of
+`4108136c807f8df88df843de6571f1a7bf29c74e` and the 19 formats of
 `compiler/diff-formats`, with the backend and library of this commit and the
 Python runtime `kaitai_struct_python_runtime` at commit
 `54076c90b5c81348c0d4d005d769247d0497a007`. The Ada programs were built with
 run-time checks and with the contracts of the library and of the parsers
 executed. No program raised an exception and no contract failed. The script
-took about 17 minutes (`--jobs 3`). The test data are synthetic (files of the
+took about 20 minutes (`--jobs 3`). The test data are synthetic (files of the
 Kaitai test suite and changes of them); they hold no personal data.
 
 | | |
 |---|---|
-| formats | 348 |
-| compared | 260 (246 of the suite, 14 of our own) |
-| skipped | 88 (73 rejected by the Ada backend, as in `SUITE.md`; 14 without a data file; 1 with an opaque type) |
+| formats | 353 |
+| compared | 271 (252 of the suite, 19 of our own) |
+| skipped | 82 (67 rejected by the Ada backend, as in `SUITE.md`; 14 without a data file; 1 with an opaque type) |
 | failed to build | 0 |
-| inputs | 52260 |
-| parsed by Ada / by Python | 32295 / 32303 |
-| leaves compared in inputs with the same dump | 196459 |
+| inputs | 54471 |
+| parsed by Ada / by Python | 33273 / 33322 |
+| leaves compared in inputs with the same dump | 211339 |
 
 | Class | Inputs |
 |---|---|
-| same dump | 32248 |
-| both fail (`FAILED` on both sides) | 19897 |
+| same dump | 33226 |
+| both fail (`FAILED` on both sides) | 21089 |
 | dump over the limit (8 MB; both gave up at the same line) | 26 |
 | Python timeout or out of memory (not compared) | 17 |
-| known difference | 72 |
+| known difference | 113 |
 | values differ | 0 |
 | only Ada fails | 0 |
 | only Python fails | 0 |
 | Ada exception | 0 |
 | no result | 0 |
-| total | 52260 |
+| total | 54471 |
 
 There is no difference that nothing explains: no input of the classes
 `values differ`, `only Ada fails`, `only Python fails`, `Ada exception` and
@@ -49,7 +49,7 @@ data file are the tests that the suite has no input for (`cast_to_imported`,
 `params_def_enum_imported`, `params_def_usertype_imported`, `str_literals`,
 `switch_cast`, `to_string_custom`); five of them are rejected by the backend as
 well (`cast_to_imported2`, `enum_to_i_class_border_2`, `imports_circular_b`,
-`str_literals`, `switch_cast`), which is why 73 and not 78 rejected formats are
+`str_literals`, `switch_cast`), which is why 67 and not 72 rejected formats are
 counted above. The one format with an opaque type that the survey generates and that has a
 data file, `opaque_external_type`, is skipped: its dump program would have to
 walk the members of `hello_world`, which are not known to it.
@@ -60,13 +60,13 @@ classes of `spec/python/extra` of the tests repository: of their 603 inputs Ada
 parses 383, and the dumps are the same on all of them.
 
 A format whose inputs all fail on both sides tests only what comes before the
-failure: of the 260 formats nine have no input that Ada parses
+failure: of the 271 formats nine have no input that Ada parses
 (`eos_exception_bytes`, `eos_exception_sized`, `eos_exception_u4`, whose data
 are made to fail at any length, `valid_fail_contents`, `valid_fail_contents_inst`, `valid_fail_eq_bytes`,
 `valid_fail_eq_str`, `valid_fail_inst`, and `expr_to_i_trailing`, whose instance raises an error
-for every input and whose data file is empty), and eight have fewer than ten
+for every input and whose data file is empty), and nine have fewer than ten
 (`default_endian_expr_exception`, `valid_fail_anyof_int`,
-`valid_fail_range_bytes`, `valid_fail_range_int`, `valid_fail_range_str`,
+`valid_fail_range_bytes`, `valid_fail_range_float`, `valid_fail_range_int`, `valid_fail_range_str`,
 `valid_fail_repeat_contents`, `valid_fail_repeat_eq_int`, `zlib_with_header_78`). For these the comparison
 says little beyond "both fail on the same inputs": the 200 changes did not
 find the few bytes that make the data valid. `yaml_ints` has no field and an
@@ -76,13 +76,14 @@ only the four constants of its instances.
 ## Known differences
 
 Listed in the script, each with its reason; counted, not hidden. The script
-has five entries.
+has six entries.
 
 | Id | Inputs | Formats | Reason |
 |---|---|---|---|
 | `rotate-beyond-7` | 30 | `process_rotate` (`r.buf3`) | `rol` and `ror` rotate by the amount modulo 8 in Ada; for an amount of 8 or more the runtimes of the other targets give results that are not rotations and differ from each other (`docs/codegen.md`, What differs). Only if `key` is 8 or more |
 | `encoding-not-checked` | 17 | `str_encodings` (6), `str_encodings_default` (11) | Python raises `UnicodeDecodeError` for a string in Shift_JIS, Ada accepts every byte: only ASCII, UTF-8 and UTF-16 are checked (`docs/codegen.md`, Rules of the compiler) |
-| `overflow-64` | 17 | `x_expr` (`big` 12, `shl` 5) | the Python value of the instance is outside S64, the Ada instance is not defined (`docs/codegen.md`, What differs). Only counted if the Python dump has such an integer at the path |
+| `overflow-64` | 41 | `x_expr` (`big` 12, `shl` 5), `float_to_i` (16), `x_floats` (4), `x_floats_rep` (`second` 4) | the Python value of the instance is outside S64, the Ada instance is not defined (`docs/codegen.md`, What differs). Only counted if the Python dump has such an integer at the path |
+| `float-limit` | 17 | `floating_points` (5), `x_floats` (1), `x_floats_rep` (3), `x_floats_seq` (8) | an expression with a float that is infinity or not-a-number, or whose result would be, is not defined in Ada (the instance is undefined, or `Parse` ends with `ARITHMETIC_ERROR`), and neither is an operation that has an operand above 2**500 and whose result the library cannot show to be finite; the other targets compute on with infinity and not-a-number (`docs/codegen.md`, What differs). Only if the Python dump has a float that is infinity, not-a-number or above 2**500 |
 | `mod-divisor-not-positive` | 8 | `x_expr` (`rest`) | `%` with a divisor that is not positive is not defined in Ada, as in the Java and C++ runtimes, where `mod` raises an error; the Python target computes a value (`docs/codegen.md`, What differs). Only if the divisor `b` is not positive |
 | `depth-or-repetition-limit` | 0 | | Ada `Limit_Exceeded` where Python parses: no input nested a type that contains itself deeper than 8 levels, and none made a repetition end without progress |
 
@@ -93,7 +94,7 @@ not show either: both sides reject them.
 ## Resource limits that are not differences
 
 17 inputs of `nav_parent` are in the class "Python timeout or out of memory":
-3 where Python raises `MemoryError` and 14 where it is stopped by the time
+2 where Python raises `MemoryError` and 15 where it is stopped by the time
 limit (`rc=124`). Smallest: 12 bytes `0200000800000000ff1bffff`. The format reads
 `qty_entries` (u4) and `filename_len` (u4), then four bytes, then `entries`
 with `repeat: expr` of `qty_entries` elements, each a string of `filename_len`
@@ -194,7 +195,7 @@ The unchanged parsers of the same formats gave no difference.
 
 ## Not covered
 
-- Only what the data files of the tests and our fourteen formats reach through
+- Only what the data files of the tests and our nineteen formats reach through
   changes of bytes. A format whose data fail at once on any change (the nine
   above) is hardly tested. A change that has to be right in several places at
   once (a checksum, a length that is also stored elsewhere) is rarely found.

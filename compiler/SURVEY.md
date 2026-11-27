@@ -4,8 +4,8 @@ The generator was run over all 334 `.ksy` files of `kaitai_struct_tests/formats`
 
 | Result | Formats |
 |---|---|
-| generated | 256 |
-| rejected by the Ada backend with a clear error | 78 |
+| generated | 262 |
+| rejected by the Ada backend with a clear error | 72 |
 | failed before the backend (an import was not found) | 0 |
 | crashed (stack trace or internal error) | 0 |
 
@@ -15,17 +15,15 @@ Without `KSF_DIR` the file `common/vlq_base128_le.ksy` is not found and `imports
 
 | Count | Reason | Formats |
 |---|---|---|
-| 7 | cast (`.as<...>`) | cast_nested, cast_to_top, expr_bytes_non_literal, imports_abs, io_local_var, params_pass_array_int, switch_cast |
+| 6 | cast (`.as<...>`) | cast_nested, cast_to_top, expr_bytes_non_literal, imports_abs, io_local_var, switch_cast |
 | 5 | expression that depends on a processed value | process_coerce_bytes, process_coerce_usertype1, process_coerce_usertype2, type_ternary, type_ternary_opaque |
-| 4 | repeated field (only `.size` is supported) | expr_array, repeat_until_calc_array_type, repeat_until_term_bytes, repeat_until_term_struct |
-| 4 | `.to_s` of an integer | bcd_user_type_be, bcd_user_type_le, enum_to_i, enum_to_i_invalid |
-| 4 | floating-point arithmetic | expr_ops_parens, float_to_i, floating_points, valid_fail_range_float |
+| 5 | `.to_s` of an integer | bcd_user_type_be, bcd_user_type_le, enum_to_i, enum_to_i_invalid, expr_ops_parens |
 | 4 | types that contain each other | enum_to_i_class_border_1, enum_to_i_class_border_2, imports_circular_a, imports_circular_b |
 | 4 | value instance of bytes or string that is not a field | combine_bytes, combine_str, expr_bytes_cmp, expr_bytes_ops |
 | 4 | `_io` of a value from outside other than `.size` | instance_io_user, process_repeat_usertype_dynarg_custom, process_repeat_usertype_dynarg_rotate, process_repeat_usertype_dynarg_xor |
+| 4 | value instance that is an array, other than a repeated field under another name | expr_calc_array_ops, params_pass_array_int, params_pass_array_str, params_pass_array_struct |
 | 3 | a value of `_parent` or `_root` that is not an integer, a boolean or an enumeration | index_to_param_eos, index_to_param_expr, index_to_param_until |
-| 3 | parse instance with `repeat` | instance_std_array, instance_user_array, valid_fail_repeat_inst |
-| 3 | array literal that is not a list of bytes | expr_calc_array_ops, params_pass_array_str, params_pass_array_struct |
+| 2 | parse instance with `repeat` | instance_std_array, instance_user_array |
 | 2 | repetition of bit fields or of a field whose type depends on a value | switch_repeat_expr, switch_repeat_expr_invalid |
 | 2 | parameter of a type other than integer, boolean or enumeration | cast_to_imported2, imports_cast_to_imported2 |
 | 2 | `process` on a repeated field | process_repeat_bytes, process_repeat_usertype |
@@ -33,7 +31,8 @@ Without `KSF_DIR` the file `common/vlq_base128_le.ksy` is not found and `imports
 | 2 | value instance that needs the buffer in a type without slices | str_literals, str_literals2 |
 | 2 | `_root` used as a value | nav_parent2, nav_parent3 |
 | 2 | string literal with a character that a string in Shift_JIS cannot hold or that the Ada backend cannot encode in it (it encodes ASCII, UTF-8, ISO-8859-1, UTF-16LE and UTF-16BE, and for other encodings only ASCII characters) | expr_str_encodings, valid_eq_str_encodings |
-| 2 | subscript of a repeated member | imports_params_def_array_usertype_imported, params_pass_array_usertype |
+| 2 | subscript of a repeated member that is not a numbered element the description uses | imports_params_def_array_usertype_imported, params_pass_array_usertype |
+| 1 | repeated field (only `.size` is supported) | valid_fail_repeat_inst |
 | 1 | `.reverse` of a string | expr_str_ops |
 | 1 | `_io` in a value instance | expr_io_eof |
 | 1 | `_root` in a description whose top-level type contains itself | nav_root_recursive |
@@ -51,6 +50,7 @@ Without `KSF_DIR` the file `common/vlq_base128_le.ksy` is not found and `imports
 | 1 | `_parent` or `_root` followed by a member that the type does not have or that cannot be passed | instance_io_user_earlier |
 | 1 | the key `parent: false` on a field of a type that uses `_parent` | nav_parent_false |
 | 1 | `_io.pos` in an expression of a parse instance | instance_in_sized |
+| 1 | element of a repetition of floats or of bit fields | expr_array |
 
 ## Formats that failed before the backend, and what happened to them
 
@@ -62,10 +62,10 @@ These five formats used to fail before the backend. None of them failed in the f
 
 ## Compilation and proof of the generated parsers
 
-Every generated parser (and every imported description that came with it) was compiled with `-gnat2012 -gnata -gnatwa -gnatwe` and the style switches of the repository, and run through `gnatprove --level=1` with the switches of the examples (`--checks-as-errors=on`), by the same script.
+Every generated parser (and every imported description that came with it) was compiled with `-gnat2012 -gnata -gnatwa` and run through `gnatprove --level=1`, by the same script (`scripts/survey.sh --prove`). A parser counts as compiled, or as proved, only if no message of the run names one of its files: no error, no warning, no unproved check. The proof run took the results of provers from the cache that `GNATPROVE_CACHE` names where it met a check it had proved before.
 
-- Compiled without a message: **256 of 256**.
-- Proved without a message (no unproved check, no warning): **256 of 256**.
+- Compiled without a message: **262 of 262**.
+- Proved without a message (no unproved check, no warning): **262 of 262**.
 - No parser has a message or an unproved check.
 
 The formats that are examples (`examples/`) are proved by `scripts/check.sh prove` as well.
@@ -77,13 +77,13 @@ option that makes it generate `Write` for every type.
 
 | Result | Formats |
 |---|---|
-| generated | 237 |
-| rejected by the Ada backend with a clear error | 97 |
+| generated | 243 |
+| rejected by the Ada backend with a clear error | 91 |
 | failed before the backend | 0 |
 | crashed | 0 |
 
-All 237 parsers, with their `Write`, compile without a message (237 of 237) and are
-proved without a message (237 of 237; no unproved check, no warning). Of the 256 formats that generate without the option,
+All 243 parsers, with their `Write`, compile without a message (243 of 243) and are
+proved without a message (243 of 243; no unproved check, no warning). Of the 262 formats that generate without the option,
 19 are rejected with it:
 
 | Count | Reason | Formats |

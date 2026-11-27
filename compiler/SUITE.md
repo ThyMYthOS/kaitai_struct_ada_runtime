@@ -11,16 +11,16 @@ run has no warnings (the round trip run below is different).
 
 First run (before the backend learned `process`, `_parent`/`_root`, recursion,
 imports and the fixes below): 167 passed, 8 failed, 145 not generated, 175
-parsers. This run: 247 parsers, 245 test programs.
+parsers. This run: 253 parsers, 251 test programs.
 
 | Result | Tests |
 |---|---|
-| passed | 244 |
+| passed | 250 |
 | failed | 0 |
 | error | 0 |
 | known difference | 1 |
 | build failed | 0 |
-| not generated | 73 |
+| not generated | 67 |
 | not translated | 2 |
 | total | 320 |
 
@@ -127,29 +127,28 @@ format.
 
 ### passed
 
-bits_byte_aligned, bits_byte_aligned_eof_be, bits_byte_aligned_eof_le, bits_enum, bits_seq_endian_combo, bits_shift_by_b32_le, bits_shift_by_b64_le, bits_signed_res_b32_be, bits_signed_res_b32_le, bits_signed_shift_b32_le, bits_signed_shift_b64_le, bits_simple, bits_simple_le, bits_unaligned_b32_be, bits_unaligned_b32_le, bits_unaligned_b64_be, bits_unaligned_b64_le, buffered_struct, bytes_eos_pad_term, bytes_pad_term, bytes_pad_term_empty, bytes_pad_term_equal, bytes_pad_term_roundtrip, bytes_pad_term_zero_size, combine_bool, combine_enum, debug_0, debug_array_user, debug_enum_name, debug_switch_user, default_big_endian, default_bit_endian_mod, default_endian_expr_exception, default_endian_expr_inherited, default_endian_expr_is_be, default_endian_expr_is_le, default_endian_mod, docstrings, docstrings_docref, docstrings_docref_multi, enum_0, enum_1, enum_deep, enum_deep_literals, enum_fancy, enum_if, enum_import_literals, enum_import_seq, enum_int_range_s, enum_int_range_u, enum_invalid, enum_long_range_s, enum_long_range_u, enum_negative, enum_of_value_inst, eof_exception_bits_be, eof_exception_bits_be2, eof_exception_bits_le, eof_exception_bits_le2, eof_exception_bytes, eof_exception_sized, eof_exception_switch_user, eof_exception_u4, eos_exception_bytes, eos_exception_sized, eos_exception_u4, expr_1, expr_bits, expr_enum, expr_if_int_eq, expr_if_int_ops, expr_int_div, expr_io_eof_bits, expr_io_pos, expr_io_pos_bits, expr_mod, expr_sizeof_type_0, expr_sizeof_type_1, expr_sizeof_value_0, expr_sizeof_value_sized, expr_to_i_trailing, fixed_contents, fixed_struct, hello_world, if_instances, if_struct, if_values, imports0, imports_abs_abs, imports_abs_rel, imports_cast_to_imported, imports_params_def_enum_imported, imports_params_def_usertype_imported, imports_rel_1, index_sizes, instance_in_repeat_expr, instance_in_repeat_until, instance_std, integers, integers_double_overflow, integers_min_max, js_signed_right_shift, meta_tags, meta_xref, multiple_use, name_clash_import_vs_inst, nav_parent, nav_parent_false2, nav_parent_override, nav_parent_switch, nav_parent_switch_cast, nav_parent_vs_value_inst, nav_root, nested_same_name, nested_same_name2, nested_type_param, nested_types, nested_types2, nested_types3, non_standard, opaque_external_type, optional_id, params_call, params_call_extra_parens, params_enum, params_pass_array_io, params_pass_bool, params_pass_io, params_pass_usertype, position_abs, position_in_seq, position_to_end, process_bytes_pad_term, process_custom, process_custom_no_args, process_rotate, process_struct_pad_term, process_term_struct, process_to_user, process_xor4_const, process_xor4_value, process_xor_const, process_xor_value, repeat_eos_bits_b1, repeat_eos_bits_b4, repeat_eos_bytes, repeat_eos_bytes_pad, repeat_eos_bytes_pad_term, repeat_eos_struct, repeat_eos_term_bytes, repeat_eos_term_struct, repeat_eos_u4, repeat_n_bytes, repeat_n_bytes_pad, repeat_n_bytes_pad_term, repeat_n_struct, repeat_n_strz, repeat_n_strz_double, repeat_n_term_bytes, repeat_n_term_struct, repeat_until_bytes, repeat_until_bytes_pad, repeat_until_bytes_pad_term, repeat_until_complex, repeat_until_s4, repeat_until_sized, str_encodings, str_encodings_default, str_encodings_utf16, str_eos, str_eos_pad_term, str_eos_pad_term_empty, str_eos_pad_term_equal, str_literals_latin1, str_pad_term, str_pad_term_empty, str_pad_term_equal, str_pad_term_roundtrip, str_pad_term_utf16, str_pad_term_zero_size, struct_pad_term, struct_pad_term_equal, switch_bytearray, switch_else_only, switch_integers, switch_manual_enum, switch_manual_enum_invalid, switch_manual_enum_invalid_else, switch_manual_int, switch_manual_int_else, switch_manual_int_size, switch_manual_int_size_else, switch_manual_int_size_eos, switch_manual_str, switch_manual_str_else, switch_multi_bool_ops, term_bytes, term_bytes2, term_bytes3, term_bytes4, term_struct, term_struct2, term_struct3, term_struct4, term_strz, term_strz2, term_strz3, term_strz4, term_strz_utf16_v1, term_strz_utf16_v2, term_strz_utf16_v3, term_strz_utf16_v4, term_u1_val, ts_packet_header, type_int_unary_op, user_type, valid_fail_anyof_int, valid_fail_contents, valid_fail_contents_inst, valid_fail_eq_bytes, valid_fail_eq_int, valid_fail_eq_str, valid_fail_expr, valid_fail_in_enum, valid_fail_inst, valid_fail_max_int, valid_fail_min_int, valid_fail_range_bytes, valid_fail_range_int, valid_fail_range_str, valid_fail_repeat_anyof_int, valid_fail_repeat_contents, valid_fail_repeat_eq_int, valid_fail_repeat_expr, valid_fail_repeat_max_int, valid_fail_repeat_min_int, valid_long, valid_not_parsed_if, valid_optional_id, valid_short, valid_switch, yaml_ints, zlib_surrounded, zlib_with_header_78
+bits_byte_aligned, bits_byte_aligned_eof_be, bits_byte_aligned_eof_le, bits_enum, bits_seq_endian_combo, bits_shift_by_b32_le, bits_shift_by_b64_le, bits_signed_res_b32_be, bits_signed_res_b32_le, bits_signed_shift_b32_le, bits_signed_shift_b64_le, bits_simple, bits_simple_le, bits_unaligned_b32_be, bits_unaligned_b32_le, bits_unaligned_b64_be, bits_unaligned_b64_le, buffered_struct, bytes_eos_pad_term, bytes_pad_term, bytes_pad_term_empty, bytes_pad_term_equal, bytes_pad_term_roundtrip, bytes_pad_term_zero_size, combine_bool, combine_enum, debug_0, debug_array_user, debug_enum_name, debug_switch_user, default_big_endian, default_bit_endian_mod, default_endian_expr_exception, default_endian_expr_inherited, default_endian_expr_is_be, default_endian_expr_is_le, default_endian_mod, docstrings, docstrings_docref, docstrings_docref_multi, enum_0, enum_1, enum_deep, enum_deep_literals, enum_fancy, enum_if, enum_import_literals, enum_import_seq, enum_int_range_s, enum_int_range_u, enum_invalid, enum_long_range_s, enum_long_range_u, enum_negative, enum_of_value_inst, eof_exception_bits_be, eof_exception_bits_be2, eof_exception_bits_le, eof_exception_bits_le2, eof_exception_bytes, eof_exception_sized, eof_exception_switch_user, eof_exception_u4, eos_exception_bytes, eos_exception_sized, eos_exception_u4, expr_1, expr_bits, expr_enum, expr_if_int_eq, expr_if_int_ops, expr_int_div, expr_io_eof_bits, expr_io_pos, expr_io_pos_bits, expr_mod, expr_sizeof_type_0, expr_sizeof_type_1, expr_sizeof_value_0, expr_sizeof_value_sized, expr_to_i_trailing, fixed_contents, fixed_struct, float_to_i, floating_points, hello_world, if_instances, if_struct, if_values, imports0, imports_abs_abs, imports_abs_rel, imports_cast_to_imported, imports_params_def_enum_imported, imports_params_def_usertype_imported, imports_rel_1, index_sizes, instance_in_repeat_expr, instance_in_repeat_until, instance_std, integers, integers_double_overflow, integers_min_max, js_signed_right_shift, meta_tags, meta_xref, multiple_use, name_clash_import_vs_inst, nav_parent, nav_parent_false2, nav_parent_override, nav_parent_switch, nav_parent_switch_cast, nav_parent_vs_value_inst, nav_root, nested_same_name, nested_same_name2, nested_type_param, nested_types, nested_types2, nested_types3, non_standard, opaque_external_type, optional_id, params_call, params_call_extra_parens, params_enum, params_pass_array_io, params_pass_bool, params_pass_io, params_pass_usertype, position_abs, position_in_seq, position_to_end, process_bytes_pad_term, process_custom, process_custom_no_args, process_rotate, process_struct_pad_term, process_term_struct, process_to_user, process_xor4_const, process_xor4_value, process_xor_const, process_xor_value, repeat_eos_bits_b1, repeat_eos_bits_b4, repeat_eos_bytes, repeat_eos_bytes_pad, repeat_eos_bytes_pad_term, repeat_eos_struct, repeat_eos_term_bytes, repeat_eos_term_struct, repeat_eos_u4, repeat_n_bytes, repeat_n_bytes_pad, repeat_n_bytes_pad_term, repeat_n_struct, repeat_n_strz, repeat_n_strz_double, repeat_n_term_bytes, repeat_n_term_struct, repeat_until_bytes, repeat_until_bytes_pad, repeat_until_bytes_pad_term, repeat_until_calc_array_type, repeat_until_complex, repeat_until_s4, repeat_until_sized, repeat_until_term_bytes, repeat_until_term_struct, str_encodings, str_encodings_default, str_encodings_utf16, str_eos, str_eos_pad_term, str_eos_pad_term_empty, str_eos_pad_term_equal, str_literals_latin1, str_pad_term, str_pad_term_empty, str_pad_term_equal, str_pad_term_roundtrip, str_pad_term_utf16, str_pad_term_zero_size, struct_pad_term, struct_pad_term_equal, switch_bytearray, switch_else_only, switch_integers, switch_manual_enum, switch_manual_enum_invalid, switch_manual_enum_invalid_else, switch_manual_int, switch_manual_int_else, switch_manual_int_size, switch_manual_int_size_else, switch_manual_int_size_eos, switch_manual_str, switch_manual_str_else, switch_multi_bool_ops, term_bytes, term_bytes2, term_bytes3, term_bytes4, term_struct, term_struct2, term_struct3, term_struct4, term_strz, term_strz2, term_strz3, term_strz4, term_strz_utf16_v1, term_strz_utf16_v2, term_strz_utf16_v3, term_strz_utf16_v4, term_u1_val, ts_packet_header, type_int_unary_op, user_type, valid_fail_anyof_int, valid_fail_contents, valid_fail_contents_inst, valid_fail_eq_bytes, valid_fail_eq_int, valid_fail_eq_str, valid_fail_expr, valid_fail_in_enum, valid_fail_inst, valid_fail_max_int, valid_fail_min_int, valid_fail_range_bytes, valid_fail_range_float, valid_fail_range_int, valid_fail_range_str, valid_fail_repeat_anyof_int, valid_fail_repeat_contents, valid_fail_repeat_eq_int, valid_fail_repeat_expr, valid_fail_repeat_max_int, valid_fail_repeat_min_int, valid_long, valid_not_parsed_if, valid_optional_id, valid_short, valid_switch, yaml_ints, zlib_surrounded, zlib_with_header_78
 
 ### not generated: why the backend rejects the format
 
 | Count | Reason | Tests |
 |---|---|---|
-| 6 | cast (`.as<...>`) | cast_nested, cast_to_top, expr_bytes_non_literal, imports_abs, io_local_var, params_pass_array_int |
+| 5 | cast (`.as<...>`) | cast_nested, cast_to_top, expr_bytes_non_literal, imports_abs, io_local_var |
 | 5 | expression that depends on a processed value | process_coerce_bytes, process_coerce_usertype1, process_coerce_usertype2, type_ternary, type_ternary_opaque |
-| 4 | repeated field (only `.size` is supported) | expr_array, repeat_until_calc_array_type, repeat_until_term_bytes, repeat_until_term_struct |
-| 4 | `.to_s` of an integer | bcd_user_type_be, bcd_user_type_le, enum_to_i, enum_to_i_invalid |
-| 4 | floating-point arithmetic | expr_ops_parens, float_to_i, floating_points, valid_fail_range_float |
+| 5 | `.to_s` of an integer | bcd_user_type_be, bcd_user_type_le, enum_to_i, enum_to_i_invalid, expr_ops_parens |
 | 4 | value instance of bytes or string that is not a field | combine_bytes, combine_str, expr_bytes_cmp, expr_bytes_ops |
 | 4 | `_io` of a value from outside other than `.size` | instance_io_user, process_repeat_usertype_dynarg_custom, process_repeat_usertype_dynarg_rotate, process_repeat_usertype_dynarg_xor |
+| 4 | value instance that is an array, other than a repeated field under another name | expr_calc_array_ops, params_pass_array_int, params_pass_array_str, params_pass_array_struct |
 | 3 | a value of `_parent` or `_root` that is not an integer, a boolean or an enumeration | index_to_param_eos, index_to_param_expr, index_to_param_until |
-| 3 | parse instance with `repeat` | instance_std_array, instance_user_array, valid_fail_repeat_inst |
-| 3 | array literal that is not a list of bytes | expr_calc_array_ops, params_pass_array_str, params_pass_array_struct |
+| 2 | parse instance with `repeat` | instance_std_array, instance_user_array |
 | 2 | repetition of bit fields or of a field whose type depends on a value | switch_repeat_expr, switch_repeat_expr_invalid |
 | 2 | `process` on a repeated field | process_repeat_bytes, process_repeat_usertype |
 | 2 | string concatenation | expr_0, expr_3 |
 | 2 | types that contain each other | enum_to_i_class_border_1, imports_circular_a |
 | 2 | `_root` used as a value | nav_parent2, nav_parent3 |
 | 2 | string literal with a character that a string in Shift_JIS cannot hold or that the Ada backend cannot encode in it (it encodes ASCII, UTF-8, ISO-8859-1, UTF-16LE and UTF-16BE, and for other encodings only ASCII characters) | expr_str_encodings, valid_eq_str_encodings |
-| 2 | subscript of a repeated member | imports_params_def_array_usertype_imported, params_pass_array_usertype |
+| 2 | subscript of a repeated member that is not a numbered element the description uses | imports_params_def_array_usertype_imported, params_pass_array_usertype |
+| 1 | repeated field (only `.size` is supported) | valid_fail_repeat_inst |
 | 1 | parameter of a type other than integer, boolean or enumeration | imports_cast_to_imported2 |
 | 1 | `.reverse` of a string | expr_str_ops |
 | 1 | `_io` in a value instance | expr_io_eof |
@@ -169,6 +168,7 @@ bits_byte_aligned, bits_byte_aligned_eof_be, bits_byte_aligned_eof_le, bits_enum
 | 1 | `_parent` or `_root` followed by a member that the type does not have or that cannot be passed | instance_io_user_earlier |
 | 1 | the key `parent: false` on a field of a type that uses `_parent` | nav_parent_false |
 | 1 | `_io.pos` in an expression of a parse instance | instance_in_sized |
+| 1 | element of a repetition of floats or of bit fields | expr_array |
 
 
 ## Notes on the generator
@@ -221,21 +221,21 @@ Totals of the run:
 
 | Result | Tests |
 |---|---|
-| passed | 203 |
+| passed | 209 |
 | canonical | 24 |
 | failed | 0 |
 | error | 0 |
 | build failed | 0 |
 | known difference | 1 |
-| not generated | 90 |
+| not generated | 84 |
 | not translated | 2 |
 | total | 320 |
 
-31 of the 228 test programs of this run print no `round trip` line: the input
-of the test makes `Parse` fail, so there is no value to write. 30 of them are
-among the 203 that passed, because the failure is what the test expects; the
-other 173 printed `round trip: same`. The build log of this run is not free of warnings, unlike
-that of the plain run: all 228 test programs have `-gnatwu` or `-gnatwk`
+32 of the 234 test programs of this run print no `round trip` line: the input
+of the test makes `Parse` fail, so there is no value to write. 31 of them are
+among the 209 that passed, because the failure is what the test expects; the
+other 178 printed `round trip: same`. The build log of this run is not free of warnings, unlike
+that of the plain run: all 234 test programs have `-gnatwu` or `-gnatwk`
 warnings about helper declarations that the program does not use (`S`,
 `Undefined_Again`, `Values_Hold`, `Num`, `Values_Differ`); no generated
 parser has a warning.

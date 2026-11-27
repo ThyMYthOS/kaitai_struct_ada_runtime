@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `scripts/survey.sh --formats DIR` surveys the descriptions of `DIR` (for example `compiler/diff-formats`, whose
+  parsers the survey did not prove before) instead of the formats of the test suite, and `--no-cache` proves without
+  the cache that `GNATPROVE_CACHE` names. The header of the script says what a result with the cache means.
+
 - Compiler: an expression that uses `.size`, `.first` or `.last` of a repeated parse instance is rejected with
   "parse instance `x` with `repeat`", as it was before the elements of repetitions were used in expressions, and not
   with "repeated field `x` (only `.size` is supported)", which is wrong for `.size`. New description

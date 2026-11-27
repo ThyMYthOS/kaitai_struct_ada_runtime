@@ -107,6 +107,16 @@ input. `scripts/survey.sh --read-write` repeats the survey with the option.
 `compiler/SURVEY.md` lists what happens to the formats of the Kaitai
 Struct test suite.
 
+`scripts/survey.sh --formats DIR` takes the descriptions of `DIR` instead of the
+formats of the test suite, for example
+`scripts/survey.sh --prove --formats compiler/diff-formats --out DIR`, which
+generates, compiles and proves the descriptions that are compared with the Python
+target (`scripts/diff-python.sh`), and reports them as for the test suite. The
+proof of the survey uses the cache that `GNATPROVE_CACHE` names, if it is set: a
+check that was proved before, with the same switches, is not proved again, so a
+result that holds only with the cache is not seen. `--no-cache` proves everything
+again; use it for a result that is reported as proven.
+
 ## Running the Kaitai Struct test suite
 
 The official suite (`kaitai-io/kaitai_struct_tests`, pinned at commit

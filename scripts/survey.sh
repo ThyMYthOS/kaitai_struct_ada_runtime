@@ -2,15 +2,29 @@
 # Run the compiler backend over all formats of the Kaitai Struct test suite
 # and tell for each what comes of it.
 #
-#   scripts/survey.sh [--prove] [--read-write] [--jobs N] [--out DIR]
+#   scripts/survey.sh [--prove] [--no-cache] [--read-write] [--jobs N] [--formats DIR] [--out DIR]
 #
-# Every formats/*.ksy of the test suite is given to the compiler.  A format
-# is "generated", "rejected" (the Ada backend names a construct it does not
-# support) or "invalid" (the compiler does not accept the description at
-# all).  The generated parsers are compiled, and with --prove GNATprove runs
-# over all of them, with the switches the examples are proven with.  With
-# --read-write the compiler is asked to generate Write as well.  The
-# result is DIR/survey.tsv, one line per format, and totals on the output.
+# Every formats/*.ksy of the test suite (or, with --formats, every *.ksy of
+# DIR) is given to the compiler.  A format is "generated", "rejected" (the Ada
+# backend names a construct it does not support) or "invalid" (the compiler
+# does not accept the description at all).  The generated parsers are
+# compiled, and with --prove GNATprove runs over all of them, with the
+# switches the examples are proven with.  With --read-write the compiler is
+# asked to generate Write as well.  The result is DIR/survey.tsv, one line per
+# format, and totals on the output.
+#
+# With --formats DIR the descriptions are those of DIR instead of
+# $KST_DIR/formats, and DIR is where the compiler looks for imports.
+# scripts/survey.sh --prove --formats compiler/diff-formats --out DIR checks
+# the descriptions of this repository that are compared with the Python target.
+#
+# The proof cache: when GNATPROVE_CACHE names a directory, GNATprove keeps
+# its results there and a check that it finds there is not proved again.  A
+# result "proved" then says that the check was proved at some time, by anybody
+# who shares the directory, with equal switches; it does not say that it is
+# proved now within the time limit.  A check at the edge of the time limit
+# passes with a full cache and can fail without it.  --no-cache (or an empty
+# GNATPROVE_CACHE) proves everything again.
 #
 # The import path of the compiler holds the directory of the formats and its
 # subdirectory ks_path, which is what the tests mean by $KS_PATH.  KSF_DIR
@@ -35,14 +49,17 @@ KST_DIR=${KST_DIR:-$HOME/.cache/kaitai_struct_tests}
 KSF_DIR=${KSF_DIR:-}
 [ -z "$KSF_DIR" ] || KSF_DIR=$(cd "$KSF_DIR" && pwd)
 out=$here/obj/survey
+formats=
 prove=no
 rw=
 jobs=0
 while [ $# -gt 0 ]; do
    case $1 in
       --prove) prove=yes ;;
+      --no-cache) GNATPROVE_CACHE= ;;
       --read-write) rw=--read-write ;;
       --jobs) jobs=$2; shift ;;
+      --formats) formats=$2; shift ;;
       --out) out=$2; shift ;;
       *) echo "unknown argument $1" >&2; exit 2 ;;
    esac
@@ -50,7 +67,9 @@ while [ $# -gt 0 ]; do
 done
 
 [ -x "$KSC" ] || { echo "no compiler at $KSC; run scripts/build-compiler.sh" >&2; exit 1; }
-[ -d "$KST_DIR/formats" ] || { echo "no formats in $KST_DIR" >&2; exit 1; }
+[ -n "$formats" ] || formats=$KST_DIR/formats
+[ -d "$formats" ] || { echo "no formats in $formats" >&2; exit 1; }
+formats=$(cd "$formats" && pwd)
 
 imports="-I . -I ks_path"
 [ -n "$KSF_DIR" ] && imports="$imports -I $KSF_DIR"
@@ -60,11 +79,11 @@ mkdir -p "$out/src" "$out/log"
 
 # Generate.  A format whose top-level id is that of another format (there
 # are none in the suite today) would overwrite its files.
-for ksy in "$KST_DIR"/formats/*.ksy; do
+for ksy in "$formats"/*.ksy; do
    name=$(basename "$ksy" .ksy)
    mkdir -p "$out/one"
    rm -f "$out"/one/*
-   (cd "$KST_DIR/formats" && "$KSC" -t ada $rw $imports --outdir "$out/one" "$name.ksy") >"$out/log/$name.txt" 2>&1 || true
+   (cd "$formats" && "$KSC" -t ada $rw $imports --outdir "$out/one" "$name.ksy") >"$out/log/$name.txt" 2>&1 || true
    if grep -q 'not supported by the Ada backend' "$out/log/$name.txt"; then
       reason=$(grep -m1 'not supported by the Ada backend' "$out/log/$name.txt" | sed 's/.*not supported by the Ada backend: //')
       printf '%s\trejected\t%s\n' "$name" "$reason"

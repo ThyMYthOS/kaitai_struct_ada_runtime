@@ -12,6 +12,8 @@ package body Repeat_Bits_Use_Tests is
       --  Nothing in it ends the flags: the loop takes every bit, the 7 of the byte that the lead began and 8 for each
       --  of the next 3 bytes, and then the turn that finds the end of the data, 8 * 3 + 8 turns in all
       Zeros   : constant Bytes (1 .. 4) := (others => 0);
+      --  lead 1, flags 1, head 000, nibbles 15 (`_ + nibbles.first` is 30 at once), tail 0x55
+      Largest : constant Bytes (1 .. 3) := (16#C7#, 16#F8#, 16#55#);
       --  lead 1, flags 1, head 000, nibbles 0 0 and 3 bits left, which no nibble 3 ends
       No_End  : constant Bytes (1 .. 2) := (16#C0#, 16#00#);
       --  as Data, but the stream ends in the middle of the third nibble
@@ -36,6 +38,20 @@ package body Repeat_Bits_Use_Tests is
          Check (Element = 1, "first nibble");
          Get_Nibbles (This, Data, 2, Element);
          Check (Element = 3, "last nibble");
+         Check (Has_First_Plus (This) and then First_Plus (This) = 2, "nibbles.first + 1");
+         Check (Has_Mixed (This) and then Mixed (This) = 3001, "nibbles.last * 1000 + nibbles.first");
+      end if;
+
+      --  The largest value of a nibble, where the arithmetic on it has no room to spare in 4 bits
+      S := Open (Largest);
+      Parse (This, Largest, S);
+      Check (Valid (This) and then Is_EOF (S), "parses the largest nibbles");
+      if Valid (This) then
+         Check (Nibbles_Count (This) = 1, "nibbles end at 15 + 15 = 30");
+         Get_Nibbles (This, Largest, 0, Element);
+         Check (Element = 15, "largest nibble");
+         Check (Has_First_Plus (This) and then First_Plus (This) = 16, "15 + 1");
+         Check (Has_Mixed (This) and then Mixed (This) = 15_015, "15 * 1000 + 15");
       end if;
 
       S := Open (Zeros);

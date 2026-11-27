@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Compiler: the element of a repetition of bit fields of N bits (N below 64) has a subtype of its own, `X_Element`, a
+  `U64` range `0 .. 2**N - 1`, in the visible part. `Next`, `Get_X`, the element procedure and the kept elements
+  (`X_First_Element` and the others) have it. Before, the bound was lost where the element left the procedure that
+  read it, and an expression such as `nib.first + 1` or `_ + 1` could not be proven. The examples `repeat_bits` and
+  `repeat_bits_use` changed with it (`Element : out X_Element`; a caller that passes a `U64` still compiles).
+
 - Compiler: the loop of `repeat: until` over bit fields has `8 * Remaining + 8` turns, as `repeat: eos` has, and not
   one more. The `+ 1` after `Length'Last` could overflow, and GNATprove did not prove it (it is not a time limit). Eight
   per byte is enough: at most `8 * Remaining + 7` elements and the turn that finds the end of the data. Example

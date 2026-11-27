@@ -2,6 +2,7 @@
 
 with Kaitai.Streams;
 with Kaitai.Types;
+with Kaitai.Arithmetic;
 
 package Repeat_Bits_Use
   with SPARK_Mode, Always_Terminates
@@ -133,6 +134,9 @@ is
    function Nibbles_Count (This : T) return Kaitai.Types.Length
    with Pre => Valid (This);
 
+   --  The value of an element of the repeated field `nibbles`, a bit field of 4 bits
+   subtype Nibbles_Element is Kaitai.Types.U64 range 0 .. 15;
+
    --  A position in the repeated field `nibbles`, for going through its elements in order
    type Nibbles_Cursor is private;
 
@@ -164,7 +168,7 @@ is
    --  @param Position Where to parse; moved to the next element
    --  @param Element The element. If it could not be read, Has_Element (Position) is False afterwards
    procedure Next
-     (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Nibbles_Cursor; Element : out Kaitai.Types.U64)
+     (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Nibbles_Cursor; Element : out Nibbles_Element)
    with
      Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
      Post => Belongs_To (Position, Buffer) and then Remaining (Position) < Remaining (Position'Old);
@@ -177,12 +181,31 @@ is
    --  @param Index The number of the element, less than Nibbles_Count (This)
    --  @param Element The element
    procedure Get_Nibbles
-     (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Kaitai.Types.U64)
+     (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Nibbles_Element)
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Nibbles_Count (This);
 
    --  Field `tail`, an unsigned integer of 1 byte
    function Tail (This : T) return Kaitai.Types.U8
    with Pre => Valid (This);
+
+   --  True if the instance `first_plus` has a value. Its expression is not defined if a field that it uses is not
+   --  there, an operation in it overflows or divides by zero, or an index is out of range.
+   function Has_First_Plus (This : T) return Boolean
+   with Pre => Valid (This);
+
+   --  Instance `first_plus`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Requires
+   --  Has_First_Plus.
+   function First_Plus (This : T) return Kaitai.Types.S64
+   with Pre => Valid (This) and then Has_First_Plus (This);
+
+   --  True if the instance `mixed` has a value. Its expression is not defined if a field that it uses is not there, an
+   --  operation in it overflows or divides by zero, or an index is out of range.
+   function Has_Mixed (This : T) return Boolean
+   with Pre => Valid (This);
+
+   --  Instance `mixed`, an integer (a Kaitai.Types.S64). Computed from the fields at every call. Requires Has_Mixed.
+   function Mixed (This : T) return Kaitai.Types.S64
+   with Pre => Valid (This) and then Has_Mixed (This);
 
 private
 
@@ -197,14 +220,16 @@ private
    end record;
 
    type T is record
-      Is_Valid      : Boolean := False;
-      Lead          : Boolean := False;
-      Flags_Io      : Kaitai.Streams.Stream;
-      Flags_Count   : Kaitai.Types.Length := 0;
-      Head          : Kaitai.Types.U64 := 0;
-      Nibbles_Io    : Kaitai.Streams.Stream;
-      Nibbles_Count : Kaitai.Types.Length := 0;
-      Tail          : Kaitai.Types.U8 := 0;
+      Is_Valid              : Boolean := False;
+      Lead                  : Boolean := False;
+      Flags_Io              : Kaitai.Streams.Stream;
+      Flags_Count           : Kaitai.Types.Length := 0;
+      Head                  : Kaitai.Types.U64 := 0;
+      Nibbles_Io            : Kaitai.Streams.Stream;
+      Nibbles_Count         : Kaitai.Types.Length := 0;
+      Nibbles_Last_Element  : Nibbles_Element := 0;
+      Nibbles_First_Element : Nibbles_Element := 0;
+      Tail                  : Kaitai.Types.U8 := 0;
    end record;
 
    function Valid (This : T) return Boolean
@@ -245,5 +270,20 @@ private
 
    function Tail (This : T) return Kaitai.Types.U8
    is (This.Tail);
+
+   function Has_First_Plus (This : T) return Boolean
+   is (This.Nibbles_Count > 0 and then Kaitai.Arithmetic.Fits (This.Nibbles_First_Element));
+
+   function First_Plus (This : T) return Kaitai.Types.S64
+   is (Kaitai.Types.S64 (This.Nibbles_First_Element) + 1);
+
+   function Has_Mixed (This : T) return Boolean
+   is (This.Nibbles_Count > 0
+       and then Kaitai.Arithmetic.Fits (This.Nibbles_Last_Element)
+       and then Kaitai.Arithmetic.Fits (This.Nibbles_First_Element));
+
+   function Mixed (This : T) return Kaitai.Types.S64
+   is (Kaitai.Arithmetic.Multiply (Kaitai.Types.S64 (This.Nibbles_Last_Element), 1000)
+       + Kaitai.Types.S64 (This.Nibbles_First_Element));
 
 end Repeat_Bits_Use;

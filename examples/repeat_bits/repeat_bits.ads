@@ -84,6 +84,9 @@ is
    function Nibbles_Count (This : T) return Kaitai.Types.Length
    with Pre => Valid (This);
 
+   --  The value of an element of the repeated field `nibbles`, a bit field of 4 bits
+   subtype Nibbles_Element is Kaitai.Types.U64 range 0 .. 15;
+
    --  A position in the repeated field `nibbles`, for going through its elements in order
    type Nibbles_Cursor is private;
 
@@ -115,7 +118,7 @@ is
    --  @param Position Where to parse; moved to the next element
    --  @param Element The element. If it could not be read, Has_Element (Position) is False afterwards
    procedure Next
-     (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Nibbles_Cursor; Element : out Kaitai.Types.U64)
+     (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Nibbles_Cursor; Element : out Nibbles_Element)
    with
      Pre  => Valid (This) and then Belongs_To (Position, Buffer) and then Has_Element (Position),
      Post => Belongs_To (Position, Buffer) and then Remaining (Position) < Remaining (Position'Old);
@@ -128,7 +131,7 @@ is
    --  @param Index The number of the element, less than Nibbles_Count (This)
    --  @param Element The element
    procedure Get_Nibbles
-     (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Kaitai.Types.U64)
+     (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Nibbles_Element)
    with Pre => Valid (This) and then Belongs_To (This, Buffer) and then Index < Nibbles_Count (This);
 
    --  Field `tail`, an unsigned integer of 1 byte

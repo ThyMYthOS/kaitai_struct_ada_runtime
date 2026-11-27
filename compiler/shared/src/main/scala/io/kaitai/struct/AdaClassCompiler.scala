@@ -1630,6 +1630,20 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
   private def plainInt(dt: DataType): String = intAda(dt).stripPrefix(KT)
 
+  /** The width of a bit field, or of the bit field that an enumeration is over, below 64 bits */
+  private def narrowBits(dt: DataType): Option[Int] = dt match {
+    case BitsType(w, _) if w < 64 => Some(w)
+    case EnumType(_, _, BitsType(w, _)) if w < 64 => Some(w)
+    case _ => None
+  }
+
+  /**
+    * The type of an element of a repetition of bit fields. The value of a bit field is below 2**w, and a subtype of
+    * its own tells the proof, wherever the element goes: into a kept component, an expression, `Next`.
+    */
+  private def bitsElementType(bs: String, dt: DataType): String =
+    if (narrowBits(dt).isDefined) s"${bs}_Element" else intAda(dt)
+
   private def floatBits(w: IntWidth): String = if (w.width == 4) KT + "U32" else KT + "U64"
 
   private def defaultOf(adaType: String): String = if (adaType == "Boolean") "False" else "0"
@@ -2649,7 +2663,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val (elT, elPkg) = dt match {
       case ut: UserType => (userPkg(ut) + ".T", qualOf(ut.classSpec.get))
       case _: BytesType | _: StrType => (KT + "Slice", "")
-      case _: BitsType | _: BitsType1 | EnumType(_, _, _: BitsType) => (intAda(dt), "")
+      case _: BitsType | _: BitsType1 | EnumType(_, _, _: BitsType) => (bitsElementType(bs, dt), "")
       case other => throw new AdaUnsupported(s"repetition of $other")
     }
     val isSlice = !dt.isInstanceOf[UserType]
@@ -3743,7 +3757,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val (elT, elPkg, elBelongs) = dt match {
       case ut: UserType if selfElem => ("T", "", true)
       case ut: UserType => (userPkg(ut) + ".T", userPkg(ut) + ".", hasBelongs(ut.classSpec.get))
-      case _ if isScalar => (intAda(dt), "", false)
+      case _ if isScalar => (bitsElementType(bs, dt), "", false)
       case _ => (KT + "Slice", "", true)
     }
     def valid(x: String) = if (isSlice) s"${KS}OK (S)" else s"${elPkg}Valid ($x)"
@@ -3832,6 +3846,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       describe(List(s"Number of elements of the repeated field ${q(k)}"), doc,
         List(s"The elements are not kept in This: Parse has gone over them once, and ${bs}_First with Next, or Get_$bs, parse them again from the buffer") ++ there) ++
       List(s"function ${bs}_Count (This : T) return ${KT}Length", s"with Pre => $pre;", "") ++
+      narrowBits(dt).toList.flatMap(w =>
+        one(s"The value of an element of the repeated field ${q(k)}, a bit field of $w bits") ++ List(
+        s"subtype ${bs}_Element is ${KT}U64 range 0 .. ${(BigInt(1) << w) - 1};", "")) ++
       one(s"A position in the repeated field ${q(k)}, for going through its elements in order") ++ List(
       s"type $cur is private;", "") ++
       one("True if Position lies within Buffer", "It holds for the buffer of the value that Position was taken from") ++ List(

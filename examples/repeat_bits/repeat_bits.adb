@@ -6,13 +6,13 @@ is
 
    --  Parse one element of Nibbles
    procedure Parse_Nibbles_Element
-     (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Element : out Kaitai.Types.U64)
+     (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Element : out Nibbles_Element)
    with
      Pre  => Kaitai.Streams.Is_Valid (S, Buffer),
      Post => Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Old, S);
 
    procedure Parse_Nibbles_Element
-     (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Element : out Kaitai.Types.U64) is
+     (Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Element : out Nibbles_Element) is
    begin
       Kaitai.Streams.Read_Bits_Int_Be (Buffer, S, 4, Element);
    end Parse_Nibbles_Element;
@@ -32,7 +32,7 @@ is
    end Parse_Flags_Element;
 
    procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
-      Element   : Kaitai.Types.U64;
+      Element   : Nibbles_Element;
       pragma Warnings (Off, Element);
       Element_2 : Boolean;
       pragma Warnings (Off, Element_2);
@@ -67,7 +67,7 @@ is
    end Parse;
 
    procedure Next
-     (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Nibbles_Cursor; Element : out Kaitai.Types.U64)
+     (This : T; Buffer : Kaitai.Types.Bytes; Position : in out Nibbles_Cursor; Element : out Nibbles_Element)
    is
       pragma Warnings (Off, This);
    begin
@@ -76,10 +76,10 @@ is
    end Next;
 
    procedure Get_Nibbles
-     (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Kaitai.Types.U64)
+     (This : T; Buffer : Kaitai.Types.Bytes; Index : Kaitai.Types.Length; Element : out Nibbles_Element)
    is
       Position : Nibbles_Cursor := Nibbles_First (This);
-      Result   : Kaitai.Types.U64 := 0;
+      Result   : Nibbles_Element := 0;
    begin
       for I in 0 .. Index loop
          pragma Loop_Invariant (Belongs_To (Position, Buffer));
@@ -114,7 +114,7 @@ is
       Kaitai.Writers.Write_U4le (Target, W, This.Qty);
       declare
          Position : Nibbles_Cursor := Nibbles_First (This);
-         Element  : Kaitai.Types.U64;
+         Element  : Nibbles_Element;
       begin
          while Has_Element (Position) loop
             pragma Loop_Invariant (Belongs_To (Position, Buffer));

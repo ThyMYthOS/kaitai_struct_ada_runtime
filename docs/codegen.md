@@ -442,6 +442,15 @@ both, so the bound of `until` does not add one more turn. The cost of `Parse` is
 the number of elements, at most 8 times the bytes that are left; of `Next`, a few
 instructions; of `Get_X`, the index.
 
+The element of a bit field of N bits (N below 64) has a subtype of its own,
+`X_Element`, in the visible part of the package: `Kaitai.Types.U64` range
+`0 .. 2**N - 1`. The `Element` of `Next` and `Get_X`, the element that the
+procedure of the body reads, the one that `Parse` holds in a loop and the
+elements that `Parse` keeps for expressions (`X_First_Element` and the others)
+all have it, so the proof knows the bound where the value is used: `nib.first + 1`
+and `_ + 1` in a condition ask no overflow question. A bit field of 64 bits and
+a `b1` (a `Boolean`) have no such subtype.
+
 #### `_index`
 
 `_index` is a parameter of the procedure of the body that parses one element,

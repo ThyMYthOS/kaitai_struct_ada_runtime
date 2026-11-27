@@ -21,19 +21,85 @@ Pinned upstream: `kaitai-io/kaitai_struct_compiler` at commit
 
 ## Build
 
-```
-scripts/build-compiler.sh             # KSC_DIR defaults to ~/.cache/kaitai_struct_compiler
-```
-
-The script clones the pinned commit into `$KSC_DIR` (or reuses it), copies
-the overlay, applies `upstream.patch` (only once), builds with sbt and prints
-the launcher. It downloads sbt 1.12.9 when there is none on the `PATH`, and
-passes `-Dsbt.override.build.repos=true` when `~/.sbt/repositories` exists.
+The Ada backend is not part of the upstream compiler. The compiler that knows
+the target `ada` is the upstream compiler at the pinned commit, with the files
+of this directory copied over it and `upstream.patch` applied, built with sbt
+as upstream builds it. `scripts/build-compiler.sh` does all of it:
 
 ```
-$KSC_DIR/jvm/target/universal/stage/bin/kaitai-struct-compiler -t ada --outdir out file.ksy
-scripts/generate-examples.sh [--check]   # regenerates and formats examples/*
+scripts/build-compiler.sh             # prints the path of the launcher at the end
 ```
+
+It needs `git`, a JDK (built here with OpenJDK 21; the CI uses the JDK of the
+`ubuntu-24.04` runner image) and access to GitHub and to Maven Central, from
+where sbt fetches Scala 2.13 and the libraries of the compiler. sbt itself need
+not be installed: when there is none on the `PATH`, the script downloads sbt
+1.12.9 into `$KSC_DIR/.sbt-dist` with `curl`. Nothing of the Ada toolchain is needed to
+build the compiler, only to compile what it generates.
+
+What the script does, in this order:
+
+1. It clones `kaitai-io/kaitai_struct_compiler` into `$KSC_DIR` (default:
+   `~/.cache/kaitai_struct_compiler`) and checks out the pinned commit. A
+   checkout that is already there is used as it is.
+2. It copies the overlay, the `*.scala` files of this directory, to the same
+   relative paths of the checkout. The compiler is built from the two under
+   `shared/`; those under `tests-overlay/` belong to the tests repository (see
+   below) and are not compiled here.
+3. It puts the files of the checkout back as they are upstream and applies
+   `upstream.patch`, so that a run after a change of the patch starts from a
+   clean tree.
+4. It runs `sbt --batch compilerJVM/stage`, up to five times, since Maven
+   Central sometimes refuses a download. If `~/.sbt/repositories` exists (a
+   mirror), sbt is told to use only the repositories named there.
+5. It prints the launcher:
+   `$KSC_DIR/jvm/target/universal/stage/bin/kaitai-struct-compiler` (and
+   `kaitai-struct-compiler.bat` next to it).
+
+The first build takes several minutes (10 to 20 on a small machine), most of
+it downloads and the compilation of the upstream sources. After a change of the
+backend, run the script again: sbt compiles only what changed. Use a directory
+of its own for every checkout of this repository that is built at the same time
+(`KSC_DIR=/some/dir scripts/build-compiler.sh`), and do not copy a built
+directory: sbt keeps absolute paths in it.
+
+The same by hand, from the root of this repository:
+
+```
+git clone https://github.com/kaitai-io/kaitai_struct_compiler.git ksc
+git -C ksc checkout 963fd6b3c633e87ed197c5a065f5c8a7d31c1328
+cp -R compiler/shared ksc/                           # the emitter and the translator
+git -C ksc apply "$PWD/compiler/upstream.patch"      # registers the target, adds --ada-max-depth
+(cd ksc && sbt compilerJVM/stage)
+ksc/jvm/target/universal/stage/bin/kaitai-struct-compiler --help   # lists `ada` among the targets
+```
+
+The result is a complete Kaitai Struct compiler: the other targets are built
+as upstream has them (the comparison with the Python target uses that), and
+`ada` is one more value of `-t`:
+
+```
+<launcher> -t ada --outdir out file.ksy                  # out/<id>.ads and out/<id>.adb
+<launcher> -t ada --read-write --outdir out file.ksy     # with Write
+<launcher> -t ada -I dir1:dir2 --outdir out file.ksy     # where imports are looked for
+<launcher> -t ada --ada-max-depth 4 --outdir out file.ksy   # depth of a type that contains itself (default 8)
+```
+
+The generated files are not formatted; `gnatformat` does that
+(`scripts/generate-examples.sh` shows how). A project that compiles them
+`with`s `kaitai_struct.gpr` of this repository (see `tests/` and the
+[README](../README.md) of the repository for the switches). What the
+backend does not generate it rejects with an error that names the construct
+and the place; the next section lists both.
+
+```
+scripts/generate-examples.sh [--check]   # regenerates and formats examples/*; --check only compares
+```
+
+To move to a newer upstream commit, change the commit in
+`scripts/build-compiler.sh` and above, build in a fresh `KSC_DIR`, and make
+`upstream.patch` again from the edited upstream files (`git -C $KSC_DIR diff`)
+if it no longer applies.
 
 ## What is supported and what is rejected
 

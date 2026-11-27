@@ -133,8 +133,9 @@ scripts/survey.sh --prove             # all formats of the Kaitai Struct tests: 
 scripts/run-kaitai-suite.sh           # the tests of the Kaitai Struct test suite; --round-trip also writes
 ```
 
-[compiler/README.md](compiler/README.md) lists what is supported and what is
-rejected.
+[compiler/README.md](compiler/README.md) describes the build (what it needs,
+what the script does, the same steps by hand) and lists what is supported and
+what is rejected.
 
 ## Layout
 

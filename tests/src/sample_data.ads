@@ -494,4 +494,35 @@ package Sample_Data is
       16#2E#,
       16#2E#);
 
+   --  float_reading.bin, written for examples/float_reading: celsius 21.5 (f4), gain 1E200 (f8), count 3,
+   --  fraction 0.25 (f4 big endian), a bias of 0.5 (f8 big endian)
+   Float_Reading : constant Bytes (1 .. 27) :=
+     (16#00#,
+      16#00#,
+      16#AC#,
+      16#41#,
+      16#5A#,
+      16#62#,
+      16#D7#,
+      16#D7#,
+      16#18#,
+      16#E7#,
+      16#74#,
+      16#69#,
+      16#03#,
+      16#00#,
+      16#3E#,
+      16#80#,
+      16#00#,
+      16#00#,
+      16#01#,
+      16#3F#,
+      16#E0#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#00#,
+      16#00#);
+
 end Sample_Data;

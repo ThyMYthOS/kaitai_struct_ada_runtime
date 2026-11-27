@@ -1794,6 +1794,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   /** What kind of value an argument is, for a message */
   private def kindOf(vt: VT): String = vt match {
     case VInt | VU64Lit(_) => "an integer"
+    case VFloat => "a float"
     case VBool => "a boolean"
     case VEnum(_) => "an enumeration"
     case VBytes | VBytesLit(_) => "bytes"
@@ -1930,25 +1931,43 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   private val UnderscoreName = Ast.expr.Name(Ast.identifier(Identifier.ITERATOR))
 
   private def validate(v: ValidationSpec, dt: DataType, target: String, rc: RC): List[String] = {
-    def check(cond: Ast.expr, reason: String): List[String] = {
+    // A float that is infinity or not-a-number is compared as the other targets compare it (a not-a-number is
+    // neither at least nor at most anything), where the comparison is the one that the description states. In
+    // an expression such a float is not defined.
+    val isFloat = dt.isInstanceOf[FloatMultiType]
+    val wide = dt match { case FloatMultiType(w, _) => w.width == 8; case _ => false }
+    val plusInf = if (wide) "16#7FF0_0000_0000_0000#" else "16#7F80_0000#"
+    val minusInf = if (wide) "16#FFF0_0000_0000_0000#" else "16#FF80_0000#"
+    def check(cond: Ast.expr, reason: String, nonFinite: Option[List[String]] = None): List[String] = {
       tr.buffer = Some("Buffer")
       tr.io = Some(rc.s)
       tr.thisName = "This"
       tr.knownValid = Set()
       tr.iterator = Some((dt, target))
-      val t = guard(rc.path)(tr.translate(cond))
-      tr.iterator = None
-      guarded(t.guards, List(s"if ${t.code} then", "   " + failStmt(rc, reason), "end if;"), rc)
+      tr.finiteKnown = if (isFloat && nonFinite.isDefined) Set(target) else Set()
+      val t = try guard(rc.path)(tr.translate(cond)) finally { tr.iterator = None; tr.finiteKnown = Set() }
+      val test = List(s"if ${t.code} then", "   " + failStmt(rc, reason), "end if;")
+      val body = nonFinite match {
+        case Some(nf) if isFloat => List(s"if not Kaitai.Floats.Is_Finite ($target) then") ++ ind(nf) ++ List("else") ++ ind(test) ++ List("end if;")
+        case _ => test
+      }
+      guarded(t.guards, body, rc)
     }
+    def failUnless(inf: String, reason: String): Option[List[String]] = {
+      if (isFloat) opTypes += (if (wide) "U64" else "U32")
+      Some(List(s"if $target /= $inf then", "   " + failStmt(rc, reason), "end if;"))
+    }
+    def failAlways(reason: String): Option[List[String]] = Some(List(failStmt(rc, reason)))
     def cmp(op: Ast.cmpop, e: Ast.expr) = Ast.expr.Compare(UnderscoreName, op, e)
     v match {
-      case ValidationEq(e) => check(cmp(Ast.cmpop.NotEq, e), "Validation_Not_Equal")
-      case ValidationMin(e) => check(cmp(Ast.cmpop.Lt, e), "Validation_Less_Than")
-      case ValidationMax(e) => check(cmp(Ast.cmpop.Gt, e), "Validation_Greater_Than")
+      case ValidationEq(e) => check(cmp(Ast.cmpop.NotEq, e), "Validation_Not_Equal", failAlways("Validation_Not_Equal"))
+      case ValidationMin(e) => check(cmp(Ast.cmpop.Lt, e), "Validation_Less_Than", failUnless(plusInf, "Validation_Less_Than"))
+      case ValidationMax(e) => check(cmp(Ast.cmpop.Gt, e), "Validation_Greater_Than", failUnless(minusInf, "Validation_Greater_Than"))
       case ValidationRange(lo, hi) =>
-        check(cmp(Ast.cmpop.Lt, lo), "Validation_Less_Than") ++ check(cmp(Ast.cmpop.Gt, hi), "Validation_Greater_Than")
+        check(cmp(Ast.cmpop.Lt, lo), "Validation_Less_Than", failUnless(plusInf, "Validation_Less_Than")) ++
+          check(cmp(Ast.cmpop.Gt, hi), "Validation_Greater_Than", failUnless(minusInf, "Validation_Greater_Than"))
       case ValidationAnyOf(values) =>
-        check(Ast.expr.BoolOp(Ast.boolop.And, values.map(x => cmp(Ast.cmpop.NotEq, x))), "Validation_Not_Any_Of")
+        check(Ast.expr.BoolOp(Ast.boolop.And, values.map(x => cmp(Ast.cmpop.NotEq, x))), "Validation_Not_Any_Of", failAlways("Validation_Not_Any_Of"))
       case ValidationInEnum() =>
         dt match {
           case et: EnumType =>
@@ -2080,7 +2099,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     if (ws.isEmpty) Nil else ws
   }
 
-  private val LibPackages = List("Streams", "Types", "Arithmetic", "Decoding", "Strings", "Byte_Arrays", "Floats", "Processing", "Zlib", "Writers")
+  private val LibPackages = List("Streams", "Types", "Arithmetic", "Decoding", "Strings", "Byte_Arrays", "Floats", "Float_Arithmetic", "Processing", "Zlib", "Writers")
 
   private def usedLibs(text: String): Set[String] = {
     val clean = text.split("\n").map(l => l.takeWhile(_ != '-')).mkString("\n")
@@ -3894,6 +3913,8 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       val gs = ct.toList.flatMap(c => c.guards ++ List(if (c.prec >= 3) s"(${c.code})" else c.code)) ++ t.guards
       val hasText =
         if (v.ifExpr.isDefined) List(s"True if the instance $kq has a value", "Its condition (`if`) must be defined and hold, and its expression must be defined")
+        else if (gs.exists(g => g.contains("Kaitai.Floats.Is_Finite") || g.contains("Kaitai.Float_Arithmetic.")))
+          List(s"True if the instance $kq has a value", "Its expression is not defined if a field that it uses is not there, an operation in it overflows or divides by zero, an index is out of range, or a float that it uses is infinity or not-a-number")
         else List(s"True if the instance $kq has a value", "Its expression is not defined if a field that it uses is not there, an operation in it overflows or divides by zero, or an index is out of range")
       o.pub ++= ind(describe(hasText, DocSpec.EMPTY, bufferText) ++ List(s"function ${hasNm(bs)} ($params) return Boolean", s"with Pre => $pre0;", ""))
       o.privFuncs += s"function ${hasNm(bs)} ($params) return Boolean"
@@ -3915,10 +3936,14 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
           s"${q}To_${enumTy(spec)} (${bs}_Value ($args))", params,
           labelComment(s"Instance $kq", tyName, q, spec, bs, "The integer", v.doc, enumAfter))
       case _: IntType =>
+        if (t.vt == VFloat) throw new AdaUnsupported("value instance of an integer type whose expression is a float")
         accessor(o, nm, KT + "S64", pre, None, t.code, params,
           describe(List(s"Instance $kq, an integer (a Kaitai.Types.S64)"), v.doc, computed))
       case _: BooleanType =>
         accessor(o, nm, "Boolean", pre, None, t.code, params, describe(List(s"Instance $kq, a boolean"), v.doc, computed))
+      case _: FloatType =>
+        accessor(o, nm, "Kaitai.Floats.F64", pre, None, tr.asFloat(t).code, params,
+          describe(List(s"Instance $kq, a float (a Kaitai.Floats.F64)"), v.doc, computed))
       case _: BytesType | _: StrType =>
         t.vt match {
           case VBytes | VStr(_) =>

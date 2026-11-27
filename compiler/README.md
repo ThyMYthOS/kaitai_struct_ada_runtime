@@ -42,8 +42,8 @@ or it rejects the description with an error that names the construct and the
 path of the attribute:
 
 ```
-(main): /instances/v:
-	error: not supported by the Ada backend: floating-point arithmetic
+(main): /instances/ratio:
+	error: not supported by the Ada backend: division of floating-point numbers (`/`) is not supported
 ```
 
 It does not generate an approximation. `compiler/SURVEY.md` lists what
@@ -57,7 +57,7 @@ happens to each of the 334 formats of the Kaitai Struct test suite, and
 |---|---|---|
 | Integers | `u1` .. `u8`, `s1` .. `s8`; fixed byte order, byte order decided at run time, `endian: switch-on` | – |
 | Bit fields | `b1` .. `b64` with `bit-endian`; a type that starts with bit fields goes on in the byte that the bit fields before it left open, as in the other targets (see "Fields" in `docs/codegen.md`) | the top-level type of another description that starts with bit fields, used where the stream may be inside a byte |
-| Floats | `f4`, `f8` as their bits, with a second accessor for the value if it is finite | any expression with a float, also a comparison ("floating-point arithmetic") |
+| Floats | `f4`, `f8` as their bits, with a second accessor for the value if it is finite; `valid` (`min`, `max`, `range`, `eq`, `any-of`, `expr`) on a float | `valid` on a repeated float |
 | Bytes and strings | `size`, `size-eos`, `terminator` (also of several bytes), `pad-right`, `include`, `consume`, `eos-error`, `contents` | – |
 | String encodings | `ASCII`, `UTF-8`, `UTF-16LE`, `UTF-16BE`, which are checked when a string is parsed; the other encodings that Kaitai Struct knows (`ISO-8859-1`, `Shift_JIS`, `IBM437`, ...), whose strings are delivered as their bytes without a check | `UTF-16` without a byte order, `UTF-32`, `UTF-32LE`, `UTF-32BE`; a name that Kaitai Struct does not know |
 | `valid` | `eq`, `min`, `max`, range, `any-of`, `in-enum`, `expr`; on a repetition of integers of a fixed size, and on each element of a repetition of bytes, strings or bit fields (`contents` with `repeat` too); on a field whose type is chosen by `switch-on`, if all cases are integers and there is a `_` case | on a repetition of structures; on other fields with `switch-on`, and `in-enum` on any of them |
@@ -81,6 +81,7 @@ happens to each of the 334 formats of the Kaitai Struct test suite, and
 | Integers above 2**63-1 (up to 2**64-1) | as an operand of a comparison with an unsigned field or with another literal (`x >= 9223372036854775808`), in `valid` on an unsigned field, and as the whole value of an instance; these are computed in `Kaitai.Types.U64` | as an operand of arithmetic (`x + 9223372036854775808`, `18446744073709551615 - 1`); compared with a signed field or with an expression. The message says that the literal is above the largest signed 64-bit integer, that expressions are computed in signed 64 bits, and that such a literal is accepted only as an operand of a comparison with an unsigned field (a literal beyond 64 bits still says "does not fit into 64 bits") |
 | A `u8` field in arithmetic | `x + 1` is computed in `S64`; for a value of `x` above 2**63-1 the expression is not defined, which `Has_...` of the instance tells | – |
 | Comparisons, `and`, `or`, `not`, `?:` | yes | – |
+| Floats | literals, `f4` and `f8` fields (also under `if`, and of a nested value), `+ - *` between floats and with an integer, unary minus, the six comparisons, `?:`, `.to_i` (toward zero), value instances of float type; all in `Kaitai.Floats.F64`. An expression whose result would be infinity, or that uses a float that is infinity or not-a-number, is not defined (see "Floating-point numbers" in `docs/codegen.md`); the question is left out where the sizes that the compiler knows answer it | `/` ("division of floating-point numbers"), `%`, shifts and bit operations on a float, a float literal beyond the range of a 64-bit float, a float as a parameter or an argument of a type, a float value instance of a nested value, a float parse instance in an expression |
 | Enumerations | labels, comparison, `.to_i` | – |
 | Strings | comparison with a literal of any characters (the compiler encodes the literal for ASCII, UTF-8, ISO-8859-1, UTF-16LE and UTF-16BE) and with each other; `<`, `>` for ASCII, UTF-8 and ISO-8859-1; `.length`; `.to_i` (of a literal: computed by the compiler) | `+` (concatenation), `substring`, `reverse`, `to_s` of an integer; a literal with a character that is not ASCII for a string in another encoding (`Shift_JIS`, `IBM437`, ...); comparison of strings in different encodings other than ASCII and UTF-8; `<`, `>` in other encodings; `.length` in `Shift_JIS`, `Big5` or `EUC-KR`; `.to_i` in UTF-16 |
 | Bytes | comparison, `.length`, `.first`, `.last`, `.min`, `.max`, subscripts, also of bytes with `xor`, `rol` or `ror` (the byte is computed from the one in the input, without memory) | the subscript of bytes with `zlib` or a custom process; any other use of a processed field, such as `c ? plain : processed` |

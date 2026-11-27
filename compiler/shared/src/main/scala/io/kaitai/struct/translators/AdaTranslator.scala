@@ -15,6 +15,8 @@ class AdaUnsupported(msg: String) extends RuntimeException(msg)
 /** The Kaitai type of a translated expression, as far as the Ada backend tells types apart. */
 sealed trait VT
 case object VInt extends VT
+/** A floating-point number; the translation is an `F64` */
+case object VFloat extends VT
 case object VBool extends VT
 case class VEnum(spec: EnumSpec) extends VT
 /** A slice of the buffer */
@@ -51,7 +53,11 @@ case class ATr(
   native: Option[(String, String)] = None,
   usesBuffer: Boolean = false,
   /** the value is the result of an unconverted use of a component of the current type */
-  isLiteral: Boolean = false
+  isLiteral: Boolean = false,
+  /** a float: an upper bound of its magnitude (it is finite, so never above the largest F64) */
+  mag: Double = Double.MaxValue,
+  /** a float literal: its value */
+  flit: Option[Double] = None
 ) {
   def atom: String = if (prec == 0) code else s"($code)"
 }
@@ -101,6 +107,14 @@ object AdaTranslator {
   val S64Min: BigInt = -(BigInt(1) << 63)
   val S64Max: BigInt = (BigInt(1) << 63) - 1
   val U64Max: BigInt = (BigInt(1) << 64) - 1
+  /** Largest magnitude of both operands for which Kaitai.Float_Arithmetic.Add_OK holds without a question: 2**1022 */
+  val FloatAddLimit: Double = math.pow(2, 1022)
+  /** Largest magnitude of both operands for which Multiply_OK holds: 2**500 */
+  val FloatMulLimit: Double = math.pow(2, 500)
+  /** Largest magnitude of an f4 */
+  val F32Max: Double = 3.4028234663852886E38
+  /** Magnitude below which Truncate_OK holds: 2**63 */
+  val TwoTo63: Double = math.pow(2, 63)
   val Half: (BigInt, BigInt) = (-(BigInt(1) << 31), (BigInt(1) << 31) - 1)
 
   /** Size in bytes of an element that a repetition keeps as one slice */
@@ -178,6 +192,8 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     * parser has run, so it cannot know where the stream of the type was when the instance is first used
     */
   var inParseInstance: Boolean = false
+  /** Codes of the bits of floats that are known to be finite (a validation tests it itself) */
+  var finiteKnown: Set[String] = Set()
   /** Types of the library whose operators the generated code uses */
   val ops = scala.collection.mutable.Set[String]()
 
@@ -207,6 +223,85 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     ATr(code, prec, dedupe(guards), VInt, l, h, native, ub)
   }
 
+  private val FA = "Kaitai.Float_Arithmetic."
+
+  private def flt(code: String, prec: Int, guards: List[String], mag: Double, ub: Boolean = false, lit: Option[Double] = None): ATr =
+    ATr(code, prec, dedupe(guards), VFloat, usesBuffer = ub, isLiteral = lit.isDefined, mag = math.min(mag, Double.MaxValue), flit = lit)
+
+  /** A float literal of the description as an Ada real literal; one that no F64 holds is an error */
+  private def floatLiteral(n: BigDecimal): ATr = {
+    val d = n.toDouble
+    if (d.isInfinity) unsupported(s"float literal $n, which is beyond the range of a 64-bit float")
+    if (d == 0.0 && n != BigDecimal(0)) unsupported(s"float literal $n, which is too small for a 64-bit float")
+    val plain = n.bigDecimal.toPlainString
+    val text =
+      if (plain.length <= 30) (if (plain.contains('.')) plain else plain + ".0")
+      else s"${n.bigDecimal.unscaledValue.abs}.0E${-n.bigDecimal.scale}"
+    flt(text, 0, Nil, math.abs(d), lit = Some(d))
+  }
+
+  /** The value as a float: an integer is converted (see Kaitai.Float_Arithmetic.From_S64) */
+  def asFloat(t: ATr): ATr = t.vt match {
+    case VFloat => t
+    case VInt | VEnum(_) =>
+      val m = t.lo.abs.max(t.hi.abs).toDouble
+      if (t.isLiteral && t.lo.abs <= (BigInt(1) << 53))
+        flt(s"${t.lo}.0", if (t.lo < 0) 1 else 0, Nil, m, lit = Some(t.lo.toDouble))
+      else flt(s"${FA}From_S64 (${t.code})", 0, t.guards, m, t.usesBuffer)
+    case VU64Lit(n) => unsupported(literalTooBig(n))
+    case _ => unsupported("arithmetic on something that is not a number")
+  }
+
+  private def isNumber(vt: VT): Boolean = vt match {
+    case VInt | VEnum(_) | VFloat => true
+    case _ => false
+  }
+
+  /** The value of a float of `width` bytes whose bits are `bits`; it is defined only if the float is finite */
+  private def floatField(width: Int, bits: String, guards: List[String]): ATr = {
+    val g = if (finiteKnown.contains(bits)) guards else guards ++ List(s"Kaitai.Floats.Is_Finite ($bits)")
+    if (width == 4) flt(s"${FA}From_F32 (Kaitai.Floats.To_F32 ($bits))", 0, g, F32Max)
+    else flt(s"Kaitai.Floats.To_F64 ($bits)", 0, g, Double.MaxValue)
+  }
+
+  /** `to_i`: the integer part of a float, defined where it is in S64 */
+  private def floatToInt(v: ATr): ATr = {
+    if (v.isLiteral && v.flit.isDefined) {
+      val n = BigDecimal(v.flit.get).toBigInt
+      if (n >= S64Min && n <= S64Max) return ATr(n.toString, if (n < 0) 1 else 0, Nil, VInt, n, n, isLiteral = true)
+      return ATr("0", 0, List("False"), VInt, 0, 0)
+    }
+    val known = v.mag < TwoTo63
+    val m = if (known) BigDecimal(v.mag).toBigInt else S64Max
+    val guard = if (known) Nil else List(s"${FA}Truncate_OK (${v.code})")
+    int(s"${FA}Truncate (${v.code})", 0, v.guards ++ guard, -m, m, v.usesBuffer)
+  }
+
+  /** `+`, `-` and `*` where an operand is a float; the operation is asked about only where the magnitudes leave it open */
+  private def floatBin(op: Ast.operator, l0: ATr, r0: ATr): ATr = {
+    val (l, r) = (asFloat(l0), asFloat(r0))
+    val g = l.guards ++ r.guards
+    val ub = l.usesBuffer || r.usesBuffer
+    op match {
+      case Ast.operator.Add | Ast.operator.Sub =>
+        val (fn, name) = if (op == Ast.operator.Add) ("Add", "Add_OK") else ("Subtract", "Subtract_OK")
+        val ask = !(l.mag <= FloatAddLimit && r.mag <= FloatAddLimit)
+        val sum = l.mag + r.mag
+        val mag = if (ask) math.min(sum, math.max(math.max(l.mag, r.mag), 2 * FloatAddLimit)) else sum
+        flt(s"$FA$fn (${l.code}, ${r.code})", 0, g ++ (if (ask) List(s"$FA$name (${l.code}, ${r.code})") else Nil), mag, ub)
+      case Ast.operator.Mult =>
+        val ask = !(l.mag <= 1.0 || r.mag <= 1.0 || (l.mag <= FloatMulLimit && r.mag <= FloatMulLimit))
+        val mag = if (ask) Double.MaxValue else l.mag * r.mag
+        flt(s"${FA}Multiply (${l.code}, ${r.code})", 0, g ++ (if (ask) List(s"${FA}Multiply_OK (${l.code}, ${r.code})") else Nil), mag, ub)
+      case Ast.operator.Div =>
+        unsupported("division of floating-point numbers (`/`) is not supported")
+      case Ast.operator.Mod =>
+        unsupported("`%` of floating-point numbers")
+      case _ =>
+        unsupported("shift or bit operation on floating-point numbers")
+    }
+  }
+
   def translate(e: Ast.expr): ATr = e match {
     case _ if env.outsideRef(provider.nowClass, e).isDefined =>
       env.outsideRef(provider.nowClass, e).get match {
@@ -221,8 +316,7 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
       ATr(if (b) "True" else "False", 0, Nil, VBool, isLiteral = true)
     case Ast.expr.Str(s) =>
       ATr(s, 0, Nil, VStrLit(s), isLiteral = true)
-    case Ast.expr.FloatNum(_) =>
-      unsupported("floating-point arithmetic")
+    case Ast.expr.FloatNum(n) => floatLiteral(n)
     case Ast.expr.InterpolatedStr(_) =>
       unsupported("string interpolation")
     case Ast.expr.List(elts) =>
@@ -478,6 +572,8 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
       val member = provider.resolveMember(cs, name)
       member match {
         case p: ParamDefSpec =>
+          if (p.dataType.isInstanceOf[FloatType])
+            unsupported(s"parameter `$name` of a float type used in an expression (a parameter is an integer, a boolean or an enumeration)")
           fromValue(p.dataType, s"$thisName.${env.memberName(cs, p.id)}", Nil)
         case a: AttrSpec =>
           if (!env.isStored(a))
@@ -547,7 +643,8 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
       }
     case _: BooleanType =>
       ATr(code, 0, dedupe(guards), VBool, native = Some((code, "Boolean")))
-    case _: FloatType => unsupported("floating-point arithmetic")
+    case FloatMultiType(w, _) => floatField(w.width, code, guards)
+    case CalcFloatType => flt(code, 0, guards, Double.MaxValue)
     case _: BytesType =>
       ATr(code, 0, dedupe(guards), VBytes, native = Some((code, "Slice")))
     case StrFromBytesType(_, enc, _) =>
@@ -671,6 +768,11 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         attr match {
           case "to_i" => v
           case _ => unsupported(s"`.$attr` of an integer")
+        }
+      case VFloat =>
+        attr match {
+          case "to_i" => floatToInt(v)
+          case _ => unsupported(s"`.$attr` of a float")
         }
       case VBool =>
         attr match {
@@ -811,7 +913,7 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
   private def fromAccessor(dt: DataType, pkg: String, nm: String, bs: String, obj: String, g: List[String]): ATr = dt match {
     case _: SwitchType => unsupported(s"field `$nm` whose type depends on a value")
     case _: EnumType => fromValue(dt, s"$pkg.${bs}_Value ($obj)", g)
-    case _: FloatType => unsupported("floating-point arithmetic")
+    case FloatMultiType(w, _) => floatField(w.width, s"$pkg.${bs}_Bits ($obj)", g)
     case _ => fromValue(dt, s"$pkg.$nm ($obj)", g)
   }
 
@@ -821,6 +923,8 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     case Ast.unaryop.Not =>
       if (v.vt != VBool) unsupported("`not` of a value that is not a boolean")
       ATr(s"not ${v.atom}", 2, v.guards, VBool)
+    case Ast.unaryop.Minus if v.vt == VFloat =>
+      flt(s"-${v.atom}", 1, v.guards, v.mag, v.usesBuffer, v.flit.map(-_))
     case Ast.unaryop.Minus =>
       requireInt(v)
       ops += "S64"
@@ -834,6 +938,7 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
   private def requireInt(v: ATr): Unit = v.vt match {
     case VInt | VEnum(_) =>
     case VU64Lit(n) => unsupported(literalTooBig(n))
+    case VFloat => unsupported("a floating-point number in an operation on integers (`~`, `%`, a shift or a bit operation)")
     case _ => unsupported("arithmetic on something that is not an integer")
   }
 
@@ -843,6 +948,7 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         unsupported("string concatenation")
       case _ =>
     }
+    if (l.vt == VFloat || r.vt == VFloat) return floatBin(op, l, r)
     requireInt(l)
     requireInt(r)
     val g = l.guards ++ r.guards
@@ -970,6 +1076,21 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     }
     def isBig(t: ATr) = t.vt.isInstanceOf[VU64Lit]
     (l.vt, r.vt) match {
+      case _ if (l.vt == VFloat || r.vt == VFloat) && isNumber(l.vt) && isNumber(r.vt) =>
+        val (a, b) = (asFloat(l), asFloat(r))
+        (a.flit, b.flit) match {
+          case (Some(x), Some(y)) =>
+            val res = op match {
+              case Ast.cmpop.Eq => x == y
+              case Ast.cmpop.NotEq => x != y
+              case Ast.cmpop.Lt => x < y
+              case Ast.cmpop.LtE => x <= y
+              case Ast.cmpop.Gt => x > y
+              case Ast.cmpop.GtE => x >= y
+            }
+            ATr(if (res) "True" else "False", 0, Nil, VBool, isLiteral = true)
+          case _ => ATr(s"${wrapOp(a, 1)} $opStr ${wrapOp(b, 1)}", 2, dedupe(a.guards ++ b.guards), VBool, usesBuffer = ub)
+        }
       case (VU64Lit(a), VU64Lit(b)) =>
         val c = a.compare(b)
         val res = op match {
@@ -1191,6 +1312,10 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
     val simple = (a.vt, b.vt) match { case ((VInt | VEnum(_) | VBool), (VInt | VEnum(_) | VBool)) => true; case _ => false }
     if (c.isLiteral && simple)
       return (if (c.code == "True") a else b)
+    if ((a.vt == VFloat) != (b.vt == VFloat) && isNumber(a.vt) && isNumber(b.vt)) {
+      if (c.isLiteral) return asFloat(if (c.code == "True") a else b)
+      return translateIf(c, asFloat(a), asFloat(b))
+    }
     val ga = conj(a.guards)
     val gb = conj(b.guards)
     val cond = c.code
@@ -1211,7 +1336,9 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         ATr(s"(if $cond then ${a.code} else ${b.code})", 0, guards, vt, a.lo.min(b.lo), a.hi.max(b.hi), usesBuffer = ub)
       case (VBool, VBool) =>
         ATr(s"(if $cond then ${a.code} else ${b.code})", 0, guards, VBool, usesBuffer = ub)
-      case _ => unsupported("conditional expression that is not an integer or a boolean")
+      case (VFloat, VFloat) =>
+        flt(s"(if $cond then ${a.code} else ${b.code})", 0, guards, math.max(a.mag, b.mag), ub)
+      case _ => unsupported("conditional expression that is not a number or a boolean")
     }
   }
 }

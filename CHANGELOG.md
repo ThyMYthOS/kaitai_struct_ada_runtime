@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Compiler: floating-point expressions. Float literals, `f4` and `f8` fields (also under `if`, in a nested value and in
+  `valid`), `+`, `-` and `*` between floats and with an integer, unary minus, the six comparisons, `?:`, `to_i`
+  (truncation toward zero) and value instances of float type are generated, computed in `Kaitai.Floats.F64` with
+  `Kaitai.Float_Arithmetic`. An expression whose result would be infinity, or that uses an infinity or a
+  not-a-number, is not defined (`Has_X` is false, `Parse` fails with `Arithmetic_Error`); the questions `Add_OK`,
+  `Multiply_OK` and `Truncate_OK` are asked only where the bounds that the translator tracks do not answer them. `valid`
+  on a float compares as the other targets do, also for infinity and not-a-number. `f4` is computed in 64 bits, as
+  Python does, not in 32 bits as Java and C++ do for `f4` with an integer. Division of floats and `%` are rejected.
+  New formats generated: `floating_points`, `float_to_i`, `valid_fail_range_float`. Example `float_reading`; the
+  comparison with Python has `compiler/diff-formats/x_floats` and a known difference for expressions with infinity.
+  See `docs/codegen.md`, "Floating-point numbers".
 - Compiler: `valid` and `contents` on a repetition of bytes, strings or bit fields are checked on each element in
   `Parse`. Example `repeat_valid`.
 

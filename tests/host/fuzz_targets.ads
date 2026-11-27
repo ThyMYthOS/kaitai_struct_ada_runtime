@@ -57,6 +57,7 @@ package Fuzz_Targets is
       Str_Literals_Latin1_Parser,
       Str_Literal_Encodings_Parser,
       Expr_To_I_Trailing_Parser,
+      Float_Reading_Parser,
       Valid_Fail_Range_Str_Parser,
       Str_Ordering_Parser,
       Valid_Long_Parser,

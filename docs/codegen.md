@@ -524,6 +524,84 @@ operand wider than 32 bits. Carrying a validity flag along with the value or
 passing a flag through procedures costs the same. The compiler drops the
 questions that the types answer.
 
+### Floating-point numbers
+
+An expression with a float is computed in `Kaitai.Floats.F64`, a 64-bit float, whatever the operands were read as. An
+`f4` is widened to it (`From_F32`), an integer next to a float is converted to it (`From_S64`: the nearest `F64`, and
+the one with the even mantissa if two are equally near, which is what Python and Java do), and the result is an `F64`.
+An unsigned 64-bit field above 2**63-1 next to a float makes the expression undefined, because `From_S64` takes an
+`S64`; the other targets convert it.
+The operations are those of `Kaitai.Float_Arithmetic`:
+
+| In the description | In Ada |
+|---|---|
+| `1.5`, `-2.7` | `1.5`, `-2.7`; a literal that no `F64` holds (`1.0e400`, `1.0e-400`) is an error of the compiler |
+| a field `f4`, `f8` | `From_F32 (To_F32 (This.X))`, `To_F64 (This.X)`, defined if `Floats.Is_Finite (This.X)` |
+| `a + b`, `a - b`, `a * b` | `Add (A, B)`, `Subtract (A, B)`, `Multiply (A, B)`, defined if `Add_OK (A, B)`, `Subtract_OK (A, B)`, `Multiply_OK (A, B)` |
+| `-a` | `-A` |
+| the six comparisons | `=`, `/=`, `<`, `<=`, `>`, `>=` on two `F64`; an integer operand is converted first |
+| `c ? a : b` | `(if C then A else B)`; if one branch is an integer it is converted |
+| `a.to_i` | `Truncate (A)`, defined if `Truncate_OK (A)`: the places after the point are cut off, so the `to_i` of -2.7 is -2 and that of 1.9 is 1 |
+| `a / b`, `a % b`, and `<<`, `&` and the like on a float | rejected |
+
+An expression is defined only if its result is finite. A result that would be infinity, as in `1e200 * 1e200`, makes
+the expression undefined, as an integer that does not fit makes one undefined: the function `Has_X` of a value
+instance is false, and `Parse` fails with `Arithmetic_Error` where it needs the value. A field that is infinity or
+not-a-number is read and kept (the accessor `X_Bits` gives its bits), but an expression that uses it is undefined,
+because `X` has the precondition `Is_Finite`; that is why every use of a float field adds `Is_Finite (This.X)` to the
+condition. Underflow is not an error: a result too small for a normal number is a denormal number or zero. There is
+no division, and so no division by zero: the quotient of two floats is finite only under a condition that GNATprove
+does not prove at level 1 with a margin that a loaded machine can rely on (a first version of it was proven only when the machine was idle), so `/` of floats is rejected with a message that says so.
+
+The compiler asks `Add_OK`, `Multiply_OK` and `Truncate_OK` only where the sizes that it knows do not answer. It tracks
+an upper bound of the magnitude of every part of an expression: a literal is its own bound, an `f4` is at most
+3.4028234663852886E+38, an integer at most 2**63, an `f8` is only known to be finite, and the bound of a sum or a product
+follows from those of its operands. A sum is not asked about if both operands are at most 2**1022 in magnitude, a product if
+one operand is at most 1 or both are at most 2**500, a `to_i` if the number is below 2**63. So `celsius + 273.15` and
+`(celsius + 0.5) * fraction - 2.0` with `f4` fields ask nothing but `Is_Finite`, while `gain * gain` with an `f8` field
+asks `Multiply_OK`:
+
+```ada
+function Has_Blend (This : T) return Boolean
+is (Kaitai.Floats.Is_Finite (This.Celsius) and then Kaitai.Floats.Is_Finite (This.Fraction));
+
+function Has_Gain_Squared (This : T) return Boolean
+is (Kaitai.Floats.Is_Finite (This.Gain)
+    and then Kaitai.Float_Arithmetic.Multiply_OK (Kaitai.Floats.To_F64 (This.Gain), Kaitai.Floats.To_F64 (This.Gain)));
+```
+
+(This is `examples/float_reading`.) The prover shows the questions that are left out from the types alone: `From_F32` and
+`From_S64` return subtypes with the bounds above, and `Add`, `Multiply` have `L op R` as their postcondition. The
+`_OK` functions are stricter than the exact condition for operands of immense magnitude, because the exact conditions
+are not proven at level 1; `Kaitai.Float_Arithmetic` says for each where. They accept every operation whose operands are
+at most 2**500 (about 3.3E150) in magnitude. An operation that has an operand above that may be refused although its
+result is finite, for example `1E160 * 1E150`, or a sum of two numbers of the same sign of which one is above 2**1022
+(about 4.5E307).
+
+A `valid` on a float field compares as the other targets do, also for the values that expressions cannot use. A
+not-a-number is not at least and not at most anything, so it fails `min` and `max` (`Validation_Less_Than` if `min` or
+`range` comes first, else `Validation_Greater_Than`); plus infinity fails `max`, minus infinity fails `min`; `eq` and
+`any-of` fail for every infinity and not-a-number. `valid: expr` is an expression like the others: a float that is not
+finite makes it undefined, and `Parse` fails with `Arithmetic_Error`. The comparison with the limits in `Parse` is in
+`F64`:
+
+```ada
+if not Kaitai.Floats.Is_Finite (This.Fraction) then
+   if This.Fraction /= 16#7F80_0000# then
+      Kaitai.Streams.Fail (S, Kaitai.Types.Validation_Less_Than);
+   end if;
+else
+   if Kaitai.Float_Arithmetic.From_F32 (Kaitai.Floats.To_F32 (This.Fraction)) < 0.0 then
+      Kaitai.Streams.Fail (S, Kaitai.Types.Validation_Less_Than);
+   end if;
+end if;
+```
+
+A value instance of float type is a function that returns `Kaitai.Floats.F64` (`Has_X` as for integers). The type
+of an instance in the description is not looked at: `f4` or `f8`, the result is an `F64`. A float is not an argument
+of a type, a parameter, or the value of a nested instance (`child.x` of a float instance); those are rejected. Floats
+are written by `--read-write` as before, as their bits; instances are not written.
+
 ## Instances
 
 An instance with a value is a function. If its expression is not always
@@ -1209,6 +1287,16 @@ Where the rules above are silent, the compiler does the following.
 - An expression that overflows 64 bits makes the stream fail with
   `Arithmetic_Error`. Integer division rounds down, as the tests of Kaitai
   Struct ask for.
+- A float expression is computed in 64 bits. Python does the same, but Java and C++
+  compute an `f4` with an integer or with another `f4` in 32 bits (`a() + n()` of an `f4` and an `s2` is a `float`
+  addition in their generated code, and only the result is widened), so that such a result can differ from this one in
+  the last bits of an `f4`. `f4 + 0.5` is in 64 bits everywhere, because a literal is a `double`.
+- An expression with an infinity or a not-a-number, or whose result would be an infinity, is not defined. The other
+  targets compute on with such a value and compare it, for example `1e200 * 1e200 > 1.0` is true there. `to_i` of a
+  float outside S64 is not defined (Python gives an integer of any size, Java saturates, C++ does not define it).
+- An integer next to a float is converted to a float first, also in a comparison, as in Java and C++. Python compares
+  an integer and a float exactly, so that `9007199254740993 == 9007199254740992.0` is false there and true here.
+- Floats are not divided (`/` of a float is rejected), and `%` of floats is rejected.
 - `%` with a divisor that is not positive is not defined, as in the Java and
   C++ runtimes of Kaitai Struct, where `mod` raises an error. The Python
   target computes a value.

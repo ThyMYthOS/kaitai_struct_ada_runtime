@@ -16,6 +16,7 @@ with Expr_Sizeof_Value_Sized;
 with Expr_To_I_Trailing;
 with Extras;
 with Fixed_Struct;
+with Float_Reading;
 with Foreign;
 with Hello_World;
 with If_Struct;
@@ -385,6 +386,9 @@ package body Fuzz_Targets is
 
          when Expr_To_I_Trailing_Parser        =>
             return Sample_Data.Term_Strz;
+
+         when Float_Reading_Parser             =>
+            return Sample_Data.Float_Reading;
 
          when Valid_Fail_Range_Str_Parser      =>
             return Range_Str_Data;
@@ -1000,6 +1004,28 @@ package body Fuzz_Targets is
       end if;
    end Run_Expr_To_I_Trailing;
 
+   procedure Run_Float_Reading (Input : Bytes; Fields : out Natural) is
+      S : Stream := Open (Input);
+      R : Float_Reading.T;
+   begin
+      Fields := 0;
+      Float_Reading.Parse (R, Input, S);
+      pragma Assert (Float_Reading.Valid (R) = OK (S));
+      if Float_Reading.Valid (R) then
+         Fields := 1;
+         Count (Fields, Float_Reading.Has_Kelvin (R) and then Float_Reading.Kelvin (R) > 0.0);
+         Count (Fields, Float_Reading.Has_Whole_Kelvin (R) and then Float_Reading.Whole_Kelvin (R) > 0);
+         Count (Fields, Float_Reading.Has_Freezing (R) and then Float_Reading.Freezing (R));
+         Count (Fields, Float_Reading.Has_Negated (R));
+         Count (Fields, Float_Reading.Has_Scaled (R) and then Float_Reading.Scaled (R) > 0.0);
+         Count (Fields, Float_Reading.Has_Blend (R));
+         Count (Fields, Float_Reading.Has_Biased (R));
+         Count (Fields, Float_Reading.Has_Capped (R) and then Float_Reading.Capped (R) <= 1.0);
+         Count (Fields, Float_Reading.Has_Gain_Squared (R));
+         Count (Fields, Float_Reading.Has_Gain_Squared_Whole (R));
+      end if;
+   end Run_Float_Reading;
+
    procedure Run_Valid_Fail_Range_Str is new
      Run_Parse_Only (Valid_Fail_Range_Str.T, Valid_Fail_Range_Str.Parse, Valid_Fail_Range_Str.Valid);
 
@@ -1205,6 +1231,9 @@ package body Fuzz_Targets is
 
          when Expr_To_I_Trailing_Parser        =>
             Run_Expr_To_I_Trailing (Input, Fields);
+
+         when Float_Reading_Parser             =>
+            Run_Float_Reading (Input, Fields);
 
          when Valid_Fail_Range_Str_Parser      =>
             Run_Valid_Fail_Range_Str (Input, Fields);

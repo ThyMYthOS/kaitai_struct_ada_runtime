@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Library: `Min_Element` and `Max_Element` of `Kaitai.Decoding` prove without the proof cache at level 1 in every run.
+  Their loops are generic in the width, with one instance for each of 1, 2, 4 and 8 bytes: the preconditions of
+  `Element` in the loop invariants took 3700 to 4700 steps and 0.9 to 1.5 s with the width as a variable, and
+  no check of the unit takes more than 4300 steps with a constant. The contracts are unchanged.
+
 - Compiler: an expression with a float that a procedure evaluates (`if`, `size`, `repeat-expr`, `repeat-until`,
   `valid`, `pos`, `switch-on`, an argument of a type; in `Parse`, in the parser of an element of a cursor, in the
   procedures of instances and in `Write`) is evaluated by a subprogram of its own in the body of the package

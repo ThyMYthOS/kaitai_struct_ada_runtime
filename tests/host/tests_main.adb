@@ -5,12 +5,14 @@ with Ada.Command_Line;
 with All_Tests;
 with Files_Tests;
 with Float_Reading_Tests;
+with Repeat_Elements_Tests;
 with Test_Support;
 
 procedure Tests_Main is
 begin
    Files_Tests.Run;
    Float_Reading_Tests.Run;
+   Repeat_Elements_Tests.Run;
    All_Tests;
    if Test_Support.Failures > 0 then
       Ada.Command_Line.Set_Exit_Status (Ada.Command_Line.Failure);

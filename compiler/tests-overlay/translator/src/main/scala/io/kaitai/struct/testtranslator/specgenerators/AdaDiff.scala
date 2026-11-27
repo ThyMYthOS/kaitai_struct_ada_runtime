@@ -136,7 +136,11 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
       case _ => false
     })
     val seq: List[MemberSpec] = cs.seq.filter(a => cc.isStored(a))
-    val inst: List[MemberSpec] = cs.instances.values.toList
+    // an instance that is a repeated field under another name has no accessors of its own; the field is dumped
+    val inst: List[MemberSpec] = cs.instances.values.toList.filter {
+      case v: ValueInstanceSpec => !v.dataType.isInstanceOf[ArrayType]
+      case _ => true
+    }
     params ++ seq ++ inst
   }
 

@@ -67,6 +67,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       List("_count", "_first", "_cursor", "_value", "_bits", "_case", "_kind", "_variant", "_expected", "_io", "_is_none", "_raw")
         .foreach(suf => out += (b + suf).toLowerCase)
       out += s"parse_${b}_element".toLowerCase
+      out += s"${b}_first_element".toLowerCase
+      out += s"${b}_last_element".toLowerCase
+      keptElems(cs).getOrElse(b, Nil).filter(_ > 0).foreach(k => out += s"${b}_element_$k".toLowerCase)
       dt match {
         case st: SwitchType =>
           st.cases.values.foreach {
@@ -198,6 +201,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         }
         val isSlice = v.dataType match {
           case _: BytesType | _: StrType => true
+          case ut: UserType => ut.classSpec.exists(hasBelongs)
           case _ => false
         }
         (v.ifExpr.isDefined || guards.nonEmpty, ub || isSlice)
@@ -3492,6 +3496,52 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
   // ------------------------------------------------------------------ repeats
 
+  /** The repeated field of `cs` that `e` names, directly or through a value instance that is just that name */
+  private def repeatedOf(cs: ClassSpec, e: Ast.expr, depth: Int = 0): Option[AttrSpec] = e match {
+    case Ast.expr.Name(Ast.identifier(n)) if !n.startsWith("_") =>
+      memberOpt(cs, n) match {
+        case Some(a: AttrSpec) if a.cond.repeat != NoRepeat => Some(a)
+        case Some(v: ValueInstanceSpec) if depth < 8 && v.ifExpr.isEmpty => repeatedOf(cs, v.value, depth + 1)
+        case _ => None
+      }
+    case _ => None
+  }
+
+  private val keptElemMemo = mutable.Map[String, Map[String, List[Int]]]()
+
+  /**
+    * The elements of the repetitions of `cs` whose elements are parsed one by one that an expression needs, by the
+    * name of the field: -1 is the last (`x.last`), 0 the first (`x.first`, `x[0]`), k the one with the number k (`x[k]`).
+    */
+  private def keptElems(cs: ClassSpec): Map[String, List[Int]] = keptElemMemo.getOrElseUpdate(cs.nameAsStr, {
+    val acc = mutable.Map[String, Set[Int]]()
+    def note(a: AttrSpec, key: Int): Unit =
+      if (AdaTranslator.fixedElement(a.dataType).isEmpty) {
+        val b = base(idRaw(a.id))
+        acc(b) = acc.getOrElse(b, Set()) + key
+      }
+    def walk(e: Ast.expr): Unit = {
+      e match {
+        case Ast.expr.Attribute(r, Ast.identifier("first")) => repeatedOf(cs, r).foreach(note(_, 0))
+        case Ast.expr.Attribute(r, Ast.identifier("last")) => repeatedOf(cs, r).foreach(note(_, -1))
+        case Ast.expr.Subscript(r, Ast.expr.IntNum(k)) if k >= 0 && k < (BigInt(1) << 20) => repeatedOf(cs, r).foreach(note(_, k.toInt))
+        case _ =>
+      }
+      exprKids(e).foreach(walk)
+    }
+    outsideExprs(cs).foreach(walk)
+    acc.map { case (k, v) => k -> v.toList.sorted }.toMap
+  })
+
+  override def keptElement(cs: ClassSpec, a: AttrSpec, key: Int): Option[String] =
+    if (!keptElems(cs).getOrElse(base(idRaw(a.id)), Nil).contains(key)) Some("it is not one that the description uses")
+    else a.dataType match {
+      case ut: UserType if ut.classSpec.exists(c => (c eq cs) || reaches(c, cs)) =>
+        Some("its type contains the type that has the repetition, so the record could not hold one")
+      case EnumType(_, _, _: BitsType) => Some("the elements are enumerations over bit fields")
+      case _ => None
+    }
+
   private def genRepeat(cs: ClassSpec, a: AttrSpec, rep: RepeatSpec, o: Out, rc: RC): Unit = {
     val nm = plain(idRaw(a.id))
     val bs = base(idRaw(a.id))
@@ -3702,6 +3752,34 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     o.comps += s"${bs}_Count : ${KT}Length := 0;"
     o.belongs += s"${KS}Is_Valid (This.${bs}_Io, Buffer)"
     o.rereads += s"$bs (see ${bs}_First)"
+    // the elements that expressions use are kept in the record
+    val keptKeys = if (keptElems(cs).getOrElse(bs, Nil).forall(k => keptElement(cs, a, k).isEmpty)) keptElems(cs).getOrElse(bs, Nil) else Nil
+    def keptComp(key: Int) = key match { case 0 => s"${bs}_First_Element"; case -1 => s"${bs}_Last_Element"; case k => s"${bs}_Element_$k" }
+    def keptAbsent(key: Int) = if (key <= 0) s"This.${bs}_Count = 0" else s"This.${bs}_Count <= $key"
+    def keptOk(comp: String): List[String] =
+      if (isScalar) Nil
+      else if (isSlice) List(s"${KT}Within ($comp, Buffer)")
+      else s"${elPkg}Valid ($comp)" :: (if (elBelongs) List(s"${elPkg}Belongs_To ($comp, Buffer)") else Nil)
+    // the components of the record are all set at the start of Parse, so that those not reached are too
+    if (keptKeys.nonEmpty) rc.scope.needsInit = true
+    keptKeys.foreach { key =>
+      val comp = keptComp(key)
+      o.comps += s"$comp : $elT${if (isScalar) " := " + defaultOf(elT) else ""};"
+      if (!isScalar && !isSlice) o.valid += s"(${keptAbsent(key)} or else ${elPkg}Valid (This.$comp))"
+      if (isSlice && !isScalar) o.belongs += s"${KT}Within (This.$comp, Buffer)"
+      else if (!isScalar && elBelongs) o.belongs += s"(${keptAbsent(key)} or else ${elPkg}Belongs_To (This.$comp, Buffer))"
+    }
+    // by the count (a loop whose count is set in it) or by the turn (a loop whose count is set before it)
+    def keptInv(byCount: Boolean): String = (if (byCount && keptKeys.nonEmpty && !isScalar) List(s" and then This.${bs}_Count = I") else Nil).mkString + keptKeys.flatMap { key =>
+      val ok = keptOk(s"This.${keptComp(key)}")
+      if (ok.isEmpty) Nil
+      else {
+        val gate = if (byCount) keptAbsent(key) else s"I <= $key"
+        val plainOk = ok.mkString(" and then ")
+        // a slice that was not set is empty and lies in any buffer; what is set in the first turn holds in all
+        if (isSlice || (!byCount && key <= 0)) List(" and then " + plainOk) else List(s" and then ($gate or else ($plainOk))")
+      }
+    }.mkString
     // the statements that read one element, and whether they use `_index`
     val elScope = new Scope
     val inHelperRc = RC("S", if (storesOrder(cs)) "This.Order" else "", elScope, a.path)
@@ -3863,6 +3941,15 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       else s"${KS}Remaining (S)"
     // a slice has no validity to look at; the loop uses the element in its invariant
     val sliceInv = if (isSlice && !isScalar) s" and then ${KT}Within ($el, Buffer)" else ""
+    // after an element is read: the statements that keep it, and what is then true of the record
+    def keptStmts(el: String, idx: String): List[String] = keptKeys.flatMap {
+      case -1 => List(s"This.${keptComp(-1)} := $el;")
+      case 0 => List(s"if $idx = 1 then", s"   This.${keptComp(0)} := $el;", "end if;")
+      case k =>
+        // an element that read nothing ends the loop, and the numbers after it are all that element
+        val cmp = if (rep.isInstanceOf[RepeatExpr] && mayBeEmpty(dt) && !usesIndex) "<=" else "="
+        List(s"if $idx $cmp ${k + 1} then", s"   This.${keptComp(k)} := $el;", "end if;")
+    }
     val loop: List[String] = rep match {
       case RepeatExpr(e) =>
         val t = T(e, rc)
@@ -3880,12 +3967,12 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
           }
         guarded(t.guards, List(s"This.${bs}_Count := ${countCode(t)};"), rc, Nil) ++ List(
           s"for $Iv in 1 .. This.${bs}_Count loop"
-        ) ++ ind(before ++ List(parseCall, s"exit when not ${valid(el).replace("OK (S)", "OK (S)")};") ++ checks ++ same ++ List(
-          s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv);")) ++ List("end loop;")
+        ) ++ ind(before ++ List(parseCall, s"exit when not ${valid(el).replace("OK (S)", "OK (S)")};") ++ keptStmts(el, Iv) ++ checks ++ same ++ List(
+          s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv${keptInv(false)});")) ++ List("end loop;")
       case RepeatEos =>
         List(s"This.${bs}_Count := 0;", s"for $Iv in 1 .. $bound loop") ++
-          ind(List(s"exit when ${KS}Is_EOF (S);", parseCall, s"exit when not ${valid(el)};") ++ checks ++ List(s"This.${bs}_Count := $Iv;",
-            s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv);")) ++ List(
+          ind(List(s"exit when ${KS}Is_EOF (S);", parseCall, s"exit when not ${valid(el)};") ++ keptStmts(el, Iv) ++ checks ++ List(s"This.${bs}_Count := $Iv;",
+            s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv${keptInv(true)});")) ++ List(
           "end loop;", s"if ${KS}OK (S) and then not ${KS}Is_EOF (S) then", "   " + failStmt(rc, "Limit_Exceeded"), "end if;")
       case RepeatUntil(cond) =>
         val done = rc.scope.fresh("Done")
@@ -3899,9 +3986,9 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         tr.knownValid = Set()
         val check = guarded(ct.guards, List(s"$done := ${ct.code};"), rc, List(s"$done := True;"), init = false)
         List(s"This.${bs}_Count := 0;", s"$done := False;", s"for $Iv in 1 .. $bound + 1 loop") ++
-          ind(List(parseCall, s"exit when not ${valid(el)};") ++ planLoop ++ checks ++ List(s"This.${bs}_Count := $Iv;") ++ check ++ List(
+          ind(List(parseCall, s"exit when not ${valid(el)};") ++ keptStmts(el, Iv) ++ planLoop ++ checks ++ List(s"This.${bs}_Count := $Iv;") ++ check ++ List(
             s"exit when $done;",
-            s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv and then not $done${planInvariant});")) ++
+            s"pragma Loop_Invariant (${KS}Is_Valid (S, Buffer) and then ${KS}Advanced (S'Loop_Entry, S)$sliceInv and then not $done${planInvariant}${keptInv(true)});")) ++
           List("end loop;", s"if ${KS}OK (S) and then not $done then", "   " + failStmt(rc, "Limit_Exceeded"), "end if;")
       case NoRepeat => Nil
     }
@@ -3925,6 +4012,19 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         describe(List(s"Instance $kq, the constant $n, which is above the largest Kaitai.Types.S64 and so is a Kaitai.Types.U64 that no expression can use"), v.doc))
       tr.buffer = saveBuf
       return
+    }
+    v.dataType match {
+      case _: ArrayType =>
+        repeatedOf(cs, v.value) match {
+          case Some(r) if v.ifExpr.isEmpty =>
+            // the value is the repeated field itself: it has no accessor of its own, the accessors of the field are its own
+            o.pub ++= ind(describe(List(s"Instance $kq is the repeated field ${q(idRaw(r.id))}; it has no accessors of its own"), v.doc, Nil), 1)
+            o.pub += ""
+            tr.buffer = saveBuf
+            return
+          case _ => throw new AdaUnsupported("value instance that is an array, other than a repeated field under another name")
+        }
+      case _ =>
     }
     val t = guard(path)(tr.translate(v.value))
     val ct = v.ifExpr.map(c => guard(path)(tr.translate(c)))
@@ -3978,6 +4078,15 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
             accessor(o, nm, KT + "Slice", pre, Some(s"${KT}Within ($nm'Result, Buffer)"), t.code, params,
               describe(List(s"Instance $kq, ${whatIs(v.dataType)}, as a slice of the buffer"), v.doc, computed))
           case _ => throw new AdaUnsupported("value instance of bytes or string that is not a field")
+        }
+      case ut: UserType =>
+        t.vt match {
+          case VUser(c) if (c eq ut.classSpec.get) && t.code.matches("This\\..*(_First_Element|_Last_Element|_Element_[0-9]+)") =>
+            val pkg = packageOf(c)
+            val belongs = if (hasBelongs(c)) s" and then $pkg.Belongs_To ($nm'Result, Buffer)" else ""
+            accessor(o, nm, s"$pkg.T", pre, Some(s"$pkg.Valid ($nm'Result)$belongs"), t.code, params,
+              describe(List(s"Instance $kq, a value of the type ${q(c.nameAsStr)}"), v.doc, computed))
+          case _ => throw new AdaUnsupported("value instance of a user type that is not a field or an element of a repetition")
         }
       case other => throw new AdaUnsupported(s"value instance of type $other")
     }

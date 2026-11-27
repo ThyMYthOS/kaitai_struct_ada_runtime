@@ -13,6 +13,17 @@
   New formats generated: `floating_points`, `float_to_i`, `valid_fail_range_float`. Example `float_reading`; the
   comparison with Python has `compiler/diff-formats/x_floats` and `x_floats_seq` and a known difference for
   expressions with infinity. See `docs/codegen.md`, "Floating-point numbers".
+
+- Compiler: `.first`, `.last` and `x[k]` with a constant `k` of a repetition in expressions, and `.min` and `.max` of
+  integers of a fixed size. For integers of a fixed size (a slice) they decode from the buffer; `.min` and `.max` walk
+  all elements at every evaluation (`Kaitai.Decoding.Min_Element`, `Max_Element`, new). For the other repetitions
+  `Parse` keeps the elements that the description uses (`X_First_Element`, `X_Last_Element`, `X_Element_K`) in `T`: one
+  copy per element for `.last`, a test per element for each of the others, and the size of an element in `T` per kept
+  element. A value instance that is a repeated field under another name has no accessor of its own, and a value
+  instance that is such an element returns it. New formats generated: `repeat_until_calc_array_type`,
+  `repeat_until_term_bytes`, `repeat_until_term_struct`. Example `repeat_elements`, differential descriptions
+  `x_rep_elements`, `x_rep_self` (a repeat-until that uses its own field) and `x_floats_rep` (floats of kept elements).
+
 - Compiler: `valid` and `contents` on a repetition of bytes, strings or bit fields are checked on each element in
   `Parse`. Example `repeat_valid`.
 

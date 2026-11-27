@@ -472,6 +472,38 @@ subscript of a repetition of structures, bytes or strings, `x[_index - 1]`
 included: such an access would parse the elements before it again for each
 element.
 
+#### Values of a whole repetition in expressions
+
+`x.size` is the number of elements. `x.first`, `x.last` and `x[k]` with a constant `k` are an element and have no value
+if there is none (the expression is not defined, as a division by zero is not). `x.min` and `x.max` are the least and
+largest of integers of a fixed size. A subscript with an index that comes from the data is generated only for integers
+of a fixed size, which are a slice; for the others it is rejected, since finding the element would parse those before it
+at every use.
+
+- Integers of a fixed size are a slice: `.first`, `.last` and `x[k]` decode one element from the buffer, in constant
+  time. `.min` and `.max` call `Kaitai.Decoding.Min_Element` or `Max_Element`, which go over all elements: the cost is
+  the number of elements at every evaluation, and an expression that is evaluated for every element of a repetition
+  makes the cost grow with the square of the count. Unsigned integers of 8 bytes are rejected for them, since the result
+  may not fit the signed 64 bits that expressions compute in.
+- Structures, bytes, strings and bit fields: `Parse` keeps the elements that the description uses in the record,
+  `X_First_Element` for `.first` and `x[0]`, `X_Last_Element` for `.last` and `X_Element_K` for `x[K]`, so that an
+  expression that needs one is a component, in a value instance, in the condition of a `repeat-until` or elsewhere, and
+  costs nothing per use. `Parse` copies the element into the component: one copy per element for `.last`, a test of the
+  number per element for each of the others and one copy for it. `T` is as much larger as the elements kept, which is a
+  slice for bytes and strings and the record of the element for a structure. A structure that contains the type that has
+  the repetition cannot be kept (the record would contain itself). The decision to keep and not to parse again follows a
+  measurement of models of this code (`bench/src/rep_use`, `last_get` against `last_kept`): to find the last element by
+  walking again costs a second walk for every use (about 118 instructions per element on x86-64 and 112 on a Cortex-M4,
+  as much as the parse itself), keeping it costs 3 instructions per element (2 on the Cortex-M4), and a use inside a
+  loop, such as `repeat-until: _ == records1.last`, would make the walk grow with the square of the count.
+- An element kept has `Valid` (and `Belongs_To`) in the `Valid` and `Belongs_To` of the record if the field has at least
+  that many elements; the components are set to their defaults at the start of `Parse`, so the ones that are not reached
+  are not left undefined.
+- A value instance that is only the name of a repeated field (`value: items`) has no accessor of its own: the accessors of
+  the field are its accessors, and `x.first` through it is the same as `items.first`. A value instance that is the first
+  or last element of a repetition of structures returns the record, with the postcondition that it is valid.
+- An element with a number from `x[_index - 1]` stays rejected as before.
+
 ## Expressions
 
 Integer expressions are computed in `S64`. Every operand is converted to it,

@@ -84,4 +84,57 @@ is
    is (if Value < 2**63 then S64 (Value) else S64 (Value - 2**63) + S64'First)
    with Inline;
 
+   --  Integers in a block of elements of one size, as they lie in a repetition of Kaitai Struct
+
+   --  True if Items holds at least one whole element of Width bytes in Buffer, Width is 1, 2, 4 or 8, and the elements
+   --  can be delivered as S64: Signed is set, or they have fewer than 8 bytes
+   function Elements_OK (Buffer : Bytes; Items : Slice; Width : Length; Signed : Boolean) return Boolean
+   is (Within (Items, Buffer)
+       and then (Width = 1 or else Width = 2 or else Width = 4 or else Width = 8)
+       and then Size (Items) >= Width
+       and then Size (Items) mod Width = 0
+       and then (Signed or else Width < 8));
+
+   --  The integer of Width bytes at From, with the byte order Order, as an S64: two's complement if Signed, else
+   --  unsigned
+   function Element (Buffer : Bytes; From : Index; Width : Length; Signed : Boolean; Order : Byte_Order) return S64
+   is (if Width = 1
+       then (if Signed then S64 (To_S8 (U8_At (Buffer, From))) else S64 (U8_At (Buffer, From)))
+       elsif Width = 2
+       then
+         (if Signed
+          then S64 (To_S16 (if Order = Little_Endian then U16_LE (Buffer, From) else U16_BE (Buffer, From)))
+          else S64 (if Order = Little_Endian then U16_LE (Buffer, From) else U16_BE (Buffer, From)))
+       elsif Width = 4
+       then
+         (if Signed
+          then S64 (To_S32 (if Order = Little_Endian then U32_LE (Buffer, From) else U32_BE (Buffer, From)))
+          else S64 (if Order = Little_Endian then U32_LE (Buffer, From) else U32_BE (Buffer, From)))
+       else To_S64 (if Order = Little_Endian then U64_LE (Buffer, From) else U64_BE (Buffer, From)))
+   with
+     Pre =>
+       (Width = 1 or else Width = 2 or else Width = 4 or else Width = 8)
+       and then Has (Buffer, From, Width)
+       and then (Signed or else Width < 8);
+
+   --  The smallest of the elements of Width bytes in Items
+   function Min_Element (Buffer : Bytes; Items : Slice; Width : Length; Signed : Boolean; Order : Byte_Order) return S64
+   with
+     Pre  => Elements_OK (Buffer, Items, Width, Signed),
+     Post =>
+       (for all J in 0 .. Size (Items) / Width - 1 =>
+          Min_Element'Result <= Element (Buffer, Items.First + J * Width, Width, Signed, Order))
+       and then (for some J in 0 .. Size (Items) / Width - 1 =>
+                   Min_Element'Result = Element (Buffer, Items.First + J * Width, Width, Signed, Order));
+
+   --  The largest of the elements of Width bytes in Items
+   function Max_Element (Buffer : Bytes; Items : Slice; Width : Length; Signed : Boolean; Order : Byte_Order) return S64
+   with
+     Pre  => Elements_OK (Buffer, Items, Width, Signed),
+     Post =>
+       (for all J in 0 .. Size (Items) / Width - 1 =>
+          Max_Element'Result >= Element (Buffer, Items.First + J * Width, Width, Signed, Order))
+       and then (for some J in 0 .. Size (Items) / Width - 1 =>
+                   Max_Element'Result = Element (Buffer, Items.First + J * Width, Width, Signed, Order));
+
 end Kaitai.Decoding;

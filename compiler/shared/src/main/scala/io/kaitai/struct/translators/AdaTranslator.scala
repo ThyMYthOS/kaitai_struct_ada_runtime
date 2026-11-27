@@ -95,6 +95,12 @@ trait AdaTranslatorEnv {
     * the record, so that expressions can use it as they use a field; otherwise why not.
     */
   def instanceNotKept(cs: ClassSpec, inst: ParseInstanceSpec): Option[String]
+  /**
+    * None if `Parse` of `cs` keeps an element of the repeated field `a` (which `Parse` goes over without keeping the
+    * elements) in the record: the first (key 0), the last (key -1) or the one with the number `key`, a constant of an
+    * expression; otherwise why not.
+    */
+  def keptElement(cs: ClassSpec, a: AttrSpec, key: Int): Option[String]
 }
 
 object AdaTranslator {
@@ -383,52 +389,24 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
   private def translateSubscript(a: Ast.expr, b: Ast.expr): ATr = {
     val cs = provider.nowClass
     a match {
-      case Ast.expr.Name(id) if isRepeatedMember(cs, id.name) =>
+      case _ if repeatedMember(cs, a).isDefined =>
+        val m = repeatedMember(cs, a).get
+        val id = m.id
         val i = translate(b)
         requireInt(i)
-        val m = provider.resolveMember(cs, id.name) match {
-          case at: AttrSpec => at
-          case _ => unsupported(s"subscript of the repeated member `${id.name}`")
-        }
-        if (hasProcess(m.dataType)) unsupported(s"field `${id.name}` has `process`; its value exists only when it is asked for")
+        if (hasProcess(m.dataType)) unsupported(s"field `${id.humanReadable}` has `process`; its value exists only when it is asked for")
         m.cond.repeat match {
-          case RepeatUntil(_) => unsupported("subscript of a repetition until a condition")
+          case RepeatUntil(_) if AdaTranslator.fixedElement(m.dataType).isDefined => unsupported("subscript of a repetition until a condition")
           case _ =>
         }
-        val base = m.dataType match {
-          case EnumType(_, _, bb) => bb
-          case other => other
+        if (AdaTranslator.fixedElement(m.dataType).isEmpty) {
+          // elements that are parsed one by one: the one with a constant number is kept by `Parse`
+          b match {
+            case Ast.expr.IntNum(n) if n >= 0 && n < (BigInt(1) << 20) => return keptElement(cs, m, n.toInt)
+            case _ => unsupported(s"subscript of the repeated member `${id.humanReadable}` with an index that is not a constant: its elements are parsed one by one and not kept, and finding one would parse those before it again at every use")
+          }
         }
-        base match {
-          case _: FloatMultiType | _: BitsType | _: BitsType1 => unsupported("subscript of a repetition of floats or of bit fields")
-          case _ =>
-        }
-        val size = fixedElement(m.dataType).getOrElse(unsupported(s"subscript of the repeated member `${id.name}`"))
-        val comp = env.memberName(cs, m.id)
-        val has = if (m.cond.ifExpr.isDefined) List(s"$thisName.${env.presenceName(cs, m.id)}") else Nil
-        ops += "Length"
-        val count = s"Kaitai.Types.S64 (Kaitai.Types.Size ($thisName.$comp) / $size)"
-        val guards = i.guards ++ has ++ (if (i.lo >= 0) Nil else List(s"${i.atom} >= 0")) ++ List(s"${i.atom} < $count")
-        sliceUses += s"$thisName.$comp"
-        val at = s"$thisName.$comp.First + Kaitai.Types.Length (${i.code}) * $size"
-        val dec = "Kaitai.Decoding."
-        val decoded = base match {
-          case Int1Type(sg) =>
-            val r = s"${dec}U8_At (${useBuffer()}, $at)"
-            if (sg) s"${dec}To_S8 ($r)" else r
-          case IntMultiType(sg, w, fe) =>
-            val bits = w.width * 8
-            val le = s"${dec}U${bits}_LE (${useBuffer()}, $at)"
-            val be = s"${dec}U${bits}_BE (${useBuffer()}, $at)"
-            val r = fe match {
-              case Some(LittleEndian) => le
-              case Some(BigEndian) => be
-              case _ => ops += "Byte_Order"; s"(if $thisName.Order = Kaitai.Types.Little_Endian then $le else $be)"
-            }
-            if (sg) s"${dec}To_S$bits ($r)" else r
-          case other => unsupported(s"subscript of a repetition of $other")
-        }
-        fromValue(m.dataType, decoded, guards).copy(usesBuffer = true)
+        sliceElement(cs, m, i)
       case Ast.expr.Name(id) if processedBytes(cs, id.name).isDefined =>
         processedSubscript(cs, processedBytes(cs, id.name).get, b)
       case _ =>
@@ -448,6 +426,124 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
             int(s"Kaitai.Types.S64 ($bf (${v.atom}.First + Kaitai.Types.Length (${i.code})))", 0, guards, 0, 255, ub = true)
           case _ => unsupported("subscript of something that is not bytes or a repetition of integers")
         }
+    }
+  }
+
+  /** The member of the current type that `e` names if it is a repeated field, directly or through a value instance that is just that name */
+  private def repeatedMember(cs: ClassSpec, e: Ast.expr, depth: Int = 0): Option[AttrSpec] = e match {
+    case Ast.expr.Name(id) if !id.name.startsWith("_") =>
+      try provider.resolveMember(cs, id.name) match {
+        case at: AttrSpec if at.cond.repeat != NoRepeat => Some(at)
+        case v: ValueInstanceSpec if depth < 8 && v.ifExpr.isEmpty => repeatedMember(cs, v.value, depth + 1)
+        case _ => None
+      } catch { case _: Throwable => None }
+    case _ => None
+  }
+
+  /** Element `i` of the repetition `m` of integers of a fixed size, decoded from the buffer where it lies in the record */
+  private def sliceElement(cs: ClassSpec, m: AttrSpec, i: ATr): ATr = {
+    val id = m.id
+    val base = m.dataType match {
+      case EnumType(_, _, bb) => bb
+      case other => other
+    }
+    base match {
+      case _: FloatMultiType | _: BitsType | _: BitsType1 => unsupported("element of a repetition of floats or of bit fields")
+      case _ =>
+    }
+    val size = fixedElement(m.dataType).getOrElse(unsupported(s"element of the repeated member `${id.humanReadable}`"))
+    val comp = env.memberName(cs, m.id)
+    val has = if (m.cond.ifExpr.isDefined) List(s"$thisName.${env.presenceName(cs, m.id)}") else Nil
+    ops += "Length"
+    val count = s"Kaitai.Types.S64 (Kaitai.Types.Size ($thisName.$comp) / $size)"
+    val guards = i.guards ++ has ++ (if (i.lo >= 0) Nil else List(s"${i.atom} >= 0")) ++ List(s"${i.atom} < $count")
+    sliceUses += s"$thisName.$comp"
+    val at = s"$thisName.$comp.First + Kaitai.Types.Length (${i.code}) * $size"
+    val dec = "Kaitai.Decoding."
+    val decoded = base match {
+      case Int1Type(sg) =>
+        val r = s"${dec}U8_At (${useBuffer()}, $at)"
+        if (sg) s"${dec}To_S8 ($r)" else r
+      case IntMultiType(sg, w, fe) =>
+        val bits = w.width * 8
+        val le = s"${dec}U${bits}_LE (${useBuffer()}, $at)"
+        val be = s"${dec}U${bits}_BE (${useBuffer()}, $at)"
+        val r = fe match {
+          case Some(LittleEndian) => le
+          case Some(BigEndian) => be
+          case _ => ops += "Byte_Order"; s"(if $thisName.Order = Kaitai.Types.Little_Endian then $le else $be)"
+        }
+        if (sg) s"${dec}To_S$bits ($r)" else r
+      case other => unsupported(s"subscript of a repetition of $other")
+    }
+    fromValue(m.dataType, decoded, guards).copy(usesBuffer = true)
+  }
+
+  /** `.first`, `.last`, `.min` or `.max` of the repeated field `m` */
+  private def repeatedAttr(cs: ClassSpec, m: AttrSpec, attr: String): ATr = {
+    val name = m.id.humanReadable
+    if (hasProcess(m.dataType)) unsupported(s"field `$name` has `process`; its value exists only when it is asked for")
+    if (AdaTranslator.fixedElement(m.dataType).isDefined) {
+      m.cond.repeat match {
+        case RepeatUntil(_) => unsupported(s"`.$attr` of a repetition until a condition")
+        case _ =>
+      }
+      val comp = env.memberName(cs, m.id)
+      val size = fixedElement(m.dataType).get
+      attr match {
+        case "first" => sliceElement(cs, m, ATr("0", 0, Nil, VInt, 0, 0, isLiteral = true))
+        case "last" =>
+          ops += "Length"
+          val count = s"Kaitai.Types.S64 (Kaitai.Types.Size ($thisName.$comp) / $size)"
+          sliceElement(cs, m, int(s"$count - 1", 1, Nil, -1, S64Max))
+        case "min" | "max" =>
+          // one pass over the elements, at every evaluation
+          val (signed, order) = m.dataType match {
+            case Int1Type(sg) => (sg, "Kaitai.Types.Little_Endian")
+            case IntMultiType(sg, w, fe) =>
+              if (w.width == 8 && !sg) unsupported(s"`.$attr` of the repeated member `$name`, whose elements are unsigned integers of 64 bits that may not fit a signed 64-bit integer")
+              (sg, fe match {
+                case Some(LittleEndian) => "Kaitai.Types.Little_Endian"
+                case Some(BigEndian) => "Kaitai.Types.Big_Endian"
+                case _ => s"$thisName.Order"
+              })
+            case _ => unsupported(s"`.$attr` of the repeated member `$name`, whose elements are not integers")
+          }
+          val (_, lo, hi) = intInfo(m.dataType).getOrElse(unsupported(s"`.$attr` of the repeated member `$name`"))
+          val has = if (m.cond.ifExpr.isDefined) List(s"$thisName.${env.presenceName(cs, m.id)}") else Nil
+          val b = useBuffer()
+          val fn = if (attr == "min") "Min_Element" else "Max_Element"
+          val sg = if (signed) "True" else "False"
+          val items = s"$thisName.$comp"
+          sliceUses += items
+          int(s"Kaitai.Decoding.$fn ($b, $items, $size, $sg, $order)", 0,
+            has ++ List(s"Kaitai.Decoding.Elements_OK ($b, $items, $size, $sg)"), lo, hi, ub = true)
+        case _ => unsupported(s"`.$attr` of the repeated member `$name`")
+      }
+    } else attr match {
+      case "first" => keptElement(cs, m, 0)
+      case "last" => keptElement(cs, m, -1)
+      case _ => unsupported(s"`.$attr` of the repeated member `$name`, whose elements are not integers of a fixed size")
+    }
+  }
+
+  /** An element that `Parse` keeps in the record: component, and that it is there if the field has at least that many elements */
+  private def keptElement(cs: ClassSpec, m: AttrSpec, key: Int): ATr = {
+    val name = m.id.humanReadable
+    env.keptElement(cs, m, key).foreach(why => unsupported(s"element of the repeated member `$name`: $why"))
+    val bs = env.memberBase(m.id)
+    val comp = key match {
+      case 0 => s"${bs}_First_Element"
+      case -1 => s"${bs}_Last_Element"
+      case k => s"${bs}_Element_$k"
+    }
+    val has = if (m.cond.ifExpr.isDefined) List(s"$thisName.${env.presenceName(cs, m.id)}") else Nil
+    val count = s"$thisName.${bs}_Count"
+    val guards = has ++ List(s"$count > ${if (key < 0) 0 else key}")
+    val r = fromValue(m.dataType, s"$thisName.$comp", guards)
+    r.vt match {
+      case VBytes | VStr(_) => r.copy(usesBuffer = true)
+      case _ => r
     }
   }
 
@@ -700,11 +796,15 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
         case _ => unsupported(s"`_root._io.$attr`")
       }
     }
-    // a repetition of the current type: only its size
-    value match {
-      case Ast.expr.Name(id) if attr == "size" && isRepeatedMember(provider.nowClass, id.name) =>
-        return arraySize(provider.nowClass, id.name, thisName, Nil)
-      case _ =>
+    // a repetition of the current type: its size, its first and last element, and the least and largest of integers
+    repeatedMember(provider.nowClass, value) match {
+      case Some(m) =>
+        return attr match {
+          case "size" => arraySize(provider.nowClass, m.id.humanReadable, thisName, Nil)
+          case "first" | "last" | "min" | "max" => repeatedAttr(provider.nowClass, m, attr)
+          case _ => unsupported(s"`.$attr` of the repeated field `${m.id.humanReadable}`")
+        }
+      case None =>
     }
     val v = value match {
       case Ast.expr.Name(id) if isRepeatedMember(provider.nowClass, id.name) =>

@@ -29,6 +29,7 @@ with Outside;
 with Params_Def;
 with Position_Abs;
 with Repeat_Bits;
+with Repeat_Elements;
 with Repeat_Eos_U4;
 with Repeat_Index;
 with Repeat_N_Empty;
@@ -176,6 +177,32 @@ package body Fuzz_Targets is
 
    Repeat_Valid_Data : constant Bytes := (16#4B#, 16#53#, 16#4B#, 16#53#, 16#01#, 16#02#, 16#03#, 16#04#);
 
+   Repeat_Elements_Data : constant Bytes :=
+     (16#03#,
+      16#0A#,
+      16#00#,
+      16#14#,
+      16#00#,
+      16#1E#,
+      16#00#,
+      16#05#,
+      16#01#,
+      16#07#,
+      16#02#,
+      16#00#,
+      16#03#,
+      16#61#,
+      16#62#,
+      16#00#,
+      16#63#,
+      16#00#,
+      16#09#,
+      16#02#,
+      16#FF#,
+      16#FE#,
+      16#00#,
+      16#03#);
+
    Bits_In_Types_Data    : constant Bytes := (16#AB#, 16#CD#);
    Bits_In_Repeat_Data   : constant Bytes := (16#AB#, 16#CD#, 16#EF#, 16#12#);
    Bits_After_Bytes_Data : constant Bytes := (16#11#, 16#B6#, 16#2A#, 16#07#);
@@ -299,6 +326,9 @@ package body Fuzz_Targets is
 
          when Repeat_Index_Parser              =>
             return Repeat_Index_Data;
+
+         when Repeat_Elements_Parser           =>
+            return Repeat_Elements_Data;
 
          when Repeat_Valid_Parser              =>
             return Repeat_Valid_Data;
@@ -658,6 +688,38 @@ package body Fuzz_Targets is
    end Run_Repeat_Index;
 
    procedure Run_Repeat_Valid is new Run_Parse_Only (Repeat_Valid.T, Repeat_Valid.Parse, Repeat_Valid.Valid);
+   --  The values that expressions take from the repetitions: the kept elements and the least and largest integers
+   procedure Run_Repeat_Elements (Input : Bytes; Fields : out Natural);
+
+   procedure Run_Repeat_Elements (Input : Bytes; Fields : out Natural) is
+      S : Stream := Open (Input);
+      R : Repeat_Elements.T;
+   begin
+      Fields := 0;
+      Repeat_Elements.Parse (R, Input, S);
+      pragma Assert (Repeat_Elements.Valid (R) = OK (S));
+      if not Repeat_Elements.Valid (R) then
+         return;
+      end if;
+      Fields := 1;
+      pragma Assert (Repeat_Elements.Belongs_To (R, Input));
+      if Repeat_Elements.Has_First_Num (R, Input) then
+         Count (Fields, Repeat_Elements.First_Num (R, Input) <= Repeat_Elements.Max_Num (R, Input));
+      end if;
+      if Repeat_Elements.Has_Min_Num (R, Input) then
+         Count (Fields, Repeat_Elements.Min_Num (R, Input) <= Repeat_Elements.Last_Num (R, Input));
+      end if;
+      if Repeat_Elements.Has_Min_Signed (R, Input) then
+         Count (Fields, Repeat_Elements.Min_Signed (R, Input) <= Repeat_Elements.Max_Signed (R, Input));
+      end if;
+      if Repeat_Elements.Has_First_Rec (R) then
+         Count (Fields, Repeat_Elements.Rec_Type.Valid (Repeat_Elements.First_Rec (R)));
+      end if;
+      if Repeat_Elements.Has_W_Last_Len (R, Input) and then Repeat_Elements.Has_Second_Word_Len (R, Input) then
+         Count (Fields, Repeat_Elements.W_Last_Len (R, Input) = Repeat_Elements.Second_Word_Len (R, Input));
+      end if;
+   end Run_Repeat_Elements;
+
    procedure Run_Repeat_N_Empty is new Run_Parse_Only (Repeat_N_Empty.T, Repeat_N_Empty.Parse, Repeat_N_Empty.Valid);
    procedure Run_Repeat_Eos_U4 is new Run_Parse_Only (Repeat_Eos_U4.T, Repeat_Eos_U4.Parse, Repeat_Eos_U4.Valid);
    procedure Run_Repeat_Until_Complex is new
@@ -1147,6 +1209,9 @@ package body Fuzz_Targets is
 
          when Repeat_Index_Parser              =>
             Run_Repeat_Index (Input, Fields);
+
+         when Repeat_Elements_Parser           =>
+            Run_Repeat_Elements (Input, Fields);
 
          when Repeat_Eos_U4_Parser             =>
             Run_Repeat_Eos_U4 (Input, Fields);

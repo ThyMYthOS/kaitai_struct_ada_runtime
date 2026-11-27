@@ -24,7 +24,11 @@ is
          Buffer            : Kaitai.Types.Bytes;
          S                 : in out Kaitai.Streams.Stream;
          Parent_Len_Secret : Kaitai.Types.U8;
-         Root_Key          : Kaitai.Types.U8) is
+         Root_Key          : Kaitai.Types.U8)
+      is
+         pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+         S_Entry : constant Kaitai.Streams.Stream := S
+         with Ghost;
       begin
          This := (others => <>);
          This.Parent_Len_Secret := Parent_Len_Secret;
@@ -34,6 +38,7 @@ is
             This.Has_Extra := True;
             Kaitai.Streams.Read_U1 (Buffer, S, This.Extra);
          end if;
+         pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
          This.Is_Valid := Kaitai.Streams.OK (S);
       end Parse;
 
@@ -72,6 +77,9 @@ is
          Depth    : Natural)
       is
          Element : T;
+         pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+         S_Entry : constant Kaitai.Streams.Stream := S
+         with Ghost;
       begin
          This := (others => <>);
          This.Root_Key := Root_Key;
@@ -86,10 +94,12 @@ is
             pragma
               Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
          end loop;
+         pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
          if Kaitai.Types.S64 (This.Root_Key) /= 0 then
             This.Has_Weight := True;
             Kaitai.Streams.Read_U1 (Buffer, S, This.Weight);
          end if;
+         pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
          This.Is_Valid := Kaitai.Streams.OK (S);
       end Parse;
 
@@ -116,6 +126,9 @@ is
    procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Item_Type.T;
       Before  : Kaitai.Streams.Stream;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       Kaitai.Streams.Read_U1 (Buffer, S, This.Key);
       Kaitai.Streams.Read_U1 (Buffer, S, This.Len_Secret);
@@ -134,7 +147,9 @@ is
            and then Kaitai.Streams.Bits_Left (S) = Kaitai.Streams.Bits_Left (Before);
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       Node_Type.Parse (This.Tree, Buffer, S, This.Key, Max_Depth);
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

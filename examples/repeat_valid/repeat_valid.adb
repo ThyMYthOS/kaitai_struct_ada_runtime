@@ -46,6 +46,9 @@ is
       Element   : Kaitai.Types.Slice;
       Before    : Kaitai.Streams.Stream;
       Element_2 : Kaitai.Types.Slice;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry   : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       This.Marks_Io := S;
       This.Marks_Count := 2;
@@ -67,6 +70,7 @@ is
                 and then Kaitai.Streams.Advanced (S'Loop_Entry, S)
                 and then Kaitai.Types.Within (Element, Buffer));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       This.Pairs_Io := S;
       This.Pairs_Count := 0;
       for I in 1 .. Kaitai.Streams.Remaining (S) loop
@@ -84,6 +88,7 @@ is
                 and then Kaitai.Streams.Advanced (S'Loop_Entry, S)
                 and then Kaitai.Types.Within (Element_2, Buffer));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Kaitai.Streams.Is_EOF (S) then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;

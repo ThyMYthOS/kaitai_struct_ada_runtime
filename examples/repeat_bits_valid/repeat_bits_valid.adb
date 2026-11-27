@@ -22,6 +22,9 @@ is
    procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Bits_Element;
       pragma Warnings (Off, Element);
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       This.Bits_Io := S;
       This.Bits_Count := 4;
@@ -38,6 +41,7 @@ is
          exit when not Kaitai.Streams.OK (S);
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

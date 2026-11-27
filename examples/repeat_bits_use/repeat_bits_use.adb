@@ -39,6 +39,9 @@ is
       pragma Warnings (Off, Element_2);
       Done_2    : Boolean;
       Bit       : Kaitai.Types.U64;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry   : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       This := (others => <>);
       Kaitai.Streams.Align_To_Byte (S);
@@ -62,6 +65,7 @@ is
            Loop_Invariant
              (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S) and then not Done);
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Done then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;
@@ -103,10 +107,12 @@ is
                 and then Kaitai.Streams.Advanced (S'Loop_Entry, S)
                 and then not Done_2);
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Done_2 then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;
       Kaitai.Streams.Read_U1 (Buffer, S, This.Tail);
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

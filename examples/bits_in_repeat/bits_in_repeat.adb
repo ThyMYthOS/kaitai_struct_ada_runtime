@@ -22,6 +22,9 @@ is
    procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Nib_Type.T;
       Before  : Kaitai.Streams.Stream;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       Kaitai.Streams.Align_To_Byte (S);
       Kaitai.Streams.Read_Bits_Int_Be (Buffer, S, 4, This.A);
@@ -37,7 +40,9 @@ is
            and then Kaitai.Streams.Bits_Left (S) = Kaitai.Streams.Bits_Left (Before);
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       Kaitai.Streams.Read_U1 (Buffer, S, This.D);
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

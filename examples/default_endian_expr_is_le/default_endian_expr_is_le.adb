@@ -56,6 +56,9 @@ is
 
    procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Doc_Type.T;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       This.Docs_Io := S;
       This.Docs_Count := 0;
@@ -66,6 +69,7 @@ is
          This.Docs_Count := I;
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Kaitai.Streams.Is_EOF (S) then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;

@@ -31,6 +31,9 @@ is
    end Eval_Fraction_Max;
 
    procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       This := (others => <>);
       Kaitai.Streams.Read_U4le (Buffer, S, This.Celsius);
@@ -48,6 +51,7 @@ is
          This.Has_Bias := True;
          Kaitai.Streams.Read_U8be (Buffer, S, This.Bias);
       end if;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

@@ -15,12 +15,16 @@ is
    end Data_Type;
 
    procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       Kaitai.Streams.Read_S1 (Buffer, S, This.Opcode);
       case This.Opcode is
          when others =>
             Kaitai.Streams.Read_S1 (Buffer, S, This.Prim_Byte);
       end case;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       Kaitai.Streams.Read_Bytes (S, 4, This.Indicator);
       declare
          Value : Data_Type.T;
@@ -28,6 +32,7 @@ is
          Data_Type.Parse (Value, Buffer, S);
          This.Ut := (Kind => Ut_Is_Data, Data => Value);
       end;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

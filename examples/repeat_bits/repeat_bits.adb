@@ -36,6 +36,9 @@ is
       pragma Warnings (Off, Element);
       Element_2 : Boolean;
       pragma Warnings (Off, Element_2);
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry   : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       Kaitai.Streams.Read_U4le (Buffer, S, This.Qty);
       This.Nibbles_Io := S;
@@ -45,6 +48,7 @@ is
          exit when not Kaitai.Streams.OK (S);
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       Kaitai.Streams.Read_U1 (Buffer, S, This.Tail);
       This.Flags_Io := S;
       This.Flags_Count := 0;
@@ -60,6 +64,7 @@ is
          This.Flags_Count := I;
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Kaitai.Streams.Is_EOF (S) then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;

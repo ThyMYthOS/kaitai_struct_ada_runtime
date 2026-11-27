@@ -34,6 +34,9 @@ is
       Start     : Kaitai.Streams.Stream;
       Done_3    : Boolean;
       Value     : Kaitai.Types.U8;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry   : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       This.First_Io := S;
       This.First_Count := 0;
@@ -48,6 +51,7 @@ is
            Loop_Invariant
              (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S) and then not Done);
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Done then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;
@@ -66,6 +70,7 @@ is
                 and then Kaitai.Streams.Advanced (S'Loop_Entry, S)
                 and then not Done_2);
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Done_2 then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;
@@ -80,10 +85,12 @@ is
            Loop_Invariant
              (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (Start, S) and then not Done_3);
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Done_3 then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;
       This.Third := Kaitai.Streams.Between (Start, S);
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

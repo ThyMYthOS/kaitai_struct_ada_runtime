@@ -5,6 +5,9 @@ package body Valid_Switch
 is
 
    procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       Kaitai.Streams.Read_U1 (Buffer, S, This.A);
       if Kaitai.Types.S64 (This.A) /= 80 then
@@ -17,6 +20,7 @@ is
          when others =>
             Kaitai.Streams.Read_U2be (Buffer, S, This.B);
       end case;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Types.S64 (This.B) /= 17217 then
          Kaitai.Streams.Fail (S, Kaitai.Types.Validation_Not_Equal);
       end if;

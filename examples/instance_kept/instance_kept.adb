@@ -32,6 +32,9 @@ is
       Start   : Kaitai.Streams.Stream;
       Done    : Boolean;
       Value   : Kaitai.Types.S16;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       This := (others => <>);
       L := S;
@@ -49,6 +52,7 @@ is
          exit when not Record_Type.Valid (Element);
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Header_Type_Type.Valid (This.Header) then
          Kaitai.Streams.Read_Bytes
            (S,
@@ -80,10 +84,12 @@ is
            Loop_Invariant
              (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (Start, S) and then not Done);
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Done then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;
       This.Numbers := Kaitai.Streams.Between (Start, S);
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

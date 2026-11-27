@@ -16,6 +16,9 @@ is
 
    procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Rec_Type.T;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       This := (others => <>);
       Kaitai.Streams.Read_U1 (Buffer, S, This.N);
@@ -33,6 +36,7 @@ is
                 and then Kaitai.Streams.Advanced (S'Loop_Entry, S)
                 and then (I = 1 or else (Rec_Type.Valid (This.Recs_Element_1))));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

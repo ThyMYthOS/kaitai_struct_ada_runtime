@@ -45,6 +45,9 @@ is
       Start     : Kaitai.Streams.Stream;
       Done_2    : Boolean;
       Value     : Kaitai.Types.U8;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry   : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       This := (others => <>);
       Kaitai.Streams.Read_U1 (Buffer, S, This.Num_Nums);
@@ -71,6 +74,7 @@ is
                 and then (This.Recs_Count = 0 or else (Rec_Type.Valid (This.Recs_Last_Element)))
                 and then (This.Recs_Count = 0 or else (Rec_Type.Valid (This.Recs_First_Element))));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Done then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;
@@ -100,6 +104,7 @@ is
                 and then Kaitai.Types.Within (This.Words_First_Element, Buffer)
                 and then Kaitai.Types.Within (This.Words_Element_1, Buffer));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       Start := S;
       Done_2 := False;
       for I in 1 .. Kaitai.Streams.Remaining (S) + 1 loop
@@ -127,10 +132,12 @@ is
            Loop_Invariant
              (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (Start, S) and then not Done_2);
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Done_2 then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;
       This.More := Kaitai.Streams.Between (Start, S);
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       Kaitai.Streams.Read_Elements (S, 2, 2, This.Signed);
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;

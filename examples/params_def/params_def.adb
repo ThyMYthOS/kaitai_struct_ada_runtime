@@ -11,7 +11,11 @@ is
       Buffer            : Kaitai.Types.Bytes;
       S                 : in out Kaitai.Streams.Stream;
       Len               : Kaitai.Types.U32;
-      Has_Trailer_Field : Boolean) is
+      Has_Trailer_Field : Boolean)
+   is
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       This := (others => <>);
       This.Len := Len;
@@ -24,6 +28,7 @@ is
          This.Has_Trailer := True;
          Kaitai.Streams.Read_U1 (Buffer, S, This.Trailer);
       end if;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

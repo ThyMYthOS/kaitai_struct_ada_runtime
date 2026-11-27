@@ -34,6 +34,9 @@ is
       end Strval_Type;
 
       procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
+         pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+         S_Entry : constant Kaitai.Streams.Stream := S
+         with Ghost;
       begin
          Kaitai.Streams.Read_Bytes (S, 1, This.Code);
          if Kaitai.Byte_Arrays.Equal (Buffer, This.Code, (1 => 16#49#)) then
@@ -53,6 +56,7 @@ is
          else
             This.Body_Field := (Kind => Body_Is_None);
          end if;
+         pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
          This.Is_Valid := Kaitai.Streams.OK (S);
       end Parse;
 
@@ -60,6 +64,9 @@ is
 
    procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Opcode_Type.T;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       This.Opcodes_Io := S;
       This.Opcodes_Count := 0;
@@ -70,6 +77,7 @@ is
          This.Opcodes_Count := I;
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Kaitai.Streams.Is_EOF (S) then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;

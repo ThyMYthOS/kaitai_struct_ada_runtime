@@ -2998,6 +2998,23 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     plan.pre ++ wrapCond0(a, hasName, stmts, rc)
   }
 
+  private val UsesStream = "[(,] S[,)]".r
+
+  /** The statements at the top level of `lines`; a compound statement is indented between its first and its last line */
+  private def topStatements(lines: List[String]): List[List[String]] = {
+    val out = ListBuffer[List[String]]()
+    var cur = List[String]()
+    def compound(l: String) = List("if ", "for ", "case ", "declare", "loop", "while ", "begin").exists(l.startsWith)
+    lines.foreach { l =>
+      cur = cur :+ l
+      val top = !l.startsWith(" ")
+      val done = if (compound(cur.head)) top && l.startsWith("end ") else l.endsWith(";")
+      if (done) { out += cur; cur = Nil }
+    }
+    if (cur.nonEmpty) out += cur
+    out.toList
+  }
+
   private def wrapCond0(a: AttrSpec, hasName: Option[String], stmts: List[String], rc: RC): List[String] =
     a.cond.ifExpr match {
       case None => stmts
@@ -4414,12 +4431,26 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     }
     if (storesOrder(cs)) pre += "This.Order := Order;"
     // a type without fields reads nothing: S is not modified
-    val all = pre.toList ++ o.parse.toList
+    // A loop, `if` or `case` that reads from S is followed by a proof statement that says what all statements before it
+    // have done to S, so that the proof of the postcondition does not have to carry every step at once
+    val bodyStmts = topStatements(o.parse.toList)
+    val readsS = bodyStmts.map(st => st.exists(l => UsesStream.findFirstIn(l).isDefined))
+    val cut = bodyStmts.zip(readsS).exists { case (st, r) => r && st.size > 1 }
+    val lastRead = readsS.lastIndexOf(true)
+    val parseLines = bodyStmts.zip(readsS).zipWithIndex.flatMap { case ((ls, reads), i) =>
+      if (cut && reads && (ls.size > 1 || i == lastRead)) ls :+ s"pragma Assert (${KS}Advanced (S_Entry, S));" else ls
+    }
+    val all = pre.toList ++ parseLines
     val usesBuffer = all.exists(_.contains("Buffer"))
     val init = if (sc.needsInit || sc.passesThis) List("This := (others => <>);") else Nil
     val bit = if (sc.bit) List(s"Bit : ${KT}U64;") else Nil
     val unmod = if (cs.seq.isEmpty) List("pragma Unmodified (S);") else Nil
-    val declAll = decls.toList ++ sc.decls.toList ++ bit ++ unmod
+    // The statements are for the proof only: they are not executed even where assertions are enabled, as a program that
+    // runs them with every field grows by a call and a message for each of them
+    val entry =
+      if (cut) List("pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);", s"S_Entry : constant ${KS}Stream := S with Ghost;")
+      else Nil
+    val declAll = decls.toList ++ sc.decls.toList ++ bit ++ unmod ++ entry
     List(s"procedure Parse ($params) is") ++ ind(declAll) ++ List("begin") ++
       ind(init ++ all ++ List(s"This.Is_Valid := ${KS}OK (S);")) ++ List("end Parse;")
   }
@@ -4437,7 +4468,7 @@ object AdaClassCompiler extends LanguageCompilerStatic {
   val KW = "Kaitai.Writers."
 
   /** Names of local variables of Parse, which a parameter must not take */
-  val ParamReserved: Set[String] = Set("sub", "bit", "element", "done", "value", "l", "result", "outcome", "position", "i", "start", "arg", "index", "kind", "raw", "target", "storage", "last", "inflated", "none")
+  val ParamReserved: Set[String] = Set("sub", "bit", "s_entry", "element", "done", "value", "l", "result", "outcome", "position", "i", "start", "arg", "index", "kind", "raw", "target", "storage", "last", "inflated", "none")
 
   val Reserved: Set[String] = Set(
     // Ada reserved words

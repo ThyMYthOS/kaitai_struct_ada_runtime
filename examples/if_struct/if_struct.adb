@@ -34,6 +34,9 @@ is
    package body Operation_Type is
 
       procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
+         pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+         S_Entry : constant Kaitai.Streams.Stream := S
+         with Ghost;
       begin
          This := (others => <>);
          Kaitai.Streams.Read_U1 (Buffer, S, This.Opcode);
@@ -41,10 +44,12 @@ is
             This.Has_Arg_Tuple := True;
             Arg_Tuple_Type.Parse (This.Arg_Tuple, Buffer, S);
          end if;
+         pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
          if Kaitai.Types.S64 (This.Opcode) = 83 then
             This.Has_Arg_Str := True;
             Arg_Str_Type.Parse (This.Arg_Str, Buffer, S);
          end if;
+         pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
          This.Is_Valid := Kaitai.Streams.OK (S);
       end Parse;
 

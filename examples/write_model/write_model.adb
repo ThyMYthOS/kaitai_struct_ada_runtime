@@ -49,7 +49,11 @@ is
       end Text_Type;
 
       procedure Parse
-        (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Flags : Kaitai.Types.U8) is
+        (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Flags : Kaitai.Types.U8)
+      is
+         pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+         S_Entry : constant Kaitai.Streams.Stream := S
+         with Ghost;
       begin
          This := (others => <>);
          This.Flags := Flags;
@@ -74,10 +78,12 @@ is
             when others =>
                This.Body_Field := (Kind => Body_Is_None);
          end case;
+         pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
          if Kaitai.Arithmetic.Bit_And (Kaitai.Types.S64 (This.Flags), 1) /= 0 then
             This.Has_Extra := True;
             Kaitai.Streams.Read_U1 (Buffer, S, This.Extra);
          end if;
+         pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
          This.Is_Valid := Kaitai.Streams.OK (S);
       end Parse;
 
@@ -131,6 +137,9 @@ is
 
       procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
          Element : Entry_Type.Point_Type.T;
+         pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+         S_Entry : constant Kaitai.Streams.Stream := S
+         with Ghost;
       begin
          This.Records_Io := S;
          This.Records_Count := 0;
@@ -142,6 +151,7 @@ is
             pragma
               Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
          end loop;
+         pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
          if Kaitai.Streams.OK (S) and then not Kaitai.Streams.Is_EOF (S) then
             Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
          end if;
@@ -229,6 +239,9 @@ is
       Element_2 : Entry_Type.Point_Type.T;
       Done      : Boolean;
       Sub       : Kaitai.Streams.Stream;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry   : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       This := (others => <>);
       This.Io := S;
@@ -244,10 +257,12 @@ is
          exit when not Entry_Type.Valid (Element);
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Types.S64 (This.Kind) = 2 then
          This.Has_Tail_Len := True;
          Kaitai.Streams.Read_U4le (Buffer, S, This.Tail_Len);
       end if;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       This.Points_Io := S;
       This.Points_Count := 0;
       Done := False;
@@ -261,11 +276,13 @@ is
            Loop_Invariant
              (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S) and then not Done);
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Done then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;
       Kaitai.Streams.Read_U1 (Buffer, S, This.Len_Log);
       Kaitai.Streams.Substream (Buffer, S, Kaitai.Types.To_Size (Kaitai.Types.S64 (This.Len_Log)), Sub);
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       Log_Type.Parse (This.Log, Buffer, Sub);
       Kaitai.Streams.Join (S, Sub);
       Kaitai.Streams.Read_Elements_Full (S, 2, This.Samples);

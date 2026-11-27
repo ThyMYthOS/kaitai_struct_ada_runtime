@@ -7,7 +7,11 @@ is
    package body Item_Type is
 
       procedure Parse
-        (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Flag : Kaitai.Types.U8) is
+        (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream; Flag : Kaitai.Types.U8)
+      is
+         pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+         S_Entry : constant Kaitai.Streams.Stream := S
+         with Ghost;
       begin
          This := (others => <>);
          This.Flag := Flag;
@@ -15,6 +19,7 @@ is
             This.Has_V := True;
             Kaitai.Streams.Read_U1 (Buffer, S, This.V);
          end if;
+         pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
          This.Is_Valid := Kaitai.Streams.OK (S);
       end Parse;
 
@@ -23,6 +28,9 @@ is
    procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Item_Type.T;
       Before  : Kaitai.Streams.Stream;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       Kaitai.Streams.Read_U4le (Buffer, S, This.Num_Items);
       Kaitai.Streams.Read_U1 (Buffer, S, This.Flag);
@@ -38,6 +46,7 @@ is
            and then Kaitai.Streams.Bits_Left (S) = Kaitai.Streams.Bits_Left (Before);
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

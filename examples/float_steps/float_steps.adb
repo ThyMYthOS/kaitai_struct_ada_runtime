@@ -181,6 +181,9 @@ is
       Start        : Kaitai.Streams.Stream;
       Done         : Boolean;
       Value        : Kaitai.Types.U32;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry      : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       This := (others => <>);
       Kaitai.Streams.Read_U4le (Buffer, S, This.Scale);
@@ -209,6 +212,7 @@ is
       else
          Kaitai.Streams.Fail (S, Kaitai.Types.Arithmetic_Error);
       end if;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       Eval_Label_Size (This, Eval_Defined, Eval_Value);
       if Eval_Defined then
          Kaitai.Streams.Read_Bytes (S, Kaitai.Types.To_Size (Eval_Value), This.Label);
@@ -239,6 +243,7 @@ is
            Loop_Invariant
              (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (Start, S) and then not Done);
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Done then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;
@@ -252,6 +257,7 @@ is
       else
          Kaitai.Streams.Fail (S, Kaitai.Types.Arithmetic_Error);
       end if;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       Eval_Tail_Size (This, Eval_Defined, Eval_Value);
       if Eval_Defined then
          Kaitai.Streams.Read_Bytes (S, Kaitai.Types.To_Size (Eval_Value), This.Tail);

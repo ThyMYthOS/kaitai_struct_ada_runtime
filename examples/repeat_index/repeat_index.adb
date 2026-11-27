@@ -91,6 +91,9 @@ is
    procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element   : Kaitai.Types.Slice;
       Element_2 : Row_Type.T;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry   : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       This := (others => <>);
       Kaitai.Streams.Read_U4le (Buffer, S, This.Qty);
@@ -106,6 +109,7 @@ is
                 and then Kaitai.Streams.Advanced (S'Loop_Entry, S)
                 and then Kaitai.Types.Within (Element, Buffer));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       This.Rows_Io := S;
       This.Rows_Count := 0;
       for I in 1 .. Kaitai.Streams.Remaining (S) loop
@@ -115,6 +119,7 @@ is
          This.Rows_Count := I;
          pragma Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Kaitai.Streams.Is_EOF (S) then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;

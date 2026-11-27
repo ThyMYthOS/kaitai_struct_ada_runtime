@@ -5,7 +5,10 @@ package body Valid_Fail_Repeat_Eq_Int
 is
 
    procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
-      Value : Kaitai.Types.U32;
+      Value   : Kaitai.Types.U32;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       Kaitai.Streams.Read_Elements_Full (S, 4, This.Foo);
       if Kaitai.Streams.OK (S) then
@@ -18,6 +21,7 @@ is
               Loop_Invariant (Kaitai.Streams.Is_Valid (S, Buffer) and then Kaitai.Streams.Advanced (S'Loop_Entry, S));
          end loop;
       end if;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       This.Is_Valid := Kaitai.Streams.OK (S);
    end Parse;
 

@@ -25,6 +25,9 @@ is
    procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
       Element : Kaitai.Types.Slice;
       Done    : Boolean;
+      pragma Assertion_Policy (Ghost => Ignore, Assert => Ignore);
+      S_Entry : constant Kaitai.Streams.Stream := S
+      with Ghost;
    begin
       Kaitai.Streams.Read_U1 (Buffer, S, This.Qty);
       Kaitai.Streams.Read_U1 (Buffer, S, This.Pick);
@@ -51,6 +54,7 @@ is
                 and then Kaitai.Types.Within (Element, Buffer)
                 and then not Done);
       end loop;
+      pragma Assert (Kaitai.Streams.Advanced (S_Entry, S));
       if Kaitai.Streams.OK (S) and then not Done then
          Kaitai.Streams.Fail (S, Kaitai.Types.Limit_Exceeded);
       end if;

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Compiler: a `Parse` with a loop, an `if` or a `case` that reads from the stream declares a ghost constant `S_Entry` and
+  states `Advanced (S_Entry, S)` after each such statement and after the last statement that reads, so that its
+  postcondition `Advanced (S'Old, S)` is not proved in one piece. Without the proof cache the postconditions of
+  `showcase` and `write_model` took 3400 and 3900 steps, about 1 s, and failed on a loaded machine; with the statements
+  they need at most 0.7 s. They are for the proof only (`Assertion_Policy (Ghost => Ignore, Assert => Ignore)`); the
+  object code does not change. 27 examples and 6 benchmark parsers are regenerated. `x_kept` and `x_rep_self` are not
+  helped.
+
 - Library: `Min_Element` and `Max_Element` of `Kaitai.Decoding` prove without the proof cache at level 1 in every run.
   Their loops are generic in the width, with one instance for each of 1, 2, 4 and 8 bytes: the preconditions of
   `Element` in the loop invariants took 3700 to 4700 steps and 0.9 to 1.5 s with the width as a variable, and

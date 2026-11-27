@@ -161,6 +161,23 @@ Nothing in `Parse` returns early. After a failure the remaining reads do
 nothing, since a failed stream stays failed, and the values they deliver are
 zero or empty.
 
+A `Parse` with a loop, an `if` or a `case` that reads from the stream declares a
+ghost constant `S_Entry`, the stream as it was on entry, and states
+`pragma Assert (Advanced (S_Entry, S));` after each such statement and after
+the last statement that reads. The postcondition says the same about the
+stream at the end. Proved in one piece, it needs the facts of every read, loop
+and failure at once. Measured without the proof cache, with a time limit of
+30 s (steps of the most expensive prover): the postcondition of `Parse` of the
+example `showcase` (ten fields, two loops) took 3400 steps and 1.1 s, and the
+one of `write_model` 3900 steps, so that both reached the limit of 1 s on a
+loaded machine. With the statements each of them is at most 0.4 s. A `Parse`
+of 24 fields without loops needs 900 steps and gets none. The statements are
+for the proof only: `pragma Assertion_Policy (Ghost => Ignore, Assert =>
+Ignore)` keeps them and `S_Entry` out of the object code, also where
+assertions are enabled. With one statement after every field and the
+assertions executed, the embedded test program did not fit its flash (it
+overflowed by 24220 bytes).
+
 ### Prefixed notation of the caller
 
 `This` comes first so that a caller can write the object before the name of the

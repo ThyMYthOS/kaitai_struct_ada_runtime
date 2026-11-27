@@ -82,6 +82,8 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
   private case class ABool(code: String) extends AV
   /** A float: Ada expression of the raw bits and the width in bytes */
   private case class AFloat(bits: String, width: Int) extends AV
+  /** A float that an instance computes: Ada expression of an F64 */
+  private case class AF64(code: String) extends AV
   /** Bytes and strings are slices of `buf`, the array that the value refers to: the input, or the array of a processed field */
   private case class ABytes(code: String, buf: String) extends AV
   private case class AStr(code: String, enc: String, buf: String) extends AV
@@ -144,6 +146,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
     case _: IntType => AInt(code, adaInt(dt), None)
     case _: BooleanType => ABool(code)
     case FloatMultiType(w, _) => AFloat(code, w.width)
+    case CalcFloatType => AF64(code)
     case _: BytesType => ABytes(code, buf)
     case StrFromBytesType(_, enc, _) => AStr(code, enc, buf)
     case ut: UserType => AUser(ut.classSpec.get, code, buf)
@@ -227,6 +230,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
           case et: EnumType => AInt(s"$pkg.${bs}_Value ($args)", "S64", et.enumSpec)
           case _: IntType => AInt(s"$pkg.$nm ($args)", if (cc.valueInstanceIsU64(cs, v)) "U64" else "S64", None)
           case _: BooleanType => ABool(s"$pkg.$nm ($args)")
+          case _: FloatType => AF64(s"$pkg.$nm ($args)")
           case _: BytesType => ABytes(s"$pkg.$nm ($args)", buf)
           case _: StrType => AStr(s"$pkg.$nm ($args)", instanceEncoding(cs, v), buf)
           case other => nt(s"value instance of type $other")
@@ -304,7 +308,7 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
 
   private def scalar(pkg: String, nm: String, bs: String, dt: DataType, obj: String, buf: String): AV = dt match {
     case _: EnumType => valueOf(dt, s"$pkg.${bs}_Value ($obj)", buf)
-    case _: FloatType => valueOf(dt, s"$pkg.${bs}_Bits ($obj)", buf)
+    case _: FloatMultiType => valueOf(dt, s"$pkg.${bs}_Bits ($obj)", buf)
     case _ => valueOf(dt, s"$pkg.$nm ($obj)", buf)
   }
 
@@ -560,6 +564,9 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
   private def floatConst(e: Ast.expr): Option[BigDecimal] = e match {
     case Ast.expr.FloatNum(n) => Some(n)
     case Ast.expr.UnaryOp(Ast.unaryop.Minus, Ast.expr.FloatNum(n)) => Some(-n)
+    // 0.5.as<f4>: the number as an f4 holds it
+    case Ast.expr.CastToType(inner, t) if t.names == Seq("f4") => floatConst(inner).map(x => BigDecimal(x.toFloat.toDouble))
+    case Ast.expr.CastToType(inner, t) if t.names == Seq("f8") => floatConst(inner)
     case _ => intConst(e).map(c => BigDecimal(c._1))
   }
 
@@ -613,6 +620,10 @@ class AdaSG(spec: TestSpec, provider: ClassTypeProvider) extends SpecGenerator {
       val conv = if (w == 4) s"Long_Float (Kaitai.Floats.To_F32 ($bits))" else s"Kaitai.Floats.To_F64 ($bits)"
       val tol = BigDecimal("0.000001") * x.abs.max(BigDecimal(1))
       s"Kaitai.Floats.Is_Finite ($bits) and then abs ($conv - ${adaFloat(x)}) <= ${adaFloat(tol)}"
+    case (AF64(code), _) =>
+      val x = floatConst(expected).getOrElse(nt(s"expected value `${src(expected)}` is not a number"))
+      val tol = BigDecimal("0.000001") * x.abs.max(BigDecimal(1))
+      s"abs ($code - ${adaFloat(x)}) <= ${adaFloat(tol)}"
     case (AStr(code, enc, buf), Ast.expr.Str(s)) =>
       if (s.forall(c => c >= 32 && c <= 126) && isByteEncoding(enc)) {
         usedLibs += "Strings"

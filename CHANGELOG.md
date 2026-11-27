@@ -11,8 +11,8 @@
   on a float compares as the other targets do, also for infinity and not-a-number. `f4` is computed in 64 bits, as
   Python does, not in 32 bits as Java and C++ do for `f4` with an integer. Division of floats and `%` are rejected.
   New formats generated: `floating_points`, `float_to_i`, `valid_fail_range_float`. Example `float_reading`; the
-  comparison with Python has `compiler/diff-formats/x_floats` and a known difference for expressions with infinity.
-  See `docs/codegen.md`, "Floating-point numbers".
+  comparison with Python has `compiler/diff-formats/x_floats` and `x_floats_seq` and a known difference for
+  expressions with infinity. See `docs/codegen.md`, "Floating-point numbers".
 - Compiler: `valid` and `contents` on a repetition of bytes, strings or bit fields are checked on each element in
   `Parse`. Example `repeat_valid`.
 

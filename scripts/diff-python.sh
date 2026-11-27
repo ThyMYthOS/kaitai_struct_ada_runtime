@@ -94,8 +94,9 @@ fi
 
 # Differences between the Ada and the Python parsers that are intended or documented, and
 # that therefore do not make the script fail: "id@@class@@format regexp@@Ada reason regexp@@Python
-# reason regexp@@reason@@check", the check being empty or `outside-s64` (the Ada reason is
-# `undefined <path>` and the Python dump has an integer outside S64 at that path).  An input is a known difference if its class (`ada-fails`: Ada
+# reason regexp@@reason@@check", the check being empty, `outside-s64` (the Ada reason is
+# `undefined <path>` and the Python dump has an integer outside S64 at that path) or `float-limit`
+# (the Python dump has a float that is infinity, not-a-number or above 2**500 in magnitude).  An input is a known difference if its class (`ada-fails`: Ada
 # FAILED and Python parsed; `py-fails`: the other way round) is the one of the entry, the
 # format matches, and what the programs say about the failure (the `#why` lines; empty for
 # the side that parsed) matches the regexps.  Keep the list short and specific.
@@ -103,6 +104,7 @@ KNOWN_DIFFERENCES=(
    "encoding-not-checked@@py-fails@@.*@@.*@@^UnicodeDecodeError: '(?!ascii|utf-8|utf-16)@@Ada checks strings only in ASCII, UTF-8 and UTF-16; in any other encoding every byte is accepted (docs/codegen.md, Rules of the compiler)@@"
    "depth-or-repetition-limit@@ada-fails@@.*@@^parse LIMIT_EXCEEDED\$@@.*@@a type that contains itself is parsed to a depth of 8, and a repetition without progress ends with Limit_Exceeded (docs/codegen.md, Types that contain themselves)@@"
    "overflow-64@@ada-fails@@.*@@^undefined @@.*@@an expression that does not fit into 64 bits is not defined in Ada, Python has integers of any size (docs/codegen.md, What differs); only if the Python value of the instance is outside S64@@outside-s64"
+   "float-limit@@ada-fails@@x_floats.*|floating_points|float_to_i|valid_fail_range_float@@^(undefined |parse ARITHMETIC_ERROR\$)@@.*@@an expression with a float that is infinity or not-a-number, or whose result would be, is not defined in Ada, and neither is an operation that has an operand above 2**500 and whose result the library cannot show to be finite (docs/codegen.md, What differs); the other targets compute on with infinity and not-a-number; only if the Python dump has a float that is infinity, not-a-number or above 2**500@@float-limit"
    "mod-divisor-not-positive@@ada-fails@@x_expr@@^undefined r\\.rest\$@@.*@@\`%\` with a divisor that is not positive is not defined in Ada, as in the Java and C++ runtimes, where mod raises an error; the Python target computes a value (docs/codegen.md, What differs); only if the divisor b is not positive@@x-expr-b-not-positive"
    "rotate-beyond-7@@value@@process_rotate@@r\\.buf3@@.*@@rol and ror rotate by the amount modulo 8 in Ada; for an amount of 8 or more the runtimes of the other targets give results that are not rotations and differ from each other (docs/codegen.md, What differs); only if key is 8 or more@@rotate-key-beyond-7"
 )
@@ -715,6 +717,23 @@ def outside_s64(aw, plines):
     return False
 
 
+def float_limit(plines):
+    """Whether the Python dump has a float that is infinity, not-a-number or above 2**500 (a float is its bits in hex, or `nan`)"""
+    import struct
+    for l in plines:
+        v = l.partition(" = ")[2]
+        if v == "nan":
+            return True
+        if len(v) in (8, 16):
+            try:
+                x = struct.unpack(">f" if len(v) == 8 else ">d", bytes.fromhex(v))[0]
+            except (ValueError, struct.error):
+                continue
+            if x != x or abs(x) > 2.0 ** 500:
+                return True
+    return False
+
+
 def value_of(plines, path, test):
     """Whether the Python dump has the integer `path` and `test` holds for it"""
     for l in plines:
@@ -731,6 +750,8 @@ def known_id(n, cls, aw, pw, plines=()):
     for kid, kcls, kfmt, kada, kpy, why, check in known:
         if kcls == cls and re.fullmatch(kfmt, n) and re.search(kada, aw) and re.search(kpy, pw):
             if check == "outside-s64" and not outside_s64(aw, plines):
+                continue
+            if check == "float-limit" and not float_limit(plines):
                 continue
             if check == "x-expr-b-not-positive" and not value_of(plines, "r.b", lambda v: v <= 0):
                 continue

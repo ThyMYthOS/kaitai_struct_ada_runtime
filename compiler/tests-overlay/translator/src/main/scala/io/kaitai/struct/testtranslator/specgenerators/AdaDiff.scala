@@ -196,6 +196,7 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
       val signed = dt == CalcIntType || AdaTranslator.intInfo(dt).exists(_._2 < 0)
       if (signed) List(s"Put_S ($path, ${KT}S64 ($code));") else List(s"Put_U ($path, ${KT}U64 ($code));")
     case FloatMultiType(w, _) => List(s"Put_Float${w.width} ($path, $code);")
+    case CalcFloatType => List(s"Put_Double ($path, $code);")
     case _: BytesType | _: StrType => List(s"Put_Hex ($path, $buf, $code);")
     case ut: UserType if ut.classSpec.get.meta.isOpaque => skip(s"the opaque type ${ut.classSpec.get.nameAsStr}, whose members are not known")
     case ut: UserType =>
@@ -253,6 +254,7 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
         }
         val dt = v.dataType match {
           case et: EnumType => CalcIntType   // the accessor returns S64
+          case _: FloatType => CalcFloatType   // the accessor returns F64
           case other => other
         }
         // an instance that is a literal above the largest S64 returns U64
@@ -401,6 +403,7 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
   private def pyLeaf(dt: DataType, enc: String, v: String, path: String): List[String] = dt match {
     case _: BooleanType | _: IntType | _: EnumType => List(s"put_int($path, $v)")
     case FloatMultiType(w, _) => List(s"put_float($path, $v, '${if (w.width == 4) "f" else "d"}')")
+    case CalcFloatType => List(s"put_float($path, $v, 'd')")
     case _: BytesType => List(s"put_bytes($path, $v)")
     case _: StrType => List(s"put_str($path, $v, ${pyLit(enc)})")
     case ut: UserType if ut.classSpec.get.meta.isOpaque => skip(s"the opaque type ${ut.classSpec.get.nameAsStr}, whose members are not known")
@@ -446,7 +449,9 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
       case p: ParamDefSpec =>
         List(s"$v = $obj.$attr") ++ pyLeaf(p.dataType, "UTF-8", v, path)
       case vi: ValueInstanceSpec =>
-        List(s"$v = $obj.$attr") ++ pyLeaf(vi.dataType, encodingOf(cs, m, vi.dataType), v, path)
+        // an instance of float type is an F64 in Ada, whatever width the type of the expression has in the compiler
+        val vdt = vi.dataType match { case _: FloatType => CalcFloatType; case other => other }
+        List(s"$v = $obj.$attr") ++ pyLeaf(vdt, encodingOf(cs, m, vi.dataType), v, path)
       case pi: ParseInstanceSpec =>
         List(s"$v = $obj.$attr") ++ pyLeaf(pi.dataType, encodingOf(cs, m, pi.dataType), v, path)
     }
@@ -484,8 +489,10 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
     p("with Ada.Exceptions;")
     p("with Ada.Strings.Unbounded;")
     p("with Ada.Text_IO;")
+    p("with Ada.Unchecked_Conversion;")
     p("with Ada.Unchecked_Deallocation;")
     p("with Kaitai.Files;")
+    p("with Kaitai.Floats;")
     p("with Kaitai.Streams;")
     p("with Kaitai.Types;")
     withs.toList.sorted.foreach(w => p(s"with $w;"))
@@ -585,6 +592,14 @@ class AdaDiff(name: String, top: ClassSpec, provider: ClassTypeProvider) {
     p("         Put_Line (Path, Hex (Bits, 16));")
     p("      end if;")
     p("   end Put_Float8;")
+    p("")
+    p("   function Bits_Of is new Ada.Unchecked_Conversion (Kaitai.Floats.F64, Kaitai.Types.U64);")
+    p("")
+    p("   --  the value of an instance: a finite number, printed as its bits, as Python prints a float")
+    p("   procedure Put_Double (Path : String; Value : Kaitai.Floats.F64) is")
+    p("   begin")
+    p("      Put_Float8 (Path, Bits_Of (Value));")
+    p("   end Put_Double;")
     p("")
     p("   procedure Put_Hex (Path : String; Buffer : Kaitai.Types.Bytes; Item : Kaitai.Types.Slice) is")
     p("   begin")

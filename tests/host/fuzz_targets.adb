@@ -17,6 +17,7 @@ with Expr_To_I_Trailing;
 with Extras;
 with Fixed_Struct;
 with Float_Reading;
+with Float_Steps;
 with Foreign;
 with Hello_World;
 with If_Struct;
@@ -419,6 +420,9 @@ package body Fuzz_Targets is
 
          when Float_Reading_Parser             =>
             return Sample_Data.Float_Reading;
+
+         when Float_Steps_Parser               =>
+            return Sample_Data.Float_Steps;
 
          when Valid_Fail_Range_Str_Parser      =>
             return Range_Str_Data;
@@ -1088,6 +1092,23 @@ package body Fuzz_Targets is
       end if;
    end Run_Float_Reading;
 
+   procedure Run_Float_Steps (Input : Bytes; Fields : out Natural) is
+      S : Stream := Open (Input);
+      R : Float_Steps.T;
+   begin
+      Fields := 0;
+      Float_Steps.Parse (R, Input, S);
+      pragma Assert (Float_Steps.Valid (R) = OK (S));
+      if Float_Steps.Valid (R) then
+         Fields := 1;
+         Count (Fields, Float_Steps.Has_Boost (R));
+         Count (Fields, Float_Steps.Weights_Count (R) > 0);
+         Count (Fields, Float_Steps.Samples_Count (R) > 1);
+         Count (Fields, Float_Steps.Has_Trailer (R));
+         Count (Fields, Float_Steps.Has_Doubled_Scale (R) and then Float_Steps.Doubled_Scale (R) > 1.0);
+      end if;
+   end Run_Float_Steps;
+
    procedure Run_Valid_Fail_Range_Str is new
      Run_Parse_Only (Valid_Fail_Range_Str.T, Valid_Fail_Range_Str.Parse, Valid_Fail_Range_Str.Valid);
 
@@ -1299,6 +1320,9 @@ package body Fuzz_Targets is
 
          when Float_Reading_Parser             =>
             Run_Float_Reading (Input, Fields);
+
+         when Float_Steps_Parser               =>
+            Run_Float_Steps (Input, Fields);
 
          when Valid_Fail_Range_Str_Parser      =>
             Run_Valid_Fail_Range_Str (Input, Fields);

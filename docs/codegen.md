@@ -603,8 +603,8 @@ an upper bound of the magnitude of every part of an expression: a literal is its
 3.4028234663852886E+38, an integer at most 2**63, an `f8` is only known to be finite, and the bound of a sum or a product
 follows from those of its operands. A sum is not asked about if both operands are at most 2**1022 in magnitude, a product if
 one operand is at most 1 or both are at most 2**500, a `to_i` if the number is below 2**63. So `celsius + 273.15` and
-`(celsius + 0.5) * fraction - 2.0` with `f4` fields ask nothing but `Is_Finite`, while `gain * gain` with an `f8` field
-asks `Multiply_OK`:
+`(celsius + 0.5) * fraction - 2.0` with `f4` fields ask nothing but `Is_Finite`, while
+`gain * gain` with an `f8` field asks `Multiply_OK`:
 
 ```ada
 function Has_Blend (This : T) return Boolean
@@ -627,25 +627,100 @@ A `valid` on a float field compares as the other targets do, also for the values
 not-a-number is not at least and not at most anything, so it fails `min` and `max` (`Validation_Less_Than` if `min` or
 `range` comes first, else `Validation_Greater_Than`); plus infinity fails `max`, minus infinity fails `min`; `eq` and
 `any-of` fail for every infinity and not-a-number. `valid: expr` is an expression like the others: a float that is not
-finite makes it undefined, and `Parse` fails with `Arithmetic_Error`. The comparison with the limits in `Parse` is in
-`F64`:
+finite makes it undefined, and `Parse` fails with `Arithmetic_Error`. The comparison with the limits is in `F64`, and
+it is made by a function of its own (see "Float steps of a procedure" below):
 
 ```ada
-if not Kaitai.Floats.Is_Finite (This.Fraction) then
-   if This.Fraction /= 16#7F80_0000# then
-      Kaitai.Streams.Fail (S, Kaitai.Types.Validation_Less_Than);
-   end if;
-else
-   if Kaitai.Float_Arithmetic.From_F32 (Kaitai.Floats.To_F32 (This.Fraction)) < 0.0 then
-      Kaitai.Streams.Fail (S, Kaitai.Types.Validation_Less_Than);
-   end if;
-end if;
+function Eval_Fraction_Min (This : T) return Boolean is
+begin
+   return
+     (if not Kaitai.Floats.Is_Finite (This.Fraction) then This.Fraction /= 16#7F80_0000#
+      else Kaitai.Float_Arithmetic.From_F32 (Kaitai.Floats.To_F32 (This.Fraction)) < 0.0);
+end Eval_Fraction_Min;
 ```
+
+It tells whether the check fails, and `Parse` fails with `Validation_Less_Than` if it does.
 
 A value instance of float type is a function that returns `Kaitai.Floats.F64` (`Has_X` as for integers). The type
 of an instance in the description is not looked at: `f4` or `f8`, the result is an `F64`. A float is not an argument
 of a type, a parameter, or the value of a nested instance (`child.x` of a float instance); those are rejected. Floats
 are written by `--read-write` as before, as their bits; instances are not written.
+
+### Float steps of a procedure
+
+An expression with a float that a procedure evaluates is not written into the procedure. This holds for every place
+where a procedure with a stream contract evaluates an expression: `if`, `size`, `repeat-expr`, `repeat-until`, `valid`
+(the limits and `expr`), `pos`, `switch-on`, the arguments of a type and the byte order of a calculated endianness,
+in `Parse`, in the procedure that parses one element of a cursor, in the procedures of instances with a position and in
+`Write`. Each such expression, a "float step", is a subprogram of its own in the body of the package, declared before
+`Parse` with `Global => null` and without a postcondition. If the expression is defined only under conditions (the
+`Is_Finite` and `_OK` questions above) the subprogram is a procedure that tells whether the expression is defined and
+what its value is, and the procedure that evaluates it branches on the two:
+
+```ada
+procedure Eval_Label_Size
+  (This : T; Eval_Defined : out Boolean; Eval_Result : out Kaitai.Types.S64)
+with Global => null;
+
+...
+Eval_Label_Size (This, Eval_Defined, Eval_Value);
+if Eval_Defined then
+   Kaitai.Streams.Read_Bytes (S, Kaitai.Types.To_Size (Eval_Value), This.Label);
+else
+   Kaitai.Streams.Fail (S, Kaitai.Types.Arithmetic_Error);
+end if;
+```
+
+(This is `examples/float_steps`.) If the expression has no such condition, as the limits of `valid` on a float field, the
+subprogram is a function that returns the value. The three variables are declared once in each procedure and shared by
+its steps, which is what the prover takes best. The element of a repetition of a type that `_` stands for is a
+parameter `Item`, with the precondition that it is valid, and `_index` is a parameter `Index`.
+
+For `Parse` a call of such a subprogram is a call of a subprogram without a contract, whose results can be anything,
+so the bit and float operations of the step are not in the context of the checks that follow, and GNATprove proves the
+subprogram of each step by itself, with one to five checks. A float expression that is written into `Parse` is in the
+context of every later check, and at `--level=1`, where each prover has a second for a check, the provers reach their
+time limit on checks that have nothing to do with floats (`Kaitai.Streams.Is_Valid (S, Buffer)` in the postcondition,
+the precondition of the next `Read_...`). Checks that were not proved in each of three runs without the cache, on
+descriptions with `if`, `size`, `repeat-expr`, `valid: expr` and `repeat-until` in turn, the float steps written into
+`Parse` and as subprograms:
+
+| Float steps in `Parse` | written into `Parse` | subprograms |
+|---|---|---|
+| 4 | 0, 0, 0 | 0, 0, 0 |
+| 4, of other kinds (`repeat-until`, `valid: expr`, `size`, `if`) | 2, 2, 2 | 0, 0, 0 |
+| 8 | 6, 6, 7 | 0, 0, 0 |
+| 16 | 33, 32, 32 | 4, 2, 2 |
+
+The 16 steps are more than a `Parse` of this kind proves at all: the same description with integers instead of floats
+(`u4` for `f4`, `l * 2` for `(l * 2.0).to_i`, every step inline, no floats) has 3, 3, 3 checks that are not proved, so
+it is the size of `Parse` that sets the limit there, not the floats. The example `float_steps` has nine steps in one
+`Parse` and proves completely in each of three runs.
+
+What a step costs in executed instructions, per `Parse` (x86-64 under Valgrind, `-O2 -gnatn`, checks left out; Cortex-M4
+`light-stm32f4`, same switches, in Renode), with the expressions written into `Parse` and as subprograms:
+
+| `Parse` of | x86-64 | Cortex-M4 |
+|---|---|---|
+| 4 steps of other kinds (see above) | 396, 400 | 1280.1, 1280.1 |
+| 8 steps, five kinds in turn | 718, 715 | 4189.1, 4195.1 |
+| `float_steps` (9 steps) | 659, 674 | 3684.1, 3695.1 |
+
+The compiler inlines the subprograms (they are not in the executable). Two shapes that were measured and not taken: two
+functions, one for the condition and one for the value, which evaluate the condition twice (`float_steps` with three steps more: 811 instructions written into `Parse`, 915 with the functions, and 4040.1 and 4603.1 on
+the Cortex-M4); and a function
+that returns a record of both, which is returned in memory (the four steps of other kinds: 396 and 530, 1280.1 and 2266.0). A variable for each
+step instead of the three shared ones was not taken either: `float_steps` with three steps more was not proved
+with it in three runs, and was with the three shared variables in two of three.
+
+The names are `Eval_`, the field and the kind of the step (`If`, `Size`, `Count`, `Until`, `Min`, `Max`, `Valid`,
+`Pos`, `On`, `Order`, `Arg`), numbered if there are several; the description cannot have a field whose name begins with
+`Eval_` (it becomes `Eval_X_Field`). They are in the body and not in the interface. An expression that is the same in
+`Parse` and in `Write` has one subprogram.
+
+An expression stays where it is if it uses the buffer (an element of a repetition of floats, `samples[0]`), the stream
+(`_io.pos`) or a variable of the procedure other than `_` and `_index` of the loop that is being parsed, and so does
+the expression of a value instance (`Has_X`, `X`), which is an expression function.
 
 ## Instances
 

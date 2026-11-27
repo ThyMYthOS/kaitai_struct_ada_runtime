@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Compiler: an expression with a float that a procedure evaluates (`if`, `size`, `repeat-expr`, `repeat-until`,
+  `valid`, `pos`, `switch-on`, an argument of a type; in `Parse`, in the parser of an element of a cursor, in the
+  procedures of instances and in `Write`) is evaluated by a subprogram of its own in the body of the package
+  (`Eval_<Field>_<Kind>`, with `Global => null` and no postcondition) instead of being written into the procedure.
+  The proof of `Parse` does not see the float operations, so that a `Parse` with eight float steps proves at level 1 where
+  it did not before, and one with four of some kinds did not reliably; the executed instructions change by less than 3
+  percent on x86-64 and on a Cortex-M4. Code for descriptions without a float in such an expression is unchanged.
+  Example `float_steps` (nine float steps in one `Parse`, with a host test and a fuzz target).
+
 - `scripts/survey.sh --formats DIR` surveys the descriptions of `DIR` (for example `compiler/diff-formats`, whose
   parsers the survey did not prove before) instead of the formats of the test suite, and `--no-cache` proves without
   the cache that `GNATPROVE_CACHE` names. The header of the script says what a result with the cache means.

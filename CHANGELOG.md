@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Compiler: a bit field of one bit order that is read where the stream may hold bits that a bit field of the other
+  order left (`b4be` then `b4le`, a type of the other order after bit fields of its parent, bit fields of the parent after
+  such a type, also where the number of bits depends on `if`, a repetition or a `switch-on`) is rejected with an error
+  that names the field. Python, Java and C++ give the field the bits that were not consumed, `Kaitai.Streams` the bits
+  that were, so the Ada parser printed other values on 34 of the inputs of one description of the comparison with
+  Python (and `Write` did not write the bytes that were read). The compiler counts the bits of the fields modulo 8
+  through the types, so that the order can change where the bits end at a byte boundary (`b6` and `b10`, a nested type,
+  a substream, a read of whole bytes). No format of the test suite, of `compiler/diff-formats` or of `examples` is
+  rejected or generated differently. New descriptions `compiler/rejected/bit_order_*.ksy` and
+  `compiler/diff-formats/x_bit_order.ksy`.
+
 - Compiler: an expression with a float that a procedure evaluates (`if`, `size`, `repeat-expr`, `repeat-until`,
   `valid`, `pos`, `switch-on`, an argument of a type; in `Parse`, in the parser of an element of a cursor, in the
   procedures of instances and in `Write`) is evaluated by a subprogram of its own in the body of the package

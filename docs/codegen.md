@@ -269,6 +269,25 @@ generated the same wherever it is used, so a description that uses the
 top-level type of another description, one that has the precondition, where
 the stream may be inside a byte is rejected.
 
+The bit order changes only at a byte boundary. `Kaitai.Streams` keeps how many bits of the last byte are left, not
+their values, and takes the bits of the next field from that byte as the order of this field sees it: the most
+significant ones left in big-endian order, the least significant ones in little-endian order. After a read of the other
+order those are the bits that the earlier read took. The runtimes of Python, Java and C++ keep the value of the bits
+that are left and give those to the next field, so that the two disagree on a bit field of one order read where a
+field of the other order left bits (`b4be` then `b4le` of the byte `0xA5` gives 5 in Python and 10 in Ada). The
+compiler rejects such a field with an error that names it ("bit field `n` of little-endian bit order where bits of a
+big-endian read may be left"; `compiler/rejected/bit_order_*.ksy`). It follows the state of the stream through the
+fields of each type: at a byte boundary, or with 1 to 7 bits left by a big-endian or by a little-endian field, the
+bits counted modulo 8, so that `b6` and `b10` of the same order are two whole bytes and the order may change after
+them. A field under `if`, a repetition whose count is not a literal (or is above 64) and the cases of a `switch-on`
+join the states they can leave. A type is followed in every state in which it is entered: after the fields before it
+in each of its uses, at a byte boundary where it is the top-level type, is read through a substream (`size`,
+`terminator`, `process`) or by an instance with a position. A field that reads whole bytes ends in a byte boundary.
+The parser of an opaque type is taken to do the same. A description that changes the order only at byte boundaries
+that the compiler can count (`compiler/diff-formats/x_bit_order.ksy`) is generated as before, and so is every
+description without a bit field of the other order. The analysis has no knowledge of the values: an order that changes
+in the middle of a byte only for some data is rejected, as is a count that the data decides.
+
 A string is a slice like a byte array; only its encoding is checked.
 
 ### Conditions
@@ -1444,6 +1463,11 @@ Where the rules above are silent, the compiler does the following.
   not certainly at a byte boundary. Where it is (see Fields), `Parse` starts
   with `Align_To_Byte` and has a precondition that no bits are left, which
   changes nothing for the values and lets the compiler fold the widths.
+- A bit field whose bit order differs from that of the bit field before it is rejected where the stream may be in the
+  middle of a byte (see Fields). The runtimes of the other targets give such a field the bits that the earlier
+  field left; `Kaitai.Streams` could only give it the bits that were taken, and the two differ for most data. I could
+  not reach the user guide to quote what it says about a change of the bit order inside a byte; the decision rests on
+  the runtimes and on the formats of the test suite, which change the order at byte boundaries only.
 
 ## Writing
 

@@ -445,6 +445,137 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       }
     }
 
+  // ------------------------------------------------------ bit order
+
+  /*
+   * The state of a stream between two reads, as far as the bit order matters: a set of the numbers 0 (at a byte
+   * boundary), 1 to 7 (that many bits of a byte are left by a big-endian bit field) and 9 to 15 (8 and that many bits
+   * are left by a little-endian one), kept as a mask of 16 bits.
+   */
+  private val BitsOfBe = 0x00FE
+  private val BitsOfLe = 0xFE00
+  private val BitsAny = BitsOfBe | BitsOfLe | 1
+
+  private def bitStates(set: Int): List[Int] = (0 until 16).filter(s => (set & (1 << s)) != 0).toList
+
+  /** The states after a bit field of `n` bits of the given order, from the states of `set`: `n` bits less are left. */
+  private def bitStep(set: Int, le: Boolean, n: Int): Int =
+    bitStates(set).foldLeft(0) { (acc, s) =>
+      val left = (((s & 7) - n) % 8 + 8) % 8
+      acc | (1 << (if (left == 0) 0 else if (le) 8 + left else left))
+    }
+
+  /** Some state of `set` has bits left by a read of the other order than `le`. */
+  private def bitConflict(set: Int, le: Boolean): Boolean = (set & (if (le) BitsOfBe else BitsOfLe)) != 0
+
+  /**
+    * The states after the fields of `c`, which is entered in the states of `entry`, and the instances of `c` (each
+    * of which is read from a stream of its own, at a byte boundary). `exitOf` gives the states after a type that a field
+    * reads from the stream, from the states before it; `entered` is told each use of a type with the states before it;
+    * `bad` is told each bit field that is read where the other bit order may have left bits.
+    */
+  private def bitWalk(
+    c: ClassSpec,
+    entry: Int,
+    exitOf: (ClassSpec, Int) => Int,
+    entered: (ClassSpec, Int) => Unit,
+    bad: (AttrLikeSpec, Boolean) => Unit
+  ): Int = {
+    def bits(a: AttrLikeSpec, x: Int, le: Boolean, n: Int): Int = {
+      if (bitConflict(x, le)) bad(a, le)
+      bitStep(x, le, n)
+    }
+    def once(a: AttrLikeSpec, dt: DataType, x: Int): Int = dt match {
+      case BitsType1(be) => bits(a, x, be != BigBitEndian, 1)
+      case BitsType(w, be) => bits(a, x, be != BigBitEndian, w)
+      case EnumType(_, _, b) => once(a, b, x)
+      case ut: UserTypeInstream =>
+        ut.classSpec match {
+          case Some(u) if u.meta.isOpaque => 1
+          case Some(u) => entered(u, x); exitOf(u, x)
+          case None => x
+        }
+      case ut: UserTypeFromBytes =>
+        ut.classSpec.foreach(u => entered(u, 1))
+        1
+      case st: SwitchType =>
+        st.cases.values.foldLeft(if (st.hasElseCase) 0 else x)((acc, d) => acc | once(a, d, x))
+      case _ => 1
+    }
+    def field(a: AttrLikeSpec, x: Int): Int = {
+      val body = (y: Int) => once(a, a.dataType, y)
+      val rep = a.cond.repeat match {
+        case NoRepeat => body(x)
+        case RepeatExpr(Ast.expr.IntNum(n)) if n <= 64 => (0 until n.toInt).foldLeft(x)((y, _) => body(y))
+        case r =>
+          // the states before each round, until there is none new; a count that is not known may also be 0
+          var pre = x
+          var seen = 0
+          var out = if (r.isInstanceOf[RepeatUntil]) 0 else x
+          while ((pre & ~seen) != 0) {
+            seen |= pre
+            pre = body(pre)
+            out |= pre
+          }
+          out
+      }
+      if (a.cond.ifExpr.isDefined) x | rep else rep
+    }
+    c.instances.values.foreach {
+      case p: ParseInstanceSpec => field(p, 1)
+      case _ =>
+    }
+    c.seq.foldLeft(entry)((x, a) => field(a, x))
+  }
+
+  /**
+    * A bit field of one bit order must not be read where the stream may hold bits that a bit field of the other order
+    * left: the runtimes of the other targets keep the value of the bits that are left and take the next bits from them,
+    * but the order of the bits within a byte is that of the read that took the first of them, and Kaitai Struct does
+    * not define what the bits are then. The bit order may change only at a byte boundary. The states of the stream are
+    * followed through the fields (`bitWalk`), with the number of bits left counted modulo 8, so that `b6` and `b10` of
+    * the same order make two whole bytes. Where a field is not certainly read, or a type is read in several states, the
+    * states are joined. A type is entered at a byte boundary where it is the top-level type of a description (through
+    * its public `Parse`), or is not used, or is read through a substream, or by an instance, and in the states of every
+    * other use. A type of foreign code (an opaque type) is taken to read whole bytes: the description does not say what
+    * its parser does, and a hand-written one has to keep the contract of `Kaitai.Streams`.
+    */
+  private def checkBitOrder(): Unit = {
+    val index = new java.util.IdentityHashMap[ClassSpec, Int]
+    bitWorld.zipWithIndex.foreach { case (c, i) => index.put(c, i) }
+    val exits = mutable.Map[(Int, Int), Int]()
+    def exitOf(u: ClassSpec, x: Int): Int =
+      bitStates(x).foldLeft(0)((acc, s) => acc | exits.getOrElse((index.get(u), s), 0))
+    val nothing = (_: ClassSpec, _: Int) => ()
+    val ignore = (_: AttrLikeSpec, _: Boolean) => ()
+    var changed = true
+    while (changed) {
+      changed = false
+      for (c <- bitWorld; s <- bitStates(BitsAny)) {
+        val out = bitWalk(c, 1 << s, exitOf, nothing, ignore)
+        if (out != exits.getOrElse((index.get(c), s), 0)) { exits((index.get(c), s)) = out; changed = true }
+      }
+    }
+    val reached = mutable.Set[(Int, Int)]()
+    val todo = mutable.Queue[(ClassSpec, Int)]()
+    def enter(u: ClassSpec, x: Int): Unit =
+      bitStates(x).foreach(s => if (reached.add((index.get(u), s))) todo.enqueue((u, s)))
+    bitWorld.foreach(c => enter(c, 1))
+    var first: Option[(Int, AttrLikeSpec, Boolean)] = None
+    while (todo.nonEmpty) {
+      val (c, s) = todo.dequeue()
+      bitWalk(c, 1 << s, exitOf, enter, { (a, le) =>
+        val i = bitWorld.indexWhere(_ eq c)
+        if (first.forall(f => i < f._1)) first = Some((i, a, le))
+      })
+    }
+    first.foreach { case (_, a, le) =>
+      val (mine, other) = if (le) ("little", "big") else ("big", "little")
+      fail(a.path, s"bit field `${idRaw(a.id)}` of $mine-endian bit order where bits of a $other-endian read may be left " +
+        "(the bit order can change only at a byte boundary)")
+    }
+  }
+
   /** Only a type that contains itself is supported, no group of types that contain each other. */
   private def checkRecursion(): Unit =
     allClasses.foreach { c =>
@@ -2231,6 +2362,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     checkRecursion()
     checkParentKey()
     checkBitStart()
+    checkBitOrder()
     checkForeign()
     refsOf(topClass)
     val (spec, body) = genClass(topClass)

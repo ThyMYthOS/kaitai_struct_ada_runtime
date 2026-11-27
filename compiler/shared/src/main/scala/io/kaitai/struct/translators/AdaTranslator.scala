@@ -205,6 +205,15 @@ class AdaTranslator(val provider: ClassTypeProvider, val env: AdaTranslatorEnv) 
 
   private def unsupported(msg: String): Nothing = throw new AdaUnsupported(msg)
 
+  /** True if the expression `e` itself, not one of its parts, is a float: a literal, a float field, a float instance */
+  def isFloatNode(e: Ast.expr): Boolean =
+    try typeDetector.detectType(e) match {
+      case _: FloatType => true
+      case _ => false
+    } catch {
+      case _: Exception => false
+    }
+
   /** The message for an integer literal that expressions cannot take: above the largest S64, or beyond 64 bits */
   private def literalTooBig(n: BigInt): String =
     if (n > S64Max && n <= U64Max)

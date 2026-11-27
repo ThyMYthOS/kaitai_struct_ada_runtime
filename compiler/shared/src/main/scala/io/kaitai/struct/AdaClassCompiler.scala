@@ -52,7 +52,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
 
   private def plainIn(cs: ClassSpec, raw: String): String = {
     val b = base(raw)
-    if (isReserved(b) || raw.endsWith("_") || raw.contains("__") || derivedNames(cs).contains(b.toLowerCase)) b + "_Field"
+    if (isReserved(b) || raw.endsWith("_") || raw.contains("__") || derivedNames(cs).contains(b.toLowerCase) || b.toLowerCase.startsWith("eval_")) b + "_Field"
     else b
   }
 
@@ -1293,7 +1293,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     if (flag) rc.scope.needsInit = true
     val rcl = rc.copy(s = l, path = p.path)
     val init = if (p.io.isDefined) s"$l := ${KS}Open (Buffer);" else s"$l := S;"
-    val posT = T(p.pos.get, rcl)
+    val posT = T(p.pos.get, rcl, "Pos")
     val seek = guarded(posT.guards, List(s"${KS}Seek ($l, ${sizeCode(posT)});"), rcl, init = false)
     val target = s"This.$nm"
     val reads = readValue(p.dataType, target, rcl) ++ p.valid.toList.flatMap(v => validate(v, p.dataType, target, rcl))
@@ -1578,6 +1578,10 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val parse = ListBuffer[String]()
     val bodyConsts = ListBuffer[String]()
     val bodyBefore = ListBuffer[String]()
+    /** The subprograms that evaluate expressions with floats for `Parse` and `Write`, and the names they were given */
+    val steps = ListBuffer[String]()
+    val stepNames = mutable.Map[String, String]()
+    val stepCounts = mutable.Map[String, Int]()
     val bodyAfter = ListBuffer[String]()
     val write = ListBuffer[String]()
     val wscope = new Scope
@@ -1588,13 +1592,173 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val kept = ListBuffer[String]()
   }
 
-  private def T(e: Ast.expr, rc: RC): ATr = {
+  /** The translation of an expression of a statement; one with a float is evaluated by a subprogram of its own */
+  private def T(e: Ast.expr, rc: RC, role: String = "", unique: Boolean = false): ATr = floatStep(e, Tplain(e, rc), rc, role, unique)
+
+  /** The translation of an expression, as it is written where it is used */
+  private def Tplain(e: Ast.expr, rc: RC): ATr = {
     tr.buffer = Some("Buffer")
     tr.io = Some(rc.s)
     tr.thisName = "This"
     tr.iterator = None
     tr.knownValid = Set()
     guard(rc.path)(tr.translate(e))
+  }
+
+  // ------------------------------------------------ float expressions in procedures
+
+  /** The `Out` of the class that is being generated; None outside of it */
+  private var stepOut: Out = null
+
+  /** Names that the generated procedures declare and that a subprogram of the package cannot see */
+  private val StepLocals: Set[String] = ParamReserved ++ Set("buffer", "s", "w", "l", "target", "number", "before", "order", "depth")
+
+  /** How a subprogram that evaluates an expression gets what the expression uses */
+  private case class StepCtx(params: List[(String, String)], args: List[String], sub: String => String, pre: List[String] = Nil)
+
+  private def exprMentionsIterator(e: Ast.expr): Boolean = e match {
+    case Ast.expr.Name(Ast.identifier(Identifier.ITERATOR)) => true
+    case _ => exprKids(e).exists(exprMentionsIterator)
+  }
+
+  private def exprHasFloat(e: Ast.expr): Boolean = tr.isFloatNode(e) || exprKids(e).exists(exprHasFloat)
+
+  /** The names in `text` that are not part of a longer name and not numbers */
+  private def leadingNames(text: String): Set[String] =
+    "(?<![\\w.'#])[A-Za-z_][A-Za-z0-9_]*".r.findAllIn(text.replaceAll("(?<![A-Za-z0-9_])\\d[0-9A-Za-z_#.]*", " ")).toSet
+
+  /**
+    * What a subprogram that evaluates the expression `e`, whose translation is in `text`, takes as parameters: the
+    * record `This`, and where the expression uses `_` or `_index` of a loop, the value (`Item`) and the number
+    * (`Index`). None if it uses anything else of the procedure (the buffer, the stream, a variable), or has no float.
+    */
+  private def stepCtx(e: Ast.expr, text: String, rc: RC, usesBuffer: Boolean): Option[StepCtx] = {
+    val itFloat = tr.iterator.exists(_._1.isInstanceOf[FloatMultiType]) && exprMentionsIterator(e)
+    if (stepOut == null || usesBuffer || !(exprHasFloat(e) || itFloat)) return None
+    val it = tr.iterator.filter(_._2.matches("[A-Za-z_]\\w*"))
+    val ix = tr.indexCode
+    def sub(x: String): String = {
+      var r = x
+      it.foreach { case (_, code) => r = r.replaceAll("(?<![\\w.'])" + java.util.regex.Pattern.quote(code) + "\\b", "Item") }
+      // as a whole expression only: `This.I - 1` of a field `i` is not the index `I - 1` of the loop
+      ix.foreach(c => if (c != "Index") r = r.replaceAll("(?<![\\w.'])" + java.util.regex.Pattern.quote(c) + "(?![\\w.])", "Index"))
+      r
+    }
+    val sx = sub(text)
+    val names = leadingNames(sx)
+    val own = Set("this", "item", "index")
+    val locals = StepLocals ++ Set(rc.s.toLowerCase) ++ rc.scope.decls.toList.map(_.takeWhile(c => c != ' ' && c != ':').toLowerCase)
+    if (names.exists(n => !own(n.toLowerCase) && locals(n.toLowerCase))) return None
+    val params = ListBuffer[(String, String)]()
+    val args = ListBuffer[String]()
+    if (names.contains("This")) { params += (("This", "T")); args += "This" }
+    if (names.contains("Item")) {
+      val ty = try storedType(it.get._1, rc.path)._1 catch { case _: Throwable => return None }
+      params += (("Item", ty)); args += it.get._2
+    }
+    if (names.contains("Index")) { params += (("Index", KT + "Length")); args += ix.get }
+    // the element of a repetition of a type is valid where the loop uses it, and the accessors of the type need it
+    val pre =
+      if (names.contains("Item") && tr.knownValid.contains(it.get._2) && it.get._1.isInstanceOf[UserType]) {
+        val ty = params.find(_._1 == "Item").get._2
+        List((if (ty == "T") "" else ty.stripSuffix("T")) + "Valid (Item)")
+      } else Nil
+    if (params.isEmpty) None else Some(StepCtx(params.toList, args.toList, sub, pre))
+  }
+
+  /**
+    * Declares the subprogram that evaluates a float expression for a procedure, once for equal ones, and returns the
+    * expression that stands for its value. `value` is the expression, `defined` the condition under which it is
+    * defined, if there is one, and `dflt` the value where it is not. The prover sees only the declaration of the
+    * subprogram, which says nothing, so the float operations stay out of the context of the procedure.
+    *
+    * Without a condition the subprogram is a function `Eval_X`. With one it is a procedure that computes both at once,
+    * `Eval_X (This, Eval_Defined, Eval_Holds)` (or `Eval_Value` for an integer): the guard that the translation
+    * returns is the variable `Eval_Defined`, its code is the other variable, and the call is marked in the guard to be
+    * written before the statement that uses them (see `expandStepCalls`). Two functions, one for the condition and one
+    * for the value, would evaluate the condition twice.
+    */
+  private def makeStep(role: String, rc: RC, ret: String, vt: VT, defined: Option[String], value: String, dflt: String, ctx: StepCtx, unique: Boolean = false): ATr = {
+    val o = stepOut
+    val params = ctx.params.map { case (n, t) => s"$n : $t" }.mkString("; ")
+    val contract = "Global => null" + (if (ctx.pre.isEmpty) "" else ctx.pre.mkString(", Pre => ", " and then ", ""))
+    val key = List(ret, params, defined.getOrElse(""), value, dflt, contract).mkString("|")
+    val name = o.stepNames.getOrElseUpdate(key, {
+      val member = rc.path.takeRight(2) match {
+        case List("seq", i) if i.nonEmpty && i.forall(_.isDigit) && i.toInt < provider.nowClass.seq.size => base(idRaw(provider.nowClass.seq(i.toInt).id))
+        case List("instances", n) => base(n)
+        case _ => "Step"
+      }
+      val b = "Eval_" + member + (if (role.isEmpty) "" else "_" + role)
+      val n = o.stepCounts.getOrElse(b, 0) + 1
+      o.stepCounts(b) = n
+      val nm = if (n == 1) b else s"${b}_$n"
+      val what = role match {
+        case "If" => "the condition (`if`)"
+        case "Size" => "the size"
+        case "Count" => "the number of repetitions (`repeat-expr`)"
+        case "Until" => "the end of the repetition (`repeat-until`)"
+        case "Valid" => "the check of `valid`"
+        case "Min" => "the check of the lower limit of `valid`"
+        case "Max" => "the check of the upper limit of `valid`"
+        case "Pos" => "the position (`pos`)"
+        case "On" => "the expression of `switch-on`"
+        case "Order" => "the byte order"
+        case "Arg" => "an argument"
+        case _ => "an expression"
+      }
+      o.steps += s"--  The result of $what of ${q(member)}, which computes with floats."
+      o.steps += "--  It is a subprogram of its own so that the proof of Parse does not see the float operations."
+      defined match {
+        case None =>
+          o.steps ++= List(s"function $nm ($params) return $ret with $contract;", "",
+            s"function $nm ($params) return $ret is", "begin", s"   return $value;", s"end $nm;", "")
+        case Some(d) =>
+          val ps = s"$params; Eval_Defined : out Boolean; Eval_Result : out $ret"
+          o.steps ++= List(s"procedure $nm ($ps) with $contract;", "",
+            s"procedure $nm ($ps) is", "begin", s"   Eval_Defined := $d;", "   if Eval_Defined then", s"      Eval_Result := $value;",
+            "   else", s"      Eval_Result := $dflt;", "   end if;", s"end $nm;", "")
+      }
+      nm
+    })
+    val args = ctx.args.mkString(", ")
+    // the subprogram takes the whole record, which has to be set by then
+    if (ctx.params.exists(_._1 == "This")) rc.scope.passesThis = true
+    defined match {
+      case None => ATr(s"$name ($args)", 0, Nil, vt)
+      case Some(_) =>
+        // The variables are shared by the steps of a procedure, which is what the prover takes best (twelve steps with a
+        // variable each did not prove, with three shared did), unless the results of several steps are used together
+        val dv = if (unique) name + "_Defined" else "Eval_Defined"
+        val rv = if (unique) name + "_Result" else if (ret == "Boolean") "Eval_Holds" else "Eval_Value"
+        List(s"$dv : Boolean;", s"$rv : $ret;").foreach(d => if (!rc.scope.decls.contains(d)) rc.scope.decls += d)
+        ATr(rv, 0, List(s"$StepOpen$name ($args, $dv, $rv);$StepClose$dv"), vt)
+    }
+  }
+
+  private val StepOpen = "\u0001"
+  private val StepClose = "\u0002"
+
+  /** Writes each call of a procedure that evaluates a float expression, which is marked in a condition, before the line */
+  private def expandStepCalls(lines: List[String]): List[String] =
+    lines.flatMap(_.split("\n", -1).toList).flatMap { l =>
+      if (!l.contains(StepOpen)) List(l)
+      else {
+        val indent = l.takeWhile(_ == ' ')
+        val calls = s"$StepOpen(.*?)$StepClose".r.findAllMatchIn(l).map(m => indent + m.group(1)).toList
+        calls ++ List(s"$StepOpen.*?$StepClose".r.replaceAllIn(l, ""))
+      }
+    }
+
+  private def floatStep(e: Ast.expr, t: ATr, rc: RC, role: String, unique: Boolean): ATr = {
+    if (!(t.vt == VInt || t.vt == VBool) || t.isLiteral) return t
+    stepCtx(e, (t.code :: t.guards).mkString("\n"), rc, t.usesBuffer) match {
+      case None => t
+      case Some(ctx) =>
+        val gs = t.guards.map(ctx.sub)
+        val (ret, dflt) = if (t.vt == VInt) (KT + "S64", "0") else ("Boolean", "False")
+        makeStep(role, rc, ret, t.vt, if (gs.isEmpty) None else Some(conjoin(gs)), ctx.sub(t.code), dflt, ctx, unique)
+    }
   }
 
   private def conjoin(gs: List[String]): String = gs.mkString(" and then ")
@@ -1724,7 +1888,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
   private def readBytes(bt: BytesType, target: String, rc: RC, defaultTarget: Boolean): List[String] = {
     bt match {
       case BytesLimitType(size, term, include, pad, _) =>
-        val t = T(size, rc)
+        val t = T(size, rc, "Size")
         val read = s"${KS}Read_Bytes (${rc.s}, ${sizeCode(t)}, $target);" :: postBytes(target, term, include, pad)
         guarded(t.guards, read, rc, if (defaultTarget) List(s"$target := (First => 1, Last => 0);") else Nil)
       case BytesEosType(term, include, pad, _) =>
@@ -1817,7 +1981,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     def lit(e: FixedEndian) = if (e == LittleEndian) KT + "Little_Endian" else KT + "Big_Endian"
     val elseCase = ce.cases.collectFirst { case (k, v) if k == SwitchType.ELSE_CONST => v }
     val labeled = ce.cases.toList.filter(_._1 != SwitchType.ELSE_CONST)
-    val conds = labeled.map { case (k, v) => (T(Ast.expr.Compare(ce.on, Ast.cmpop.Eq, k), rc), v) }
+    val conds = labeled.map { case (k, v) => (T(Ast.expr.Compare(ce.on, Ast.cmpop.Eq, k), rc, "Order", unique = true), v) }
     val gs = conds.flatMap(_._1.guards).distinct
     val chain = ListBuffer[String]()
     conds.zipWithIndex.foreach { case ((c, v), i) =>
@@ -1855,7 +2019,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val pre = ListBuffer[String]()
     val args = ListBuffer[String]()
     ut.args.zipWithIndex.foreach { case (a, i) =>
-      val t = T(a, rc)
+      val t = T(a, rc, "Arg")
       val ada = t.vt match {
         case VInt => KT + "S64"
         case VBool => "Boolean"
@@ -1884,7 +2048,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     pre ++= ostm
     oarg.foreach(args += _)
     ut.args.zip(callee.params).filter(ap => isPrimDt(ap._2.dataType)).foreach { case (a, p) =>
-      val t = T(a, rc)
+      val t = T(a, rc, "Arg")
       val ada = paramAda(p)
       val (code, extra) = convertArg(t, ada, p)
       val gs = t.guards ++ extra
@@ -1909,7 +2073,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         if (j >= curSeqIdx)
           unsupported(s"`${r.source}` of type ${callee.nameAsStr} is the field `$n`, which is parsed after the field that needs it")
       }
-      val t: ATr = T(expr, rc)
+      val t: ATr = T(expr, rc, "Arg")
       val (code, extra) = convertArg(t, ada, p)
       val gs = t.guards ++ extra
       if (gs.isEmpty) args += code
@@ -1943,7 +2107,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     rc.scope.decls += s"$sub : ${KS}Stream;"
     val mk = ut.bytes match {
       case BytesLimitType(size, None, false, None, None) =>
-        val t = T(size, rc)
+        val t = T(size, rc, "Size")
         if (t.guards.isEmpty) List(s"${KS}Substream (Buffer, ${rc.s}, ${sizeCode(t)}, $sub);")
         else {
           rc.scope.needsInit = true
@@ -1981,35 +2145,56 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val wide = dt match { case FloatMultiType(w, _) => w.width == 8; case _ => false }
     val plusInf = if (wide) "16#7FF0_0000_0000_0000#" else "16#7F80_0000#"
     val minusInf = if (wide) "16#FFF0_0000_0000_0000#" else "16#FF80_0000#"
-    def check(cond: Ast.expr, reason: String, nonFinite: Option[List[String]] = None): List[String] = {
+    def check(cond: Ast.expr, reason: String, nonFinite: Option[(List[String], String)] = None, role: String = "Valid"): List[String] = {
       tr.buffer = Some("Buffer")
       tr.io = Some(rc.s)
       tr.thisName = "This"
       tr.knownValid = Set()
       tr.iterator = Some((dt, target))
       tr.finiteKnown = if (isFloat && nonFinite.isDefined) Set(target) else Set()
-      val t = try guard(rc.path)(tr.translate(cond)) finally { tr.iterator = None; tr.finiteKnown = Set() }
+      var t = try guard(rc.path)(tr.translate(cond)) finally { tr.iterator = None; tr.finiteKnown = Set() }
+      var floatFirst = false
+      // an expression with a float is evaluated by a subprogram of its own, with the test of a float that is not finite
+      val nfTest = nonFinite.filter(_ => isFloat)
+      val saved = tr.iterator
+      tr.iterator = Some((dt, target))
+      try {
+        val text = (t.code :: t.guards ++ List(target) ++ nfTest.map(_._2).toList).mkString("\n")
+        if (t.vt == VBool && !t.isLiteral) stepCtx(cond, text, rc, t.usesBuffer).foreach { ctx =>
+          val gs = t.guards.map(ctx.sub)
+          val code = ctx.sub(t.code)
+          val tgt = ctx.sub(target)
+          val finite = s"Kaitai.Floats.Is_Finite ($tgt)"
+          val (value, defined) = nfTest match {
+            case None => (code, if (gs.isEmpty) None else Some(conjoin(gs)))
+            case Some((_, nf)) =>
+              (s"(if not $finite then ${ctx.sub(nf)} else $code)", if (gs.isEmpty) None else Some(s"not $finite or else (${conjoin(gs)})"))
+          }
+          t = makeStep(role, rc, "Boolean", VBool, defined, value, "False", ctx)
+          floatFirst = true
+        }
+      } finally tr.iterator = saved
       val test = List(s"if ${t.code} then", "   " + failStmt(rc, reason), "end if;")
       val body = nonFinite match {
-        case Some(nf) if isFloat => List(s"if not Kaitai.Floats.Is_Finite ($target) then") ++ ind(nf) ++ List("else") ++ ind(test) ++ List("end if;")
+        case Some(nf) if isFloat && !floatFirst => List(s"if not Kaitai.Floats.Is_Finite ($target) then") ++ ind(nf._1) ++ List("else") ++ ind(test) ++ List("end if;")
         case _ => test
       }
       // the statements only fail the stream, so that no component of This depends on the guard
       guarded(t.guards, body, rc, init = false)
     }
-    def failUnless(inf: String, reason: String): Option[List[String]] = {
+    def failUnless(inf: String, reason: String): Option[(List[String], String)] = {
       if (isFloat) opTypes += (if (wide) "U64" else "U32")
-      Some(List(s"if $target /= $inf then", "   " + failStmt(rc, reason), "end if;"))
+      Some((List(s"if $target /= $inf then", "   " + failStmt(rc, reason), "end if;"), s"$target /= $inf"))
     }
-    def failAlways(reason: String): Option[List[String]] = Some(List(failStmt(rc, reason)))
+    def failAlways(reason: String): Option[(List[String], String)] = Some((List(failStmt(rc, reason)), "True"))
     def cmp(op: Ast.cmpop, e: Ast.expr) = Ast.expr.Compare(UnderscoreName, op, e)
     v match {
       case ValidationEq(e) => check(cmp(Ast.cmpop.NotEq, e), "Validation_Not_Equal", failAlways("Validation_Not_Equal"))
-      case ValidationMin(e) => check(cmp(Ast.cmpop.Lt, e), "Validation_Less_Than", failUnless(plusInf, "Validation_Less_Than"))
-      case ValidationMax(e) => check(cmp(Ast.cmpop.Gt, e), "Validation_Greater_Than", failUnless(minusInf, "Validation_Greater_Than"))
+      case ValidationMin(e) => check(cmp(Ast.cmpop.Lt, e), "Validation_Less_Than", failUnless(plusInf, "Validation_Less_Than"), "Min")
+      case ValidationMax(e) => check(cmp(Ast.cmpop.Gt, e), "Validation_Greater_Than", failUnless(minusInf, "Validation_Greater_Than"), "Max")
       case ValidationRange(lo, hi) =>
-        check(cmp(Ast.cmpop.Lt, lo), "Validation_Less_Than", failUnless(plusInf, "Validation_Less_Than")) ++
-          check(cmp(Ast.cmpop.Gt, hi), "Validation_Greater_Than", failUnless(minusInf, "Validation_Greater_Than"))
+        check(cmp(Ast.cmpop.Lt, lo), "Validation_Less_Than", failUnless(plusInf, "Validation_Less_Than"), "Min") ++
+          check(cmp(Ast.cmpop.Gt, hi), "Validation_Greater_Than", failUnless(minusInf, "Validation_Greater_Than"), "Max")
       case ValidationAnyOf(values) =>
         check(Ast.expr.BoolOp(Ast.boolop.And, values.map(x => cmp(Ast.cmpop.NotEq, x))), "Validation_Not_Any_Of", failAlways("Validation_Not_Any_Of"))
       case ValidationInEnum() =>
@@ -2196,6 +2381,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     level = cs.name.size - 1
     provider.nowClass = cs
     val o = new Out
+    stepOut = o
     val sc = new Scope
     genMembers(cs, o, sc)
 
@@ -2312,6 +2498,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     bodyB ++= o.bodyConsts
     if (o.bodyConsts.nonEmpty) bodyB += ""
     childOut.foreach { case (_, _, bd) => bodyB ++= bd; bodyB += "" }
+    bodyB ++= o.steps
     bodyB ++= o.bodyBefore
     bodyB ++= bodyParse
     bodyB += ""
@@ -2335,9 +2522,10 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       bodyOut += "is"
     } else bodyOut += s"package body $pkgName is"
     bodyOut += ""
-    bodyOut ++= ind(bodyB.toList)
+    bodyOut ++= ind(expandStepCalls(bodyB.toList))
     bodyOut += ""
     bodyOut += s"end $pkgName;"
+    stepOut = null
     (specOut.toList.map(_.replaceAll("\\s+$", "")), bodyOut.toList.map(_.replaceAll("\\s+$", "")))
   }
 
@@ -2534,7 +2722,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       case BytesLimitType(size, term, include, pad, _) =>
         val padByte = pad.getOrElse(single(term.get))
         term.foreach(single)
-        val t = T(size, rc)
+        val t = T(size, rc, "Size")
         val sz = sizeCode(t)
         val body =
           if (term.isDefined && pad.isDefined && !include && padByte != single(term.get) && !(t.isLiteral && t.lo == 0))
@@ -2581,7 +2769,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         val callee = ut.classSpec.get
         ut.bytes match {
           case BytesLimitType(size, None, false, None, None) =>
-            val t = T(size, rc)
+            val t = T(size, rc, "Size")
             val sub = rc.scope.fresh("Sub")
             rc.scope.decls += s"$sub : ${KW}Writer;"
             guarded(t.guards,
@@ -2814,7 +3002,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     a.cond.ifExpr match {
       case None => stmts
       case Some(c) =>
-        val t = T(c, rc)
+        val t = T(c, rc, "If")
         val inner = hasName.map(h => s"This.$h := True;").toList ++ stmts
         if (t.isLiteral && t.vt == VBool && t.code == "True") return inner
         rc.scope.needsInit = true
@@ -2935,7 +3123,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
       case ProcessCustom(name, args) =>
         val pkg = processPackage(name)
         val ts = args.toList.zipWithIndex.map { case (e, i) =>
-          val t = T(e, rcKey)
+          val t = T(e, rcKey, "Arg", unique = true)
           val code = t.vt match {
             case VInt | VBool => t.code
             case VBytes => s"Buffer (${t.atom}.First .. ${t.atom}.Last)"
@@ -2950,7 +3138,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     // the call of the processing from src into dst, and the conditions under which it is defined
     def processCall(dst: String): (List[String], List[String]) = proc match {
       case ProcessXor(key) =>
-        val t = T(key, rcKey)
+        val t = T(key, rcKey, "Key", unique = true)
         t.vt match {
           case VInt | VEnum(_) =>
             val (code, extra) = convertArg(t, KT + "U8", ParamDefSpec(a.path, NamedIdentifier("key"), Int1Type(false)))
@@ -2964,7 +3152,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
           case other => unsupported(s"`xor` with a key of $other")
         }
       case ProcessRotate(left, amount) =>
-        val t = T(amount, rcKey)
+        val t = T(amount, rcKey, "Amount", unique = true)
         t.vt match {
           case VInt | VEnum(_) =>
             if (t.isLiteral) {
@@ -3277,7 +3465,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val elseCase = cases.find(_._1 == SwitchType.ELSE_CONST).map(_._2)
     val labeled = cases.filter(_._1 != SwitchType.ELSE_CONST)
     val allInt = cases.forall(c => isIntCase(c._2))
-    val onT = T(st.on, rc)
+    val onT = T(st.on, rc, "On")
     val (pre, hasName) = condParts(cs, a, o)
     val k = idRaw(a.id)
     val there = if (hasName.isEmpty) Nil else List(s"Requires that it is there ($hasName)")
@@ -3639,7 +3827,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     val target = s"This.$nm"
     val stmts: List[String] = rep match {
       case RepeatExpr(e) =>
-        val t = T(e, rc)
+        val t = T(e, rc, "Count")
         guarded(t.guards, List(s"${KS}Read_Elements (S, ${countCode(t)}, $size, $target);"), rc)
       case RepeatEos => List(s"${KS}Read_Elements_Full (S, $size, $target);")
       case RepeatUntil(cond) =>
@@ -3653,8 +3841,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         rc.scope.decls += s"$value : $valT;"
         tr.buffer = Some("Buffer"); tr.io = Some("S"); tr.thisName = "This"; tr.knownValid = Set()
         tr.iterator = Some((dt, value))
-        val ct = guard(a.path)(tr.translate(cond))
-        tr.iterator = None
+        val ct = try floatStep(cond, guard(a.path)(tr.translate(cond)), rc, "Until", false) finally tr.iterator = None
         val check = guarded(ct.guards, List(s"$done := ${ct.code};"), rc, List(s"$done := True;"), init = false)
         List(s"$start := S;", s"$done := False;", s"for I in 1 .. ${KS}Remaining (S) + 1 loop") ++
           ind(readValue(base0, value, rc) ++ List(s"exit when not ${KS}OK (S);") ++ planLoop ++ a.valid.toList.flatMap(v => validate(v, dt, value, rc)) ++ check ++ List(
@@ -3975,7 +4162,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     }
     val loop: List[String] = rep match {
       case RepeatExpr(e) =>
-        val t = T(e, rc)
+        val t = T(e, rc, "Count")
         // The count comes from the data. Elements that take at least a byte each end the loop when the stream does;
         // elements that may read nothing do not, so the loop is left at the first one that reads nothing: all that
         // follow start in the same state and read nothing either.
@@ -4004,7 +4191,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
         tr.iterator = Some((dt, el))
         tr.knownValid = Set(el)
         tr.indexCode = Some(s"$Iv - 1")
-        val ct = try guard(a.path)(tr.translate(cond)) finally tr.indexCode = None
+        val ct = try floatStep(cond, guard(a.path)(tr.translate(cond)), rc, "Until", false) finally tr.indexCode = None
         tr.iterator = None
         tr.knownValid = Set()
         val check = guarded(ct.guards, List(s"$done := ${ct.code};"), rc, List(s"$done := True;"), init = false)
@@ -4147,7 +4334,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     var pre = pre0
     p.cond.ifExpr.foreach { c =>
       val saved = tr.buffer
-      val t = T(c, rc.copy(s = "L"))
+      val t = Tplain(c, rc.copy(s = "L"))
       // Has_X as a value instance function
       val gs = t.guards ++ List(if (t.prec >= 3) s"(${t.code})" else t.code)
       o.pub ++= ind(describe(List(s"True if the instance ${q(idRaw(p.id))} is there", "It has a condition (`if`) in the description, which is evaluated at every call"),
@@ -4189,7 +4376,7 @@ class AdaClassCompiler(classSpecs: ClassSpecs, topClass: ClassSpec, config: Runt
     o.pub += s"   with Pre => $pre${post.map(x => s", Post => $x").getOrElse("")};"
     o.pub += ""
     // body
-    val posT = T(p.pos.get, rc)
+    val posT = T(p.pos.get, rc, "Pos")
     val seek = guarded(posT.guards, List(s"${KS}Seek (L, ${sizeCode(posT)});"), rc)
     val reads = readValue(dt, "Result", rc, defaultTarget = true) ++ p.valid.toList.flatMap(v => validate(v, dt, "Result", rc))
     val init = if (rootIo) s"L : ${KS}Stream := ${KS}Open (Buffer);" else s"L : ${KS}Stream := This.Io;"

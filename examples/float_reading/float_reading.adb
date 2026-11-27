@@ -4,6 +4,32 @@ package body Float_Reading
   with SPARK_Mode
 is
 
+   --  The result of the check of the lower limit of `valid` of `Fraction`, which computes with floats.
+   --  It is a subprogram of its own so that the proof of Parse does not see the float operations.
+   function Eval_Fraction_Min (This : T) return Boolean
+   with Global => null;
+
+   function Eval_Fraction_Min (This : T) return Boolean is
+   begin
+      return
+        (if not Kaitai.Floats.Is_Finite (This.Fraction)
+         then This.Fraction /= 16#7F80_0000#
+         else Kaitai.Float_Arithmetic.From_F32 (Kaitai.Floats.To_F32 (This.Fraction)) < 0.0);
+   end Eval_Fraction_Min;
+
+   --  The result of the check of the upper limit of `valid` of `Fraction`, which computes with floats.
+   --  It is a subprogram of its own so that the proof of Parse does not see the float operations.
+   function Eval_Fraction_Max (This : T) return Boolean
+   with Global => null;
+
+   function Eval_Fraction_Max (This : T) return Boolean is
+   begin
+      return
+        (if not Kaitai.Floats.Is_Finite (This.Fraction)
+         then This.Fraction /= 16#FF80_0000#
+         else Kaitai.Float_Arithmetic.From_F32 (Kaitai.Floats.To_F32 (This.Fraction)) > 1.0);
+   end Eval_Fraction_Max;
+
    procedure Parse (This : out T; Buffer : Kaitai.Types.Bytes; S : in out Kaitai.Streams.Stream) is
    begin
       This := (others => <>);
@@ -11,23 +37,11 @@ is
       Kaitai.Streams.Read_U8le (Buffer, S, This.Gain);
       Kaitai.Streams.Read_U2le (Buffer, S, This.Count);
       Kaitai.Streams.Read_U4be (Buffer, S, This.Fraction);
-      if not Kaitai.Floats.Is_Finite (This.Fraction) then
-         if This.Fraction /= 16#7F80_0000# then
-            Kaitai.Streams.Fail (S, Kaitai.Types.Validation_Less_Than);
-         end if;
-      else
-         if Kaitai.Float_Arithmetic.From_F32 (Kaitai.Floats.To_F32 (This.Fraction)) < 0.0 then
-            Kaitai.Streams.Fail (S, Kaitai.Types.Validation_Less_Than);
-         end if;
+      if Eval_Fraction_Min (This) then
+         Kaitai.Streams.Fail (S, Kaitai.Types.Validation_Less_Than);
       end if;
-      if not Kaitai.Floats.Is_Finite (This.Fraction) then
-         if This.Fraction /= 16#FF80_0000# then
-            Kaitai.Streams.Fail (S, Kaitai.Types.Validation_Greater_Than);
-         end if;
-      else
-         if Kaitai.Float_Arithmetic.From_F32 (Kaitai.Floats.To_F32 (This.Fraction)) > 1.0 then
-            Kaitai.Streams.Fail (S, Kaitai.Types.Validation_Greater_Than);
-         end if;
+      if Eval_Fraction_Max (This) then
+         Kaitai.Streams.Fail (S, Kaitai.Types.Validation_Greater_Than);
       end if;
       Kaitai.Streams.Read_U1 (Buffer, S, This.Has_Bias_Field);
       if Kaitai.Types.S64 (This.Has_Bias_Field) /= 0 then

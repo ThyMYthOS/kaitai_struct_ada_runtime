@@ -175,7 +175,8 @@ scripts/check.sh prove    # a single step
 | `doc` | GNATdoc finds a documentation comment for every declaration that a user of the library or of a generated parser sees |
 
 A second CI job builds the compiler and checks that `examples/` is what it
-generates.
+generates. The CI keeps the answers of the provers from run to run; once a
+week a separate workflow runs the step `prove` without them.
 
 ## Configuration
 

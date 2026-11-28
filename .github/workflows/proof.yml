@@ -1,0 +1,41 @@
+name: Proof without cache
+
+# The job `check` of ci.yml starts every proof from the answers that earlier
+# runs have saved, so a check that was proved once is not proved again.  A
+# check close to the time limit of the provers can then stay green although
+# it would not be proved from nothing.  This workflow proves everything from
+# nothing once a week, and when it is started by hand.
+on:
+  schedule:
+    - cron: '17 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache toolchain
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.local/bin/alr
+            ~/.local/bin/renode
+            ~/.local/share/alire
+            ~/.local/share/renode
+            ~/.alire
+            ~/.config/alire
+          key: toolchain-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/install-toolchain.sh', '**/alire.toml') }}
+
+      - name: Install toolchain
+        run: scripts/install-toolchain.sh
+
+      # GNATPROVE_CACHE is not set and the checkout has no object
+      # directories, so no answer of an earlier run is used.
+      - name: Prove
+        run: scripts/check.sh prove
